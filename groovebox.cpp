@@ -1378,27 +1378,15 @@ namespace {
 constexpr uint16_t GB_SEQ_ACCENT_VEL_Q15 = 24000u;
 
 void IRAM_ATTR gb_arm_seq_voice(Voice* v, float freq, uint16_t velQ15) {
-  /* [CLICK-FIX] Match harp h_arm_voice: retrigger keeps phase/filter/envelope
-   * continuous so legato / same-row re-triggers don't drop to silence in one
-   * sample (the #1 seq note-on click).  masterPitch is applied per-buffer in
-   * gb_seq_fill_buf (live M.TUNE), not baked here. */
-  const bool retrigger =
-      v->active.load(std::memory_order_relaxed) &&
-      v->env_state != EnvState::ENV_IDLE;
-
-  v->step  = (uint32_t)((freq * 512.0f / (float)SAMPLE_RATE) * 8388608.0f);
+  const float mp = masterPitch.load(std::memory_order_relaxed);
+  v->step  = (uint32_t)((freq * mp * 512.0f / (float)SAMPLE_RATE) * 8388608.0f);
+  v->phase = v->phase2 = 0;
   v->type  = (uint8_t)(seqLivePatch[(int)SynthParam::P_WAVEFORM]  % 25u);
   v->type2 = (uint8_t)(seqLivePatch[(int)SynthParam::P_OSC2_WAVE] % 25u);
   v->velocity    = velQ15;
   v->is_accented = (velQ15 > GB_SEQ_ACCENT_VEL_Q15);
-  v->fast_release = false;
-
-  if (!retrigger) {
-    v->phase = v->phase2 = 0;
-    v->svf_low = v->svf_band = 0;
-    v->env_level.store(0u, std::memory_order_relaxed);
-  }
-
+  v->svf_low = v->svf_band = 0;
+  v->env_level.store(0u, std::memory_order_relaxed);
   v->env_state = EnvState::ENV_ATTACK;
   std::atomic_thread_fence(std::memory_order_release);
   v->active.store(true, std::memory_order_release);
@@ -1411,36 +1399,25 @@ bool IRAM_ATTR gb_seq_fill_buf(int16_t* out_buf, size_t frames) {
    * per-sample loop (LFO advance, exp2f pitch-mod, wave-morph, SVF coeff slew)
    * must not run when no seq voice is active, or an idle sequencer steals
    * headroom from whatever IS playing and inflates the baseline load. */
-  /* [MUTE-GATE][CLICK-FIX] Same release-then-idle policy as harp_synth_fill_buf. */
-  static bool s_seqMuteWas = false;
-  const bool seqMuted = mixSeqMute.load(std::memory_order_relaxed);
-  if (seqMuted) {
-    if (!s_seqMuteWas) {
-      s_seqArp.reset();
-      seqArpReleaseVoice(laserShowMode.load(std::memory_order_relaxed));
-    }
-    s_seqMuteWas = true;
-    for (int v = 0; v < SEQ_POLYPHONY; ++v) {
-      if (!seqVoices[v].active.load(std::memory_order_relaxed)) continue;
-      const EnvState es = seqVoices[v].env_state;
-      if (es != EnvState::ENV_RELEASE && es != EnvState::ENV_IDLE)
-        seqVoices[v].env_state = EnvState::ENV_RELEASE;
-    }
-  } else {
-    s_seqMuteWas = false;
+  /* [MUTE-GATE] Seq muted → skip the DSP pass and free voices.  sequencer_
+   * render_block() still ran this buffer (ticks/song/STEP_SYNC continue), it
+   * just armed voices we now silence; the envelope ager lives below, so freeing
+   * here prevents an un-advanced voice pile-up that would starve allocation on
+   * unmute.  Equivalent click profile to the old gain-0 path. */
+  if (mixSeqMute.load(std::memory_order_relaxed)) {
+    for (int v = 0; v < SEQ_POLYPHONY; ++v)
+      seqVoices[v].active.store(false, std::memory_order_relaxed);
+    memset(out_buf, 0, frames * sizeof(int16_t));
+    return false;
   }
 
   bool any_active = false;
-  int active_n = 0;
   for (int v = 0; v < SEQ_POLYPHONY; ++v) {
-    if (seqVoices[v].active.load(std::memory_order_relaxed)) {
-      any_active = true;
-      ++active_n;
-    }
+    if (seqVoices[v].active.load(std::memory_order_relaxed)) { any_active = true; break; }
   }
   if (!any_active) {
     memset(out_buf, 0, frames * sizeof(int16_t));
-    return false;
+    return false;                         
   }
 
   uint16_t lp[PARAMS_PER_PRESET];
@@ -1454,9 +1431,7 @@ bool IRAM_ATTR gb_seq_fill_buf(int16_t* out_buf, size_t frames) {
   g.lfo_step  = (uint32_t)((lfo_hz / (float)SAMPLE_RATE) * 4294967296.0f);
   g.lfo_depth = lp[(int)SynthParam::P_LFO_DEPTH];
 
-  const uint32_t midi_pb_q16      = g.pitch_bend_q16.load(std::memory_order_relaxed);
-  const float    live_pitch_mul   = masterPitch.load(std::memory_order_relaxed);
-  const uint32_t cached_pb        = (uint32_t)((float)midi_pb_q16 * live_pitch_mul);
+  const uint32_t cached_pb        = g.pitch_bend_q16.load(std::memory_order_relaxed);
   const int32_t  lfo_depth_cached = (int32_t)g.lfo_depth;
   const uint16_t lfo_route        = lp[(int)SynthParam::P_LFO_ROUTE] % 8u;
   const int32_t  env_cut_amt      = (int32_t)lp[(int)SynthParam::P_ENV_CUT];
@@ -1474,7 +1449,6 @@ bool IRAM_ATTR gb_seq_fill_buf(int16_t* out_buf, size_t frames) {
   const uint32_t c_dec_normal = (uint32_t)(magic / dec);
   const uint32_t c_dec_accent = (uint32_t)(magic / std::max(0.005f, dec * 0.3f));
   const uint32_t c_rel_step   = (uint32_t)(magic / rel);
-  const uint32_t c_rel_stacc  = (uint32_t)(magic / HARP_SOLO_STACCATO_REL_SEC);
   const uint32_t c_sus_level  = (uint32_t)(sus * (float)0x7FFFFFFFu);
 
   /* [gbox OPT-4] Cache exp2f against raw P_DETUNE — Flash libm fires only on a
@@ -1505,10 +1479,9 @@ bool IRAM_ATTR gb_seq_fill_buf(int16_t* out_buf, size_t frames) {
     if (!seqVoices[v].active.load(std::memory_order_relaxed)) continue;
     seqVoices[v].attack_step   = c_atk_step;
     seqVoices[v].decay_step    = seqVoices[v].is_accented ? c_dec_accent : c_dec_normal;
-    seqVoices[v].release_step  = seqVoices[v].fast_release ? c_rel_stacc : c_rel_step;
+    seqVoices[v].release_step  = c_rel_step;
     seqVoices[v].sustain_level = c_sus_level;
-    if (osc2_audible)
-      seqVoices[v].step2_target = (uint32_t)((float)seqVoices[v].step * detune_mult);
+    seqVoices[v].step2_target  = (uint32_t)((float)seqVoices[v].step * detune_mult);
     seqVoices[v].osc_mix_q15   = osc2_audible ? (Q15_ONE / 2) : 0;
   }
 
@@ -1688,10 +1661,6 @@ bool IRAM_ATTR gb_seq_fill_buf(int16_t* out_buf, size_t frames) {
           ((int64_t)(seqVoices[v].svf_low) * (int32_t)seqVoices[v].velocity >> 15) * fa;
       acc += (int32_t)(contrib >> 16);
     }
-
-    /* [PD-2] Poly headroom — prevents dense-step hard clip / crackle (harp parity). */
-    if (active_n > 1 && active_n < 9)
-      acc = (int32_t)(((int64_t)acc * POLY_GAIN_Q15[active_n]) >> 15);
 
     out_buf[i] = engine_soft_clip(acc);
   }

@@ -6,9 +6,7 @@
  * or use of this software or firmware, in whole or in part, is strictly prohibited
  * without prior written permission from DIODAC ELECTRONICS.
  * ═════════════════════════════════════════════════════════════════════════════
- * arp.h — v6.0.01  SHARED ARPEGGIATOR ENGINE  (seq + harp adapters)
- *
- * v6.0.01: pitch_rows[] paired with sorted notes; DnUp ping-pong fix; AsIs latch rows.
+ * arp.h — v6.0.00  SHARED ARPEGGIATOR ENGINE  (seq + harp adapters)
  * ═════════════════════════════════════════════════════════════════════════════ */
 #pragma once
 #ifndef ARP_H
@@ -95,7 +93,6 @@ constexpr uint8_t GATE_PCT[8] = { 100, 75, 50, 38, 25, 19, 13, 6 };
 
 struct Engine {
   int8_t  notes[MAX_NOTES];      /* sorted ascending for Up/Down patterns   */
-  int8_t  pitch_rows[MAX_NOTES]; /* grid row per sorted notes[i]            */
   int8_t  raw[MAX_NOTES];        /* latch order for As-Played               */
   int8_t  rows[MAX_NOTES];       /* source grid row per latched note        */
   int8_t  count = 0;
@@ -122,17 +119,14 @@ struct Engine {
   void latchNotes(const int8_t* midi, const int8_t* src_rows, int n) {
     count = (int8_t)std::min(n, MAX_NOTES);
     for (int i = 0; i < count; ++i) {
-      raw[i]        = midi[i];
-      rows[i]       = src_rows[i];
-      notes[i]      = midi[i];
-      pitch_rows[i] = src_rows[i];
+      raw[i]   = midi[i];
+      rows[i]  = src_rows[i];
+      notes[i] = midi[i];
     }
-    /* Sort pitch + row together so Up/Down/UpDn laser rows match the note heard. */
     for (int i = 0; i + 1 < count; ++i) {
       for (int j = i + 1; j < count; ++j) {
         if (notes[j] < notes[i]) {
-          const int8_t tn = notes[i];      notes[i]      = notes[j];      notes[j]      = tn;
-          const int8_t tr = pitch_rows[i]; pitch_rows[i] = pitch_rows[j]; pitch_rows[j] = tr;
+          const int8_t t = notes[i]; notes[i] = notes[j]; notes[j] = t;
         }
       }
     }
@@ -156,31 +150,10 @@ struct Engine {
     return n;
   }
 
-  /* Row for pitch-order patterns (Up/Down/UpDn/Rnd/Oct). */
-  int8_t rowForPitchIndex(int idx) const {
-    if (count <= 0) return 0;
-    idx = ((idx % count) + count) % count;
-    return pitch_rows[idx];
-  }
-
-  /* Row for As-Played (latch order, not sorted). */
-  int8_t rowForLatchIndex(int idx) const {
+  int8_t rowForIndex(int idx) const {
     if (count <= 0) return 0;
     idx = ((idx % count) + count) % count;
     return rows[idx];
-  }
-
-  /* Ping-pong index: UpDown = 0..n-1..1, DownUp = n-1..0..1 (cycle 2n-2). */
-  static int pingPongIndex(int count, int step, bool down_first) {
-    if (count <= 1) return 0;
-    const int cycle = 2 * count - 2;
-    int pos = ((step % cycle) + cycle) % cycle;
-    if (down_first) {
-      if (pos < count) return (count - 1) - pos;
-      return pos - (count - 1);
-    }
-    if (pos < count) return pos;
-    return (2 * count - 2) - pos;
   }
 
   /* Returns MIDI note for this arp period; advances internal pattern index. */
@@ -193,56 +166,48 @@ struct Engine {
     case UP_OCT:
       idx = step_idx % count;
       step_idx = (int8_t)((step_idx + 1) % count);
-      last_play_idx = (int8_t)idx;
-      last_play_row = rowForPitchIndex(idx);
-      return noteAtPatternIndex(pattern, idx);
+      break;
     case DOWN:
     case DOWN_OCT:
       idx = (count - 1) - (step_idx % count);
       step_idx = (int8_t)((step_idx + 1) % count);
-      last_play_idx = (int8_t)idx;
-      last_play_row = rowForPitchIndex(idx);
-      return noteAtPatternIndex(pattern, idx);
+      break;
     case UP_DOWN:
     case DOWN_UP: {
-      idx = pingPongIndex(count, step_idx, pattern == DOWN_UP);
-      if (count <= 1) step_idx = 0;
-      else {
-        const int cycle = 2 * count - 2;
-        step_idx = (int8_t)((step_idx + 1) % cycle);
-      }
-      last_play_idx = (int8_t)idx;
-      last_play_row = rowForPitchIndex(idx);
-      return noteAtPatternIndex(pattern, idx);
+      if (count == 1) { idx = 0; break; }
+      const int cycle = 2 * count - 2;
+      int pos = step_idx % cycle;
+      if (pattern == DOWN_UP) pos = (cycle - pos) % cycle;
+      if (pos < count) idx = pos;
+      else idx = (2 * count - 2) - pos;
+      step_idx = (int8_t)((step_idx + 1) % cycle);
+      break;
     }
     case RANDOM: {
       rng = rng * 1664525u + 1013904223u;
       idx = (int)(rng % (uint32_t)count);
-      last_play_idx = (int8_t)idx;
-      last_play_row = rowForPitchIndex(idx);
-      return noteAtPatternIndex(pattern, idx);
+      break;
     }
     case AS_PLAYED:
       idx = step_idx % count;
       step_idx = (int8_t)((step_idx + 1) % count);
       last_play_idx = (int8_t)idx;
-      last_play_row = rowForLatchIndex(idx);
+      last_play_row = rows[idx];
       return noteAtPatternIndex(AS_PLAYED, idx);
     default:
       idx = step_idx % count;
       step_idx = (int8_t)((step_idx + 1) % count);
-      last_play_idx = (int8_t)idx;
-      last_play_row = rowForPitchIndex(idx);
-      return noteAtPatternIndex(pattern, idx);
+      break;
     }
+    last_play_idx = (int8_t)idx;
+    last_play_row = rowForIndex(idx);
+    return noteAtPatternIndex(pattern, idx);
   }
 
   int8_t rowForMidi(int8_t midi) const {
     for (int i = 0; i < count; ++i)
       if (raw[i] == midi) return rows[i];
-    for (int i = 0; i < count; ++i)
-      if (notes[i] == midi) return pitch_rows[i];
-    return count > 0 ? rows[0] : 0;
+    return rows[0];
   }
 };
 

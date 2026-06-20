@@ -92,8 +92,6 @@ static inline float fx_tanh(float x) {
 /* ── FX engine constants ─────────────────────────────────────────────────── */
 static constexpr float FX_INV_SR = 1.0f / (float)FX_SR;
 static constexpr float DENORMAL_FLOOR = 1.0e-6f;
-/* RBJ cookbook: A = 10^(dB/40).  exp2(dB * log2(10)/40) — one exp2, no powf. */
-static constexpr float FX_DB40_TO_A = 0.083048f; /* log2(10) / 40 */
 static constexpr uint32_t INSERT_DELAY_LEN = 1024u; /* power-of-2, ~21 ms @ 48 kHz */
 static constexpr size_t FX_BUF_SIZE = 512u;         /* must match DMA_BUFFER_FRAMES  */
 
@@ -447,24 +445,23 @@ struct InsertSlot {
     const float a = fabsf(x);
     switch (dyn_mode) {
       case DynMode::COMPRESSOR: {
-        dyn_env = fx_denormal(dyn_env + (a - dyn_env) * (a > dyn_env ? dyn_atk : dyn_rel));
+        dyn_env += (a - dyn_env) * (a > dyn_env ? dyn_atk : dyn_rel);
         float gr = 1.f;
         if (dyn_env > dyn_thr) {
           gr = (dyn_thr_safe + (dyn_env - dyn_thr_safe) / std::max(1.f, dyn_ratio)) / dyn_env;
-          gr = std::min(1.f, gr);
         }
         wet = x * gr * dyn_makeup;
         break;
       }
       case DynMode::GATE: {
-        dyn_env = fx_denormal(dyn_env + (a - dyn_env) * (a > dyn_thr ? dyn_atk : dyn_rel));
+        dyn_env += (a - dyn_env) * (a > dyn_thr ? dyn_atk : dyn_rel);
         wet = (dyn_env > dyn_thr) ? x : x * (dyn_env / dyn_thr_safe);
         wet *= dyn_makeup;
         break;
       }
       case DynMode::TRANSIENT: {
         const float peak = a;
-        dyn_env = fx_denormal(dyn_env + (peak - dyn_env) * dyn_rel);
+        dyn_env += (peak - dyn_env) * dyn_rel;
         const float delta = peak - dyn_env;
         wet = x + delta * dyn_ratio * dyn_makeup;
         break;
@@ -556,8 +553,8 @@ public:
     dl_fb = dlyFb;
   }
   inline void process(float in, float& out) {
-    out = dlM.readFrac_unsafe(dt_samples);
-    dlM.write_unsafe(std::min(3.0f, std::max(-3.0f, in + out * dl_fb)));
+    out = dlM.buf ? dlM.readFrac(dt_samples) : 0.f;
+    dlM.write(std::min(3.0f, std::max(-3.0f, in + out * dl_fb)));
   }
 };
 
@@ -603,7 +600,7 @@ class SharedAux {
   SharedDelay delay;
   SharedReverb reverb;
 public:
-  bool init() { return delay.init() && reverb.init(); }
+  bool init() { return delay.init() & reverb.init(); }
   void clear() { delay.clear(); reverb.clear(); }
   /* [FX-OPT4] Latch delay/reverb coefficients once per buffer (cold path). */
   inline void setParams(float dlyTime, float dlyFb, float revSize, float revDamp) {
@@ -751,11 +748,10 @@ public:
     /* 1. Glue compressor (stereo-linked) */
     if (comp_mix > 0.001f) {
       const float peak = std::max(fabsf(L), fabsf(R));
-      comp_env = fx_denormal(comp_env + (peak - comp_env) * (peak > comp_env ? comp_atk : comp_rel));
+      comp_env += (peak - comp_env) * (peak > comp_env ? comp_atk : comp_rel);
       float gr = 1.f;
       if (comp_env > comp_thr) {
         gr = (comp_thr_safe + (comp_env - comp_thr_safe) / comp_ratio) / comp_env;
-        gr = std::min(1.f, gr);
       }
       const float g = 1.f + (gr - 1.f) * comp_mix;
       L *= g;

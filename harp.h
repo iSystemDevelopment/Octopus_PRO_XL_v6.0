@@ -17,11 +17,12 @@
  *     harp shares no symbols with the groovebox seq/drum engine (synth_core.h).
  *
  *   • Three play modes, exposed as one semantic vocabulary:
- *       POLY8   — 8-voice polyphony, 1:1 string→voice (vi = string & 7).
- *       STRINGS — same 1:1 map; patch ADSR + galvo/hue pluck vibrato.  Beam-hold
- *                 uses release hysteresis so brief dropouts don't retrigger.
- *       SOLO    — monophonic on HARP_SOLO_VOICE; last-note stack with legato
- *                 pitch changes (envelope kept, phase reset on new pitch).
+ *       POLY8   — 8-voice polyphony, free-voice allocation (MIDI keyboard).
+ *       STRINGS — 1:1 string→voice, plucked envelope (sustain = 0), physical
+ *                 string-vibration emulation + laser hue ADSR.
+ *       SOLO    — monophonic, bidirectional last-note priority. Newest beam
+ *                 sounds; older still-held beams are remembered on a stack and
+ *                 the most-recent one re-sounds when the newest is lifted.
  *
  *   • D-BEAM expression is CONSUMED, not reimplemented.  dbeam.cpp stays the
  *     single source of the amplitude-follower expression; harp only calls
