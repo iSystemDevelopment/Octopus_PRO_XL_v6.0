@@ -235,121 +235,7 @@ static inline void harpVoiceToReleaseLocked(Voice* v) {
     v->env_state = EnvState::ENV_RELEASE;
 }
 
-/* Rebuild SOLO stack from the atomic hold mask (ascending string index). */
-static void soloStackRebuildFromMaskLocked(uint8_t held) {
-  g_soloN = 0;
-  for (int s = 0; s < MAX_STRINGS; ++s) {
-    if (!(held & (uint8_t)(1u << s))) continue;
-    g_soloStr[g_soloN] = s;
-    g_soloVel[g_soloN] = 100;
-    ++g_soloN;
-  }
-}
-
-/* [STUCK-FIX] Once per audio buffer: align SOLO/POLY8 voice state with the laser's
- * physical-hold mask.  Catches desyncs (stack vs stringActive, missed note-off,
- * mode/scale edge cases) before they become infinite sustains.  Caller holds patchMux. */
-static void harpReconcileStuckNotesLocked(PlayMode pm, uint8_t held) {
-  if (pm == PlayMode::SOLO) {
-    const int soloNBefore = g_soloN;
-    for (int i = g_soloN - 1; i >= 0; --i) {
-      if (!(held & (uint8_t)(1u << g_soloStr[i])))
-        soloStackRemove(g_soloStr[i]);
-    }
-
-    if (held != 0u && g_soloN == 0)
-      soloStackRebuildFromMaskLocked(held);
-
-    if (harpArpActiveNow()) {
-      if (g_soloN > 0 && g_soloN != soloNBefore)
-        harpArpRebuildFromSoloStack();
-      else if (held == 0u && g_soloN == 0 && s_harpArp.count == 0) {
-        s_harpArp.reset();
-        harpArpReleaseVoiceLocked();
-      }
-      return;
-    }
-
-    const int16_t own = harpVoiceOwner[HARP_SOLO_VOICE];
-    const bool physOwn = hvIsPhys(own);
-    const int ownStr   = physOwn ? (int)(own - HV_PHYS_BASE) : -1;
-    const bool ownerHeld = physOwn && ownStr >= 0 && ownStr < MAX_STRINGS &&
-                           (held & (uint8_t)(1u << ownStr));
-
-    if (g_soloN > 0) {
-      const int top = g_soloStr[g_soloN - 1];
-      const EnvState ves = harpVoices[HARP_SOLO_VOICE].env_state;
-      const bool voiceSilent =
-          !harpVoices[HARP_SOLO_VOICE].active.load(std::memory_order_relaxed) ||
-          ves == EnvState::ENV_IDLE || ves == EnvState::ENV_RELEASE;
-      if (voiceSilent || !ownerHeld ||
-          own != (int16_t)(HV_PHYS_BASE + top))
-        soloArmVoiceLocked(top, g_soloVel[g_soloN - 1]);
-    } else if (held == 0u) {
-      if (physOwn) harpVoiceOwner[HARP_SOLO_VOICE] = HV_FREE;
-      harpVoiceToReleaseLocked(&harpVoices[HARP_SOLO_VOICE]);
-    }
-    return;
-  }
-
-  if (pm == PlayMode::POLY8) {
-    if (harpArpActiveNow()) {
-      const int polyNBefore = g_polyArpN;
-      for (int i = g_polyArpN - 1; i >= 0; --i) {
-        if (!(held & (uint8_t)(1u << g_polyArpStr[i])))
-          polyArpStackRemove(g_polyArpStr[i]);
-      }
-      if (g_polyArpN > 0 && g_polyArpN != polyNBefore)
-        harpArpRebuildFromPolyStack();
-      else if (held == 0u && g_polyArpN == 0 && s_harpArp.count == 0) {
-        s_harpArp.reset();
-        harpArpReleaseVoiceLocked();
-      }
-      return;
-    }
-
-    for (int s = 0; s < MAX_STRINGS; ++s) {
-      if (!(held & (uint8_t)(1u << s))) continue;
-      const int vi = harpPhysVoice(s);
-      Voice* v = &harpVoices[vi];
-      const int16_t owner = harpVoiceOwner[vi];
-      const bool slotFree =
-          owner == HV_FREE || owner == (int16_t)(HV_PHYS_BASE + s);
-      if (!slotFree || hvIsMidi(owner)) continue;
-      const EnvState es = v->env_state;
-      const bool voiceSilent =
-          !v->active.load(std::memory_order_relaxed) ||
-          es == EnvState::ENV_IDLE || es == EnvState::ENV_RELEASE;
-      if (voiceSilent) {
-        const uint16_t velQ15 =
-            (uint16_t)((uint32_t)100u * (uint32_t)Q15_ONE / 127u);
-        harpVoiceOwner[vi] = (int16_t)(HV_PHYS_BASE + s);
-        h_arm_voice(v, h_note_to_freq(harpStringMidi((uint8_t)s)), velQ15);
-      }
-    }
-
-    for (int s = 0; s < MAX_STRINGS; ++s) {
-      if (held & (uint8_t)(1u << s)) continue;
-      const int vi = harpPhysVoice(s);
-      Voice* v = &harpVoices[vi];
-      if (!v->active.load(std::memory_order_relaxed)) continue;
-      const EnvState es = v->env_state;
-      if (es == EnvState::ENV_IDLE || es == EnvState::ENV_RELEASE) continue;
-      const int16_t owner = harpVoiceOwner[vi];
-      if (owner == (int16_t)(HV_PHYS_BASE + s)) {
-        harpVoiceOwner[vi] = HV_FREE;
-        v->env_state = EnvState::ENV_RELEASE;
-      } else if (owner == HV_FREE) {
-        v->env_state = EnvState::ENV_RELEASE;
-      }
-    }
-
-    if (held == 0u && g_polyArpN == 0 && s_harpArp.count == 0) {
-      s_harpArp.reset();
-      harpArpReleaseVoiceLocked();
-    }
-  }
-}
+static void harpReconcileStuckNotesLocked(PlayMode pm, uint8_t held);
 
 /* When only one beam is held, expand to nearby scale degrees so Up/Down/UpDn/Rnd
  * are audible even without a multi-beam chord. */
@@ -994,6 +880,122 @@ static inline void soloArmVoiceLocked(int stringIdx, uint8_t vel) {
   harpVoiceOwner[HARP_SOLO_VOICE] = (int16_t)(HV_PHYS_BASE + stringIdx);
   h_arm_voice(&harpVoices[HARP_SOLO_VOICE], h_note_to_freq(midiNote), velQ15);
   harpSoloKing.store(stringIdx, std::memory_order_relaxed); /* render: glow this beam */
+}
+
+/* Rebuild SOLO stack from the atomic hold mask (ascending string index). */
+static void soloStackRebuildFromMaskLocked(uint8_t held) {
+  g_soloN = 0;
+  for (int s = 0; s < MAX_STRINGS; ++s) {
+    if (!(held & (uint8_t)(1u << s))) continue;
+    g_soloStr[g_soloN] = s;
+    g_soloVel[g_soloN] = 100;
+    ++g_soloN;
+  }
+}
+
+/* [STUCK-FIX] Once per audio buffer: align SOLO/POLY8 voice state with the laser's
+ * physical-hold mask.  Catches desyncs (stack vs stringActive, missed note-off,
+ * mode/scale edge cases) before they become infinite sustains.  Caller holds patchMux. */
+static void harpReconcileStuckNotesLocked(PlayMode pm, uint8_t held) {
+  if (pm == PlayMode::SOLO) {
+    const int soloNBefore = g_soloN;
+    for (int i = g_soloN - 1; i >= 0; --i) {
+      if (!(held & (uint8_t)(1u << g_soloStr[i])))
+        soloStackRemove(g_soloStr[i]);
+    }
+
+    if (held != 0u && g_soloN == 0)
+      soloStackRebuildFromMaskLocked(held);
+
+    if (harpArpActiveNow()) {
+      if (g_soloN > 0 && g_soloN != soloNBefore)
+        harpArpRebuildFromSoloStack();
+      else if (held == 0u && g_soloN == 0 && s_harpArp.count == 0) {
+        s_harpArp.reset();
+        harpArpReleaseVoiceLocked();
+      }
+      return;
+    }
+
+    const int16_t own = harpVoiceOwner[HARP_SOLO_VOICE];
+    const bool physOwn = hvIsPhys(own);
+    const int ownStr   = physOwn ? (int)(own - HV_PHYS_BASE) : -1;
+    const bool ownerHeld = physOwn && ownStr >= 0 && ownStr < MAX_STRINGS &&
+                           (held & (uint8_t)(1u << ownStr));
+
+    if (g_soloN > 0) {
+      const int top = g_soloStr[g_soloN - 1];
+      const EnvState ves = harpVoices[HARP_SOLO_VOICE].env_state;
+      const bool voiceSilent =
+          !harpVoices[HARP_SOLO_VOICE].active.load(std::memory_order_relaxed) ||
+          ves == EnvState::ENV_IDLE || ves == EnvState::ENV_RELEASE;
+      if (voiceSilent || !ownerHeld ||
+          own != (int16_t)(HV_PHYS_BASE + top))
+        soloArmVoiceLocked(top, g_soloVel[g_soloN - 1]);
+    } else if (held == 0u) {
+      if (physOwn) harpVoiceOwner[HARP_SOLO_VOICE] = HV_FREE;
+      harpVoiceToReleaseLocked(&harpVoices[HARP_SOLO_VOICE]);
+    }
+    return;
+  }
+
+  if (pm == PlayMode::POLY8) {
+    if (harpArpActiveNow()) {
+      const int polyNBefore = g_polyArpN;
+      for (int i = g_polyArpN - 1; i >= 0; --i) {
+        if (!(held & (uint8_t)(1u << g_polyArpStr[i])))
+          polyArpStackRemove(g_polyArpStr[i]);
+      }
+      if (g_polyArpN > 0 && g_polyArpN != polyNBefore)
+        harpArpRebuildFromPolyStack();
+      else if (held == 0u && g_polyArpN == 0 && s_harpArp.count == 0) {
+        s_harpArp.reset();
+        harpArpReleaseVoiceLocked();
+      }
+      return;
+    }
+
+    for (int s = 0; s < MAX_STRINGS; ++s) {
+      if (!(held & (uint8_t)(1u << s))) continue;
+      const int vi = harpPhysVoice(s);
+      Voice* v = &harpVoices[vi];
+      const int16_t owner = harpVoiceOwner[vi];
+      const bool slotFree =
+          owner == HV_FREE || owner == (int16_t)(HV_PHYS_BASE + s);
+      if (!slotFree || hvIsMidi(owner)) continue;
+      const EnvState es = v->env_state;
+      const bool voiceSilent =
+          !v->active.load(std::memory_order_relaxed) ||
+          es == EnvState::ENV_IDLE || es == EnvState::ENV_RELEASE;
+      if (voiceSilent) {
+        const uint16_t velQ15 =
+            (uint16_t)((uint32_t)100u * (uint32_t)Q15_ONE / 127u);
+        harpVoiceOwner[vi] = (int16_t)(HV_PHYS_BASE + s);
+        h_arm_voice(v, h_note_to_freq(harpStringMidi((uint8_t)s)), velQ15);
+      }
+    }
+
+    for (int s = 0; s < MAX_STRINGS; ++s) {
+      if (held & (uint8_t)(1u << s)) continue;
+      const int vi = harpPhysVoice(s);
+      Voice* v = &harpVoices[vi];
+      if (!v->active.load(std::memory_order_relaxed)) continue;
+      const EnvState es = v->env_state;
+      if (es == EnvState::ENV_IDLE || es == EnvState::ENV_RELEASE) continue;
+      const int16_t owner = harpVoiceOwner[vi];
+      if (owner == (int16_t)(HV_PHYS_BASE + s)) {
+        harpVoiceOwner[vi] = HV_FREE;
+        v->env_state = EnvState::ENV_RELEASE;
+      } else if (owner == HV_FREE) {
+        v->env_state = EnvState::ENV_RELEASE;
+      }
+    }
+
+    if (held == 0u && g_polyArpN == 0 && s_harpArp.count == 0) {
+      s_harpArp.reset();
+      harpArpReleaseVoiceLocked();
+    }
+  }
 }
 
 void IRAM_ATTR harpNoteOn(int stringIdx, uint8_t vel) {
