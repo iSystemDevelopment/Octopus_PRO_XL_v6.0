@@ -1155,11 +1155,14 @@ inline std::atomic<bool> g_restartAfterSave{ false };
 /** Result of the last NvsWorker save (for reset-persist task error UI). */
 inline std::atomic<bool> g_saveLastOk{ true };
 
-/** Arm a scoped NVS save. scope: 0=FULL 1=BANKS_PATTERNS 2=MOTION 3=SETTINGS. */
-static inline void requestScopedSave(uint8_t scope) {
+/** Arm a scoped NVS save. scope: 0=FULL 1=BANKS_PATTERNS 2=MOTION 3=SETTINGS.
+ *  Returns true if the request was queued; false if a save is already in flight.
+ *  [FIX-H1] Callers must check the return value and send a NACK to the App when
+ *  false — the previous silent drop caused the App to think the save was queued. */
+static inline bool requestScopedSave(uint8_t scope) {
   if (g_saveRequest.load(std::memory_order_acquire) ||
       g_saveArmed.load(std::memory_order_acquire))
-    return;
+    return false;                             /* [FIX-H1] was: silent return */
   g_persistScope.store(scope & 3u, std::memory_order_release);
   /* [SAVE-FIX14] Reboot after every successful save.  The laser beam-detect
    * hardware (AC-coupled LT1016 + 74HC74 latch) cannot be reliably recovered
@@ -1172,11 +1175,28 @@ static inline void requestScopedSave(uint8_t scope) {
   g_restartAfterSave.store(true, std::memory_order_release);
   g_saveRequest.store(true, std::memory_order_release);
   displayDirty.store(true, std::memory_order_relaxed);
+  return true;
+}
+
+/** Arm an async BANKS_PATTERNS-only NVS save WITHOUT triggering a reboot.
+ *  Used by user-slot save (saveLiveToUserSlot) so saving a sound patch does
+ *  not restart the device.  Returns false if a save is already in flight.
+ *  [FIX-L2] Replaces the blocking settings_persist_blocking() call that froze
+ *  the MIDI RX task for up to 20 s. */
+static inline bool requestBanksOnlySave() {
+  if (g_saveRequest.load(std::memory_order_acquire) ||
+      g_saveArmed.load(std::memory_order_acquire))
+    return false;
+  g_persistScope.store((uint8_t)1u /*BANKS_PATTERNS*/, std::memory_order_release);
+  g_restartAfterSave.store(false, std::memory_order_release); /* no reboot */
+  g_saveRequest.store(true, std::memory_order_release);
+  displayDirty.store(true, std::memory_order_relaxed);
+  return true;
 }
 
 /** Full session save (all four NVS blobs). */
 static inline void requestSessionSave() {
-  requestScopedSave(0u);
+  (void)requestScopedSave(0u);
 }
 
 /** True while the save handshake or NVS write is in flight — ControlPoll should

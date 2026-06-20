@@ -1350,6 +1350,12 @@ void seqClearActiveAndResetSounds() {
  * deliberately PRESERVES the pattern grid + P-locks (that is what CLEAR / RESET
  * are for).  A LOAD or power-cycle restores the saved session.                 */
 void seqSoftResetWorkingImage() {
+  /* [FIX-M2] Stop the sequencer and silence all voices before wiping live state.
+   * Without this the step engine fires notes against partially-reset sound params
+   * during the ~50 ms it takes reset_settings_to_factory to complete.           */
+  seq_stop();
+  allNotesOff();
+
   /* Factory settings → all atomics (master, laser show, D-BEAM, mix, harp scale,
    * FX, …).  RAM-only — does NOT touch banks, patterns, or motion.              */
   reset_settings_to_factory();

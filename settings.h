@@ -1618,7 +1618,15 @@ static inline bool saveLiveToUserSlot(uint8_t engine, uint8_t uidx) {
   if (engine == 0) harpPatchIndex.store(slot, std::memory_order_relaxed);
   else             seqPatchIndex .store(slot, std::memory_order_relaxed);
   displayDirty.store(true, std::memory_order_relaxed);
-  return settings_persist_blocking(ResetScope::BANKS_PATTERNS);
+  /* [FIX-L2] Use async NvsWorker instead of settings_persist_blocking().
+   * The old blocking call froze the MIDI RX task (8 KB stack) for up to 20 s
+   * while the NVS write completed.  The copy to userBank[] above is already
+   * under patchMux and live in RAM; persistence happens async without a reboot
+   * (requestBanksOnlySave clears g_restartAfterSave).  Return true immediately
+   * so the caller echoes CMD_USR_SOUND_SAVE to the App — the sound is audible
+   * right away regardless of whether the NVS write is still pending.          */
+  requestBanksOnlySave();
+  return true;
 }
 
 static inline void loadUserSlotToLive(uint8_t engine, uint8_t uidx) {
@@ -1730,6 +1738,11 @@ static inline bool saveSettingsSafe() {
  * Returns true if the requested blob(s) were present and valid; on failure RAM
  * for that scope is left as-is (best-effort, non-destructive).                 */
 static inline bool settings_load_scoped(ResetScope scope) {
+  /* [FIX-L1] Silence voices before atomics change.  Any scope may update
+   * seqActiveBank/BPM/sounds mid-playback; without allNotesOff() voices from
+   * the old bank linger with partially-reset parameters → audible glitch.     */
+  allNotesOff();
+
   switch (scope) {
     case ResetScope::FULL:
       return loadSettings();                  /* seed banks → settings → ssot → extras */

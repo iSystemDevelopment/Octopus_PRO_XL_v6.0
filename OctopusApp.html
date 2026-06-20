@@ -3788,8 +3788,24 @@
                         const e = document.getElementById('drumPat');
                         if (e && v14 < DRUM_PATTERNS.length) e.value = String(v14);
                     }
-                    if (cmd === CMD.SESSION_SAVE && v14 === 16383) {
-                        this.log('NVS save complete');
+                    if (cmd === CMD.SESSION_SAVE) {
+                        if (v14 === 16383) {
+                            // [FIX-C2] ACK arrives right before the 700 ms reboot.
+                            // Start reconnect prep NOW — both hardware-triggered and
+                            // App-triggered saves reboot; the App must not stay ONLINE
+                            // while the device is restarting.
+                            this.log('NVS save complete — device rebooting…');
+                            this._prepareForDeviceReboot();
+                        } else if (v14 === 0) {
+                            // [FIX-H1] NACK — firmware dropped the save (already busy).
+                            this.log('SAVE skipped — a save is already in progress. Try again.');
+                        }
+                    }
+                    // [FIX-M1] LOAD ACK/NACK — firmware sends 16383 on success, 0 on fail.
+                    if (cmd === CMD.SESSION_LOAD) {
+                        this.log(v14 === 16383
+                            ? 'Session loaded — state synced.'
+                            : 'LOAD failed: nothing saved for that scope.');
                     }
                     if (cmd === CMD.USR_SOUND_SAVE) {
                         const eng = (v14 >> 13) & 1;
@@ -4115,12 +4131,17 @@
                 document.getElementById('saveModal').style.display = 'none';
             },
             saveScoped(scope) {
-                // YES/NO protection against accidental save (device reboots after a save).
-                if (!confirm(this._scopeName(scope) + ' SAVE to NVS?\nThe device will reboot and resume in place.')) return;
+                // [FIX-M4] Removed blocking confirm() — it freezes the JS event loop
+                // which starves the heartbeat and can drop the firmware link mid-confirm.
+                // The SAVE modal itself is the user's confirmation step.
+                // [FIX-H3] Removed premature _prepareForDeviceReboot() here — it caused
+                // the App to drop the MIDI link immediately, so if requestScopedSave()
+                // was silently dropped (save in flight) no reboot ever came and the App
+                // got stuck in LINKING. _prepareForDeviceReboot() is now called ONLY
+                // when the firmware ACK (CMD_SESSION_SAVE 16383) arrives — see applyIncoming.
                 this.sessionSave(scope);
                 this.closeSaveModal();
-                this.log('Scoped SAVE requested — device rebooting, waiting to reconnect…');
-                this._prepareForDeviceReboot();
+                this.log('SAVE requested (scope ' + this._scopeName(scope) + ') — waiting for ACK…');
             },
             sessionLoad(scope = 0) {
                 const s = (+scope) & 3;
@@ -4140,16 +4161,16 @@
                 document.getElementById('resetModal').style.display = 'none';
             },
             resetScoped(scope) {
-                if (!confirm(this._scopeName(scope) + ' RESET?\nThis wipes the scope to factory/empty, then reboots. This cannot be undone.')) return;
+                // [FIX-M4] Removed blocking confirm() — modal is the confirmation step.
                 this.txSysex(CMD.SCOPED_RESET, (+scope) & 3);
-                this.log('Scoped RESET requested — device rebooting, waiting to reconnect…');
+                this.log('RESET requested (scope ' + this._scopeName(scope) + ') — device rebooting, waiting to reconnect…');
                 this.closeResetModal();
                 this._prepareForDeviceReboot();
             },
             softReset() {
-                if (!confirm('SOFT RESET?\nAll knobs + settings (incl. Laser Show) + sounds + seq view return to initial. No NVS write, no reboot.')) return;
+                // [FIX-M4] Removed blocking confirm() — modal is the confirmation step.
                 this.txSysex(CMD.SOFT_RESET, 0);
-                this.log('Soft reset requested (RAM-only full working image)');
+                this.log('Soft reset requested (RAM-only: sounds + settings → factory, patterns kept)');
                 this.closeResetModal();
             },
 

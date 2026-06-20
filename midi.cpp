@@ -67,6 +67,24 @@
 #include "settings.h"     /* applyHarpParam, recallHarpPatch, …    */
 /* wires.h removed — authority logic absorbed into patches.h [R9] */
 
+/* [FIX-C1] Async LOAD task — runs on 16 KB stack so the full NVS blob read
+ * (patterns + banks, 32+ KB data) does not overflow the 8 KB MidiUsbRx stack.
+ * Mirrors the reset_persist_task pattern in interface.cpp.                    */
+struct NvsLoadCtx { uint8_t scope; };
+static void nvs_load_task(void* p) {
+  auto* c = static_cast<NvsLoadCtx*>(p);
+  /* [FIX-C3] Check return value; send ACK 16383 or NACK 0 to the App.        */
+  const bool ok = settings_load_scoped((ResetScope)c->scope);
+  if (ok)
+    for (int i = 0; i < MAX_STRINGS; ++i)
+      computeHardwareDACThreshold(i, 0.f); /* [FIX-H2] recompute DAC after load */
+  sendFullStateSync();
+  echoSongState();
+  txSysex(CMD_SESSION_LOAD, ok ? 16383u : 0u);
+  delete c;
+  vTaskDelete(nullptr);
+}
+
 /* [MIDI-OPT5] Dedup/rate-limit tables — private to this TU (was inline in midi.h). */
 static uint32_t s_last_rx_ms[256]  = {};
 static uint16_t s_last_rx_val[256] = {};
@@ -764,16 +782,29 @@ void handleSysexCommand(uint8_t cmd, uint16_t v14) {
       txSysex(CMD_APP_SYNC_REQ, 16383u); break;
     case CMD_SESSION_SAVE:
       if (v14 == 16383u) break; /* ACK echo — ignore */
-      requestScopedSave((uint8_t)(v14 & 3u));
-      settings_mark_dirty(); break;
+      if (v14 == 0u)     break; /* NACK echo — ignore */
+      /* [FIX-H1] requestScopedSave now returns bool; send NACK 0 to App if a save
+       * is already in flight so it doesn't silently lose the request.
+       * [FIX-H4] Removed dead settings_mark_dirty() — g_saveRequest already armed. */
+      if (!requestScopedSave((uint8_t)(v14 & 3u)))
+        txSysex(CMD_SESSION_SAVE, 0u); /* NACK — save already in flight */
+      break;
     case CMD_SESSION_LOAD:
       if (v14 == 16383u) break; /* ACK echo — ignore */
-      /* [LOAD-MENU] Scoped RAM-only reload (no reboot).  v14 = ResetScope; the App
-       * sends 0 (FULL) for the legacy "load saved session" button — back-compatible
-       * with the old full loadSettings() path.                                   */
-      settings_load_scoped((ResetScope)(v14 & 3u));
-      sendFullStateSync(); echoSongState();
-      txSysex(CMD_SESSION_LOAD, 16383u); break;
+      if (v14 == 0u)     break; /* NACK echo — ignore */
+      /* [FIX-C1] Dispatch LOAD to a 16 KB task — MidiUsbRx has only 8 KB which
+       * is too shallow for the full NVS blob read + patterns array.
+       * [FIX-C3] ACK/NACK sent from the task after verifying success.
+       * [FIX-H2] DAC thresholds recomputed inside the task (was missing). */
+      {
+        NvsLoadCtx* ctx = new NvsLoadCtx{ (uint8_t)(v14 & 3u) };
+        if (xTaskCreatePinnedToCore(nvs_load_task, "NvsLoad", 16384,
+                                    ctx, 3, nullptr, 1) != pdPASS) {
+          delete ctx;
+          txSysex(CMD_SESSION_LOAD, 0u); /* NACK — task create failed */
+        }
+      }
+      break;
     case CMD_SCOPED_RESET:
       /* [RESET v2] App-driven scoped reset (RAM wipe + persist + reboot).  The
        * App owns its own YES/NO confirm; the device just executes.              */

@@ -1314,6 +1314,12 @@ void handleScopedReset(ResetScope scope) {
   }
   oledStatusLines(line1, "PLEASE WAIT...");
 
+  /* [FIX-M3] Silence voices and stop the sequencer before wiping RAM.  Without
+   * this the step engine fires notes against partially-reset state during the
+   * ~500 ms window between applyResetScope() and the eventual esp_restart().   */
+  allNotesOff();
+  seq_stop();
+
   applyResetScope(scope);
 
   if (!g_systemReady.load(std::memory_order_acquire)) {
@@ -1337,13 +1343,15 @@ void handleScopedReset(ResetScope scope) {
 
 /* handleScopedSave — menu / App scoped save (no restart). */
 void handleScopedSave(ResetScope scope) {
-  requestScopedSave((uint8_t)scope);
+  if (!requestScopedSave((uint8_t)scope))
+    oledStatusLines("SAVE BUSY", nullptr); /* [FIX-H1] visible error if dropped */
 }
 
 /* handleScopedLoad — menu / App scoped reload from NVS.  RAM-only (no flash
- * write) so there is NO reboot: the loaded state goes live immediately.  Only
- * reachable from the hardware menu while the App is disconnected (App drives its
- * own LOAD popup), so no SysEx state-echo is needed here.                       */
+ * write) so there is NO reboot: the loaded state goes live immediately.
+ * [FIX-L3] Sends sendFullStateSync() + ACK to App if connected — the comment
+ * "only reachable while App is disconnected" was aspirational, not enforced;
+ * if the App is connected it must receive the new state or stays stale.         */
 void handleScopedLoad(ResetScope scope) {
   const char* line1 = "LOAD";
   switch (scope) {
@@ -1360,6 +1368,16 @@ void handleScopedLoad(ResetScope scope) {
   for (int i = 0; i < MAX_STRINGS; ++i) computeHardwareDACThreshold(i, 0.f);
 
   oledStatusLines(ok ? "LOAD OK" : "NOTHING SAVED", nullptr);
+
+  /* [FIX-L3] Re-sync the App if it is connected — previously skipped because the
+   * hardware LOAD was assumed to only run while the App is disconnected, but there
+   * is no gate enforcing that.  Without this echo the App shows stale state.    */
+  if (ok && isAppConnected()) {
+    sendFullStateSync();
+    echoSongState();
+    txSysex(CMD_SESSION_LOAD, 16383u); /* ACK so App can log "load complete" */
+  }
+
   delay(900);
   menuState.store(MenuState::IDLE, std::memory_order_relaxed);
   displayDirty.store(true, std::memory_order_relaxed);
