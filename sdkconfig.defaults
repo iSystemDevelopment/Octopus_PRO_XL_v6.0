@@ -1,0 +1,19 @@
+# Octopus PRO XL v6.0 — ESP-IDF defaults (Arduino ESP32 reads this from the sketch folder)
+#
+# ROOT CAUSE: Guru Meditation "Stack canary watchpoint triggered (ipc0)" means the
+# inter-processor-call task on Core 0 overflowed its default ~1280 B stack.  USB,
+# ADC DMA, and cross-core driver setup route work through ipc0 during boot; the
+# stock size is too small for this firmware.
+
+CONFIG_ESP_IPC_TASK_STACK_SIZE=4096
+CONFIG_ESP_SYSTEM_EVENT_TASK_STACK_SIZE=4096
+CONFIG_FREERTOS_ISR_STACKSIZE=2096
+
+# setup() + USB + NVS + task spawns are heavy on the Arduino loop task
+CONFIG_ARDUINO_LOOP_TASK_STACK_SIZE=16384
+
+# Four NVS blobs need ~8-9 NVS pages (>28 KB); partitions.csv puts a 256 KB NVS
+# AFTER the app (app @ 0x10000, factory) + a 64 KB coredump partition.
+# One-time erase after partition change (NVS moved location).
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"

@@ -1,0 +1,597 @@
+<!--
+  Octopus PRO XL v6.0.00 — Product information page
+  © 2026 DIODAC ELECTRONICS / iSystem. All Rights Reserved.
+  PROPRIETARY AND CONFIDENTIAL. Unauthorized use prohibited.
+-->
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Octopus PRO XL v6.0.00 | Laser-Harp Groovebox Workstation</title>
+    <meta name="description" content="Octopus PRO XL v6.0 — 8-beam reflective laser harp, 24-voice groovebox, 64-step sequencer, studio FX, and zero-install OctopusApp Web MIDI console at octopus.isystem.app.">
+    <link rel="canonical" href="https://octopus-info.isystem.app/">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&family=JetBrains+Mono:wght@400;700&family=Orbitron:wght@500;700;900&display=swap');
+
+        :root {
+            --bg-base: #050508;
+            --bg-panel: #0d0d14;
+            --cyan: #06b6d4;
+            --orange: #f97316;
+            --purple: #a855f7;
+            --green: #22c55e;
+            --pink: #ec4899;
+        }
+
+        body {
+            background-color: var(--bg-base);
+            color: #d1d5db;
+            font-family: 'Inter', sans-serif;
+            overflow-x: hidden;
+        }
+
+        h1, h2, h3, h4, .brand {
+            font-family: 'Orbitron', sans-serif;
+        }
+
+        .mono {
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        /* Neon Glow Utilities */
+        .glow-cyan { text-shadow: 0 0 10px rgba(6, 182, 212, 0.6); }
+        .glow-orange { text-shadow: 0 0 10px rgba(249, 115, 22, 0.6); }
+
+        .box-glow-cyan { box-shadow: 0 0 20px rgba(6, 182, 212, 0.15); border: 1px solid rgba(6, 182, 212, 0.3); }
+        .box-glow-purple { box-shadow: 0 0 30px rgba(168, 85, 247, 0.15); border: 1px solid rgba(168, 85, 247, 0.3); }
+        .box-glow-orange { box-shadow: 0 0 24px rgba(249, 115, 22, 0.15); border: 1px solid rgba(249, 115, 22, 0.3); }
+        .box-glow-green { box-shadow: 0 0 24px rgba(34, 197, 94, 0.15); border: 1px solid rgba(34, 197, 94, 0.3); }
+
+        .gradient-text {
+            background: linear-gradient(90deg, var(--cyan), var(--purple));
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .nav-link { position: relative; transition: color 0.2s; }
+        .nav-link:hover { color: var(--cyan); }
+
+        /* Table Styles */
+        table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
+        th { background: #111; color: var(--cyan); text-align: left; padding: 12px; border-bottom: 2px solid #333; font-family: 'Orbitron', sans-serif; font-size: 0.85rem;}
+        td { padding: 12px; border-bottom: 1px solid #222; font-family: 'JetBrains Mono', monospace; font-size: 0.85rem; color: #aaa; }
+        tr:hover td { background: rgba(6, 182, 212, 0.05); color: #fff; }
+
+        .feature-card {
+            background: var(--bg-panel);
+            border: 1px solid #222;
+            border-radius: 12px;
+            padding: 2rem;
+            transition: all 0.3s;
+        }
+        .feature-card:hover {
+            border-color: #444;
+            transform: translateY(-5px);
+        }
+
+        .pill { display:inline-flex; align-items:center; gap:6px; font-family:'JetBrains Mono',monospace; font-size:0.7rem; padding:4px 10px; border-radius:999px; border:1px solid #333; color:#9ca3af; background:#0a0a0e; }
+
+        .hero-img {
+            max-width: 360px;
+            width: 100%;
+            border-radius: 50%;
+            box-shadow: 0 0 80px rgba(6, 182, 212, 0.4);
+            animation: float 6s ease-in-out infinite;
+        }
+
+        @keyframes float {
+            0% { transform: translateY(0px); }
+            50% { transform: translateY(-20px); }
+            100% { transform: translateY(0px); }
+        }
+    </style>
+</head>
+<body>
+
+    <nav class="fixed w-full z-50 bg-[#050508]/90 backdrop-blur-md border-b border-[#222]">
+        <div class="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
+            <div class="brand text-xl font-bold flex items-center gap-3 text-white">
+                <i class="fa-solid fa-bolt text-[#a855f7]"></i> Octopus <span class="text-[#06b6d4]">PRO XL</span>
+            </div>
+            <div class="hidden md:flex gap-7 font-semibold text-xs tracking-widest brand items-center">
+                <a href="#harp" class="nav-link text-gray-400">LASER HARP</a>
+                <a href="#engine" class="nav-link text-gray-400">SOUND ENGINE</a>
+                <a href="#drums" class="nav-link text-gray-400">DRUMS</a>
+                <a href="#seq" class="nav-link text-gray-400">SEQUENCER</a>
+                <a href="#fx" class="nav-link text-gray-400">STUDIO FX</a>
+                <a href="#app" class="nav-link text-gray-400">OCTOPUSAPP</a>
+                <a href="#resources" class="nav-link text-gray-400">RESOURCES</a>
+                <a href="#specs" class="nav-link text-gray-400">SPECS</a>
+                <a href="https://github.com/iSystemApp/Octopus-PRO-XL-v6.0" target="_blank" rel="noopener noreferrer"
+                   class="nav-link text-gray-400"><i class="fa-brands fa-github"></i> GITHUB</a>
+                <a href="https://octopus.isystem.app" target="_blank" rel="noopener noreferrer"
+                   class="ml-2 bg-[#22c55e] text-black px-4 py-2 rounded font-bold hover:bg-white transition-colors">
+                    LAUNCH APP
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- ════════════════════════ HERO ════════════════════════ -->
+    <section class="pt-28 pb-16 px-6 flex flex-col justify-center items-center text-center relative overflow-hidden">
+        <div class="absolute inset-0 z-[-1] opacity-20" style="background-image: linear-gradient(#333 1px, transparent 1px), linear-gradient(90deg, #333 1px, transparent 1px); background-size: 40px 40px;"></div>
+
+        <div class="flex items-center gap-4 mb-6">
+            <img src="octopus-app-hero.png" alt="Octopus PRO XL" class="w-16 h-16 rounded-full object-cover shadow-[0_0_40px_rgba(6,182,212,0.4)]">
+            <span class="brand tracking-[0.3em] text-sm text-gray-400">DIODAC ELECTRONICS</span>
+            <span class="pill border-[#06b6d4]/40 text-[#06b6d4]">FIRMWARE v6.0.00</span>
+        </div>
+
+        <h1 class="text-5xl md:text-7xl font-black mb-6 tracking-tight text-white glow-cyan">
+            The <span class="gradient-text">Laser-Harp</span><br>Groovebox Workstation.
+        </h1>
+        <p class="text-lg md:text-xl text-gray-400 max-w-3xl leading-relaxed mb-8">
+            A stand-alone live-performance instrument built on the dual-core ESP32-S3: an
+            8-beam reflective scanning <strong>laser harp</strong>, a 24-voice bi-timbral
+            <strong>synth + drum groovebox</strong>, a 64-step <strong>matrix sequencer</strong>
+            with song chains and built-in <strong>arpeggiators</strong>, a studio FX rack, and a
+            zero-install <strong>OctopusApp Web MIDI console</strong> — all in one box.
+        </p>
+        <div class="flex flex-wrap gap-3 justify-center mb-8">
+            <span class="pill"><i class="fa-solid fa-microchip text-[#06b6d4]"></i> ESP32-S3 Dual-Core</span>
+            <span class="pill"><i class="fa-solid fa-wave-square text-[#a855f7]"></i> 24 Voices @ 48 kHz</span>
+            <span class="pill"><i class="fa-solid fa-bolt text-[#22c55e]"></i> 8 RGB Laser Beams</span>
+            <span class="pill"><i class="fa-solid fa-drum text-[#f97316]"></i> 4 Drum Kits</span>
+            <span class="pill"><i class="fa-solid fa-repeat text-[#ec4899]"></i> Seq + Harp ARP</span>
+            <span class="pill"><i class="fa-solid fa-laptop-code text-[#ec4899]"></i> OctopusApp v6.0</span>
+        </div>
+        <div class="flex flex-wrap gap-4 justify-center mb-6">
+            <a href="https://octopus.isystem.app" target="_blank" rel="noopener noreferrer"
+               class="bg-[#22c55e] text-black font-bold py-3 px-8 rounded hover:bg-white transition-colors brand tracking-widest shadow-[0_0_20px_rgba(34,197,94,0.45)]">
+                <i class="fa-solid fa-plug"></i> LAUNCH OCTOPUSAPP
+            </a>
+            <a href="https://github.com/iSystemApp/Octopus-PRO-XL-v6.0" target="_blank" rel="noopener noreferrer"
+               class="border border-[#333] text-gray-300 font-bold py-3 px-8 rounded hover:border-[#06b6d4] hover:text-white transition-colors brand tracking-widest text-sm">
+                <i class="fa-brands fa-github"></i> GITHUB
+            </a>
+            <a href="#app" class="bg-transparent border border-[#333] text-white font-bold py-3 px-8 rounded hover:border-[#06b6d4] transition-colors brand tracking-widest">ABOUT THE APP</a>
+        </div>
+        <p class="text-xs text-gray-600 mono max-w-xl mx-auto mb-10">
+            You are on the product site (<strong class="text-gray-400">octopus-info.isystem.app</strong>).
+            Open the live Web MIDI console at
+            <a href="https://octopus.isystem.app" class="text-[#22c55e] hover:underline" target="_blank" rel="noopener">octopus.isystem.app</a>.
+        </p>
+
+        <!-- OctopusApp web console mockup -->
+        <div class="w-full max-w-6xl mx-auto rounded-xl border border-[#1c2230] bg-[#0a0a0e] p-2 md:p-3 shadow-[0_0_70px_rgba(6,182,212,0.18)]">
+            <img src="octopus-app-hero.png" alt="OctopusApp web console — live editor for the Octopus PRO XL"
+                 class="w-full rounded-lg border border-[#111]">
+        </div>
+        <p class="text-xs text-gray-600 mono mt-4">OctopusApp — zero-install Web MIDI console at <a href="https://octopus.isystem.app" class="text-[#22c55e] hover:underline" target="_blank" rel="noopener">octopus.isystem.app</a></p>
+    </section>
+
+    <!-- ════════════════════════ OVERVIEW ════════════════════════ -->
+    <section class="py-20 px-6 bg-[#0a0a0e] border-t border-[#111]">
+        <div class="max-w-6xl mx-auto text-center">
+            <h2 class="text-3xl md:text-4xl text-white mb-4">One Instrument, Three Performers</h2>
+            <p class="max-w-3xl mx-auto mb-12 text-gray-400">The Octopus PRO XL is designed for solo live shows: play the laser
+            harp with your hands while the sequencer drives a bassline and drum groove underneath, all colouring the room with
+            note-reactive laser light — no laptop required.</p>
+            <div class="grid md:grid-cols-3 gap-8 text-left">
+                <div class="feature-card">
+                    <div class="text-3xl mb-3 text-[#06b6d4]"><i class="fa-solid fa-hand-sparkles"></i></div>
+                    <h3 class="text-lg text-white mb-2">Play the Light</h3>
+                    <p class="text-sm text-gray-400">Eight visible laser beams form the harp "strings". Breaking a beam triggers a polyphonic wavetable voice and lights that beam in its own colour.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="text-3xl mb-3 text-[#f97316]"><i class="fa-solid fa-sliders"></i></div>
+                    <h3 class="text-lg text-white mb-2">Groove Underneath</h3>
+                    <p class="text-sm text-gray-400">A second synth engine and an 8-voice drum machine run from the matrix sequencer, locked to one tempo, so a full track grooves while you solo.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="text-3xl mb-3 text-[#22c55e]"><i class="fa-solid fa-laptop-code"></i></div>
+                    <h3 class="text-lg text-white mb-2">Tweak from the Browser</h3>
+                    <p class="text-sm text-gray-400">Plug in over USB and OctopusApp becomes your full editor — every synth/drum parameter, the 64-step grid, song chains, FX, motion P-locks, and live CPU telemetry — with settings saved back to on-board flash. Transport (play/stop/record/BPM) stays on the hardware; the app mirrors it in real time.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ════════════════════════ LASER HARP ════════════════════════ -->
+    <section id="harp" class="py-24 px-6 border-t border-[#111]">
+        <div class="max-w-7xl mx-auto">
+            <div class="grid md:grid-cols-2 gap-16 items-center">
+                <div>
+                    <h2 class="text-3xl md:text-4xl text-white mb-6"><span class="text-[#06b6d4]">01.</span> Reflective Scanning Laser Harp</h2>
+                    <p class="mb-6 leading-relaxed">
+                        A single high-speed galvanometer sweeps one laser source into a fan of <strong>8 addressable beams</strong> —
+                        the harp "strings". Detection is reflective and frameless: there is no top bar. The beam is amplitude-modulated
+                        and a matched sensor picks up only that signature, so a hand is detected while stage haze and ambient light are rejected.
+                    </p>
+                    <ul class="space-y-4 mb-8">
+                        <li class="flex items-start gap-3">
+                            <i class="fa-solid fa-check text-[#06b6d4] mt-1"></i>
+                            <div><strong>9.656 kHz carrier lock:</strong> The MCPWM engine modulates the beam at a carrier tuned to the sensor's MFB band-pass centre (10 MHz / 1036 = 9.652 kHz), giving rock-solid hand detection independent of room lighting.</div>
+                        </li>
+                        <li class="flex items-start gap-3">
+                            <i class="fa-solid fa-check text-[#06b6d4] mt-1"></i>
+                            <div><strong>Dark-move sweep:</strong> The laser is blanked while the galvo travels between string positions (200–1000 µs settle), so the fan shows clean, solid beams and solid V-edges with zero faint trailing lines or jitter.</div>
+                        </li>
+                        <li class="flex items-start gap-3">
+                            <i class="fa-solid fa-check text-[#06b6d4] mt-1"></i>
+                            <div><strong>Note-reactive RGB:</strong> Each string carries its own colour and per-string hue ADSR. With MIDI&rarr;HUE engaged, played notes paint the beams live; a dedicated Laser Show mode runs animated open/close fans.</div>
+                        </li>
+                        <li class="flex items-start gap-3">
+                            <i class="fa-solid fa-check text-[#06b6d4] mt-1"></i>
+                            <div><strong>D-BEAM expression:</strong> A proximity sensor on ADC DMA with per-string Kalman smoothing routes hand height to local harp modulation, volume, or filter cutoff — entirely internal DSP, no external MIDI CC required.</div>
+                        </li>
+                        <li class="flex items-start gap-3">
+                            <i class="fa-solid fa-check text-[#06b6d4] mt-1"></i>
+                            <div><strong>Fog reject (optional):</strong> A differential amplitude gate suppresses false triggers from stage haze/fog without affecting real hand breaks — tunable margin with a live scope view on the OLED.</div>
+                        </li>
+                        <li class="flex items-start gap-3">
+                            <i class="fa-solid fa-check text-[#06b6d4] mt-1"></i>
+                            <div><strong>Harp arpeggiator:</strong> Built-in ARP in POLY8 and SOLO modes (Up/Down/Up-Down/Random, 1/8–1/16T rates, gated patterns) — disabled automatically in STRINGS bowed mode.</div>
+                        </li>
+                    </ul>
+                    <div class="flex flex-wrap gap-3">
+                        <span class="pill">POLY8</span><span class="pill">STRINGS (bowed ADSR)</span><span class="pill">SOLO (mono stab)</span><span class="pill">HARP ARP</span>
+                    </div>
+                </div>
+                <div class="box-glow-cyan rounded-xl p-8 bg-[#050508] relative overflow-hidden">
+                    <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-[#06b6d4] to-transparent opacity-50"></div>
+                    <h4 class="text-[#06b6d4] mb-4"><i class="fa-solid fa-bolt"></i> Beam Pipeline</h4>
+                    <p class="mono text-sm text-gray-400 leading-relaxed">
+                        GALVO DAC ........ MCP4922 ch A (12-bit)<br>
+                        DETECT THRESH .... MCP4922 ch B (12-bit)<br>
+                        BEAM CARRIER ..... MCPWM @ 9.656 kHz<br>
+                        SENSOR ........... MFB band-pass &rarr; ADC DMA<br>
+                        SMOOTHING ........ Kalman filter<br>
+                        STRINGS .......... 8 (RGB + hue ADSR)<br><br>
+                        &gt; Galvo sweep + trigger detection run on a dedicated
+                        FreeRTOS task pinned to Core 1, isolated from the audio
+                        engine on Core 0 to guarantee jitter-free projection.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ════════════════════════ SOUND ENGINE ════════════════════════ -->
+    <section id="engine" class="py-24 px-6 bg-[#0a0a0e] border-t border-[#111]">
+        <div class="max-w-7xl mx-auto">
+            <div class="text-center mb-16">
+                <h2 class="text-3xl md:text-4xl text-white mb-4"><span class="text-[#a855f7]">02.</span> Bi-Timbral Wavetable Engine</h2>
+                <p class="max-w-2xl mx-auto">Two independent synth engines plus a drum engine — <strong>24 voices total</strong> (8 harp + 8 sequencer + 8 drum) — render in floating-point DSP at 48 kHz on Core 0, fed by 25 wavetables and 128 named presets.</p>
+            </div>
+
+            <div class="grid md:grid-cols-3 gap-8 mb-12">
+                <div class="feature-card">
+                    <div class="text-4xl mb-4 text-[#a855f7]"><i class="fa-solid fa-layer-group"></i></div>
+                    <h3 class="text-xl text-white mb-3">True Bi-Timbral Split</h3>
+                    <p class="text-sm text-gray-400">
+                        The Laser Harp engine (8 voices) and the Sequencer Synth engine (8 voices) are fully separate signal paths with their own patch, wave, scale, LFO routing and insert FX. Sequence a deep analog bassline while you play an ethereal pad over the lasers — with no note stealing between them.
+                    </p>
+                </div>
+                <div class="feature-card">
+                    <div class="text-4xl mb-4 text-[#a855f7]"><i class="fa-solid fa-diagram-project"></i></div>
+                    <h3 class="text-xl text-white mb-3">Multi-Target LFO Matrix</h3>
+                    <p class="text-sm text-gray-400">
+                        Per engine, one LFO routes to pitch, filter, wave-morph or tremolo — singly or in combination (up to a full matrix). Each engine also carries a per-voice ADSR, resonant state-variable filter, sub/detune oscillator and an envelope&rarr;cutoff amount, all stored inside the preset.
+                    </p>
+                </div>
+                <div class="feature-card">
+                    <div class="text-4xl mb-4 text-[#a855f7]"><i class="fa-solid fa-music"></i></div>
+                    <h3 class="text-xl text-white mb-3">Acoustic Emulations</h3>
+                    <p class="text-sm text-gray-400">
+                        Signature voices are hand-tuned for natural response: a blooming <strong>Hang Drum</strong> and plucked <strong>Kalimba</strong> playable across the keyboard, and a breath-driven <strong>Didgeridoo</strong> using noise injection and formant filter sweeps. 16 musical scales map both the keyboard and the laser strings.
+                    </p>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
+                <div class="feature-card py-6"><div class="text-3xl font-black text-white brand">24</div><div class="text-xs text-gray-500 mt-1">VOICES (8+8+8)</div></div>
+                <div class="feature-card py-6"><div class="text-3xl font-black text-white brand">25</div><div class="text-xs text-gray-500 mt-1">WAVETABLES</div></div>
+                <div class="feature-card py-6"><div class="text-3xl font-black text-white brand">128</div><div class="text-xs text-gray-500 mt-1">NAMED PRESETS</div></div>
+                <div class="feature-card py-6"><div class="text-3xl font-black text-white brand">16</div><div class="text-xs text-gray-500 mt-1">SCALES</div></div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ════════════════════════ DRUMS ════════════════════════ -->
+    <section id="drums" class="py-24 px-6 border-t border-[#111]">
+        <div class="max-w-7xl mx-auto grid md:grid-cols-2 gap-16 items-center">
+            <div>
+                <h2 class="text-3xl md:text-4xl text-white mb-6"><span class="text-[#f97316]">03.</span> 8-Voice Drum Machine + Kits</h2>
+                <p class="mb-6 leading-relaxed">
+                    A parametric percussion engine synthesises eight drum voices — Kick, Snare, Clap, Closed &amp; Open Hat, Hi/Lo Tom and Perc — each with Tune, Decay, Volume and Noise, plus a selectable body wavetable on the pitched voices.
+                </p>
+                <p class="mb-6 leading-relaxed">
+                    Switch the entire character instantly with <strong>4 drum kits</strong>: the classic
+                    <strong>TR-909</strong>, a deep <strong>TR-808</strong>, a booming <strong>Trap</strong> kit and a punchy
+                    <strong>House</strong> kit. Each kit reloads per-voice tuning and reshapes the kick pitch-sweep and hat character.
+                    The active kit name shows on the OLED dashboard and in the app.
+                </p>
+                <ul class="space-y-3 text-sm">
+                    <li class="flex items-start gap-3"><i class="fa-solid fa-check text-[#f97316] mt-1"></i><div><strong>Global drum pitch (D.PITCH):</strong> Transpose the entire drum bus independently of master pitch — in the App mixer and on hardware.</div></li>
+                    <li class="flex items-start gap-3"><i class="fa-solid fa-check text-[#f97316] mt-1"></i><div>Per-engine insert sends (delay/reverb) plus shared AUX bus on the master strip.</div></li>
+                    <li class="flex items-start gap-3"><i class="fa-solid fa-check text-[#f97316] mt-1"></i><div>Eight factory drum patterns, fully editable on the 64-step grid.</div></li>
+                </ul>
+            </div>
+            <div class="box-glow-orange rounded-xl p-8 bg-[#050508]">
+                <h4 class="text-[#f97316] mb-6"><i class="fa-solid fa-drum"></i> Kit Matrix</h4>
+                <div class="grid grid-cols-2 gap-4">
+                    <div class="p-4 bg-[#111] rounded border border-[#333]"><div class="text-white brand text-sm mb-1">TR-909</div><div class="text-xs text-gray-500">Punchy click kick, crisp hats</div></div>
+                    <div class="p-4 bg-[#111] rounded border border-[#333]"><div class="text-white brand text-sm mb-1">TR-808</div><div class="text-xs text-gray-500">Deep boom kick, long tails</div></div>
+                    <div class="p-4 bg-[#111] rounded border border-[#333]"><div class="text-white brand text-sm mb-1">TRAP</div><div class="text-xs text-gray-500">Sub-heavy 808 boom, tight hats</div></div>
+                    <div class="p-4 bg-[#111] rounded border border-[#333]"><div class="text-white brand text-sm mb-1">HOUSE</div><div class="text-xs text-gray-500">Tight, bright, four-on-the-floor</div></div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ════════════════════════ SEQUENCER ════════════════════════ -->
+    <section id="seq" class="py-24 px-6 bg-[#0a0a0e] border-t border-[#111]">
+        <div class="max-w-7xl mx-auto">
+            <div class="text-center mb-16">
+                <h2 class="text-3xl md:text-4xl text-white mb-4"><span class="text-[#ec4899]">04.</span> 16-Track Matrix Sequencer</h2>
+                <p class="max-w-2xl mx-auto">Eight synth rows over eight drum rows in one unified pattern slot, clocked by an audio-locked step engine. Built-in melody ARP, song chains, and P-lock motion — up to 64 steps across banks A–D.</p>
+            </div>
+            <div class="grid md:grid-cols-3 gap-8">
+                <div class="feature-card">
+                    <div class="text-3xl mb-3 text-[#ec4899]"><i class="fa-solid fa-table-cells"></i></div>
+                    <h3 class="text-lg text-white mb-2">Banks A–D, up to 64 steps</h3>
+                    <p class="text-sm text-gray-400">Four pattern banks, each holding synth rows 0–7 and drum rows 8–15 together in one slot. Length is 16, 32, 48, or 64 steps — the App pages P1–P4 while the playhead follows the hardware STEP_SYNC clock.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="text-3xl mb-3 text-[#ec4899]"><i class="fa-solid fa-list-ol"></i></div>
+                    <h3 class="text-lg text-white mb-2">Song / Chain Mode</h3>
+                    <p class="text-sm text-gray-400">Build up to 16 song programs with 16 steps each — chain banks A→D in any order with per-step repeats. The firmware auto-advances at pattern wrap for full arrangements without a laptop.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="text-3xl mb-3 text-[#ec4899]"><i class="fa-solid fa-repeat"></i></div>
+                    <h3 class="text-lg text-white mb-2">Melody Arpeggiator</h3>
+                    <p class="text-sm text-gray-400">The seq synth engine includes a built-in ARP (8 patterns including octave variants, 8 rates from 1/1 to 1/32, adjustable gate) — editable from hardware or OctopusApp while the grid keeps running underneath.</p>
+                </div>
+            </div>
+            <div class="grid md:grid-cols-2 gap-6 mt-8">
+                <div class="feature-card">
+                    <h4 class="text-white mb-2"><i class="fa-solid fa-record-vinyl text-[#ec4899]"></i> Motion Automation (P-Locks)</h4>
+                    <p class="text-sm text-gray-400">Arm REC and move any knob: parameter motion is captured per 16th-note step and replayed from flash — standalone, no app required after recording.</p>
+                </div>
+                <div class="feature-card">
+                    <h4 class="text-white mb-2"><i class="fa-solid fa-wand-magic-sparkles text-[#ec4899]"></i> Performance Tools</h4>
+                    <p class="text-sm text-gray-400">Per-bank Copy / Paste, note Randomize, and Clear (with P-lock wipe), plus live transpose and octave — from hardware encoders or the web console.</p>
+                </div>
+            </div>
+            <div class="grid md:grid-cols-2 gap-6 mt-6">
+                <div class="feature-card">
+                    <h4 class="text-white mb-2"><i class="fa-solid fa-folder-open text-[#ec4899]"></i> Factory Patterns</h4>
+                    <p class="text-sm text-gray-400">Eight melodic presets (acid lines, arps, ambient cascades, growlers) and eight drum grooves (house, techno, breaks, minimal) load instantly into any bank.</p>
+                </div>
+                <div class="feature-card">
+                    <h4 class="text-white mb-2"><i class="fa-solid fa-clock text-[#ec4899]"></i> Audio-Locked Clock</h4>
+                    <p class="text-sm text-gray-400">The step engine integrates real elapsed time inside the I2S audio loop — tempo cannot drift under CPU load, and STEP_SYNC drives the OctopusApp playhead with no competing web timer.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ════════════════════════ STUDIO FX ════════════════════════ -->
+    <section id="fx" class="py-24 px-6 border-t border-[#111]">
+        <div class="max-w-7xl mx-auto grid md:grid-cols-2 gap-16 items-center">
+            <div class="order-2 md:order-1 box-glow-purple rounded-xl p-8 bg-[#050508]">
+                <h4 class="text-[#a855f7] mb-6"><i class="fa-solid fa-sliders"></i> Signal Topology</h4>
+                <div class="space-y-4">
+                    <div class="p-3 bg-[#111] rounded border border-[#333] mono text-xs">
+                        HARP &nbsp;&rarr; INSERT FX A &rarr; INSERT FX B &rarr; (sum)
+                    </div>
+                    <div class="p-3 bg-[#111] rounded border border-[#333] mono text-xs">
+                        SEQ &nbsp;&nbsp;&rarr; INSERT FX A &rarr; INSERT FX B &rarr; (sum)
+                    </div>
+                    <div class="p-3 bg-[#111] rounded border border-[#333] mono text-xs">
+                        DRUMS &rarr; INSERT FX A &rarr; INSERT FX B &rarr; (sum)
+                    </div>
+                    <div class="p-3 bg-[#111] rounded border border-[#333] mono text-xs text-[#f97316]">
+                        AUX SENDS &rarr; REVERB + DELAY buses
+                    </div>
+                    <div class="p-3 bg-[#111] rounded border border-[#333] mono text-xs text-[#a855f7]">
+                        MASTER &rarr; TUBE SAT &rarr; DJ FILTER &rarr; 2-BAND EQ &rarr; I2S OUT
+                    </div>
+                </div>
+            </div>
+            <div class="order-1 md:order-2">
+                <h2 class="text-3xl md:text-4xl text-white mb-6"><span class="text-[#a855f7]">05.</span> Studio FX &amp; Master Bus</h2>
+                <p class="mb-6 leading-relaxed">
+                    Each of the three engines runs <strong>two insert FX slots</strong> (A + B) chosen from 16 studio presets — rooms, choruses, shimmers, delays and more. Global aux reverb and delay buses are fed by per-engine sends, and a master section finishes the mix.
+                </p>
+                <ul class="space-y-4">
+                    <li><strong>Per-engine dual inserts:</strong> 16 character presets per slot, applied independently to harp, sequencer and drums for layered live processing.</li>
+                    <li><strong>Aux reverb + delay:</strong> Shared send buses with controllable delay time / feedback and reverb size / damping for cohesive space.</li>
+                    <li><strong>Master finish:</strong> Thunderbolt tube saturation (drive / tone / mix), a sweepable DJ low-/high-pass performance filter, and a &plusmn;12 dB two-band shelving EQ feeding the 16-bit I2S DAC.</li>
+                    <li><strong>16 master FX presets</strong> plus a per-engine headroom-scaled, transparent limiter that keeps dense chords and full grooves clean during live sets.</li>
+                </ul>
+            </div>
+        </div>
+    </section>
+
+    <!-- ════════════════════════ OCTOPUSAPP ════════════════════════ -->
+    <section id="app" class="py-24 px-6 bg-[#0a0a0e] border-t border-[#111]">
+        <div class="max-w-7xl mx-auto text-center mb-16">
+            <h2 class="text-3xl md:text-4xl text-white mb-4"><span class="text-[#22c55e]">06.</span> OctopusApp — Web MIDI Console</h2>
+            <p class="max-w-2xl mx-auto mb-4">No installs, no drivers. Open <strong class="text-[#22c55e]"><a href="https://octopus.isystem.app" target="_blank" rel="noopener" class="hover:underline">octopus.isystem.app</a></strong> in Chrome or Edge, connect USB, authorize Web MIDI + SysEx, and the console mirrors the full device state — then becomes the master editor for all parameters while transport stays on the hardware.</p>
+            <p class="text-sm text-gray-500 max-w-xl mx-auto">MIDI runs locally in your browser (never through this website). Requires HTTPS, one open tab on Windows for full duplex echo.</p>
+        </div>
+
+        <div class="max-w-6xl mx-auto grid md:grid-cols-3 gap-8 mb-12">
+            <div class="box-glow-green rounded-xl p-6 bg-[#050508]">
+                <h4 class="text-[#22c55e] font-bold mb-2"><i class="fa-solid fa-wave-square"></i> Instruments View</h4>
+                <p class="text-sm text-gray-400">Editors for both synth engines and laser show: ADSR, filter, OSC/detune, LFO matrix, wave, scale, patch, dual insert FX, harp ARP (POLY/SOLO), and the D-BEAM panel (route, curve, offset/range — local DSP only).</p>
+            </div>
+            <div class="box-glow-green rounded-xl p-6 bg-[#050508]">
+                <h4 class="text-[#22c55e] font-bold mb-2"><i class="fa-solid fa-drum"></i> Mixer View</h4>
+                <p class="text-sm text-gray-400">8&times;4 drum grid, kit selector, per-voice body waves, D.PITCH, insert sends, master H/S delay+reverb sends, AUX bus, tube/DJ/EQ, stereo VU, and live CPU-load readout from the device.</p>
+            </div>
+            <div class="box-glow-green rounded-xl p-6 bg-[#050508]">
+                <h4 class="text-[#22c55e] font-bold mb-2"><i class="fa-solid fa-table-cells"></i> Sequencer View</h4>
+                <p class="text-sm text-gray-400">64-step grid (P1–P4 pages), seq ARP controls, song-chain editor, pattern loaders, and a playhead locked to hardware STEP_SYNC — with automatic page follow during playback.</p>
+            </div>
+        </div>
+
+        <div class="max-w-5xl mx-auto grid md:grid-cols-2 gap-8 mb-12">
+            <div class="feature-card">
+                <h4 class="text-white mb-2"><i class="fa-solid fa-floppy-disk text-[#22c55e]"></i> Save / Load to On-Board Flash</h4>
+                <p class="text-sm text-gray-400">SAVE and LOAD persist the whole session — settings, user presets, patterns, and P-lock motion — to ESP32 NVS using versioned CRC-checked blobs (sparse delta storage). Power-cycle and your set plays back standalone.</p>
+            </div>
+            <div class="feature-card">
+                <h4 class="text-white mb-2"><i class="fa-solid fa-shield-halved text-[#22c55e]"></i> Robust Two-Way Sync</h4>
+                <p class="text-sm text-gray-400">190 SysEx commands at 14-bit resolution. Hardware edits echo into the app and vice-versa; a sync supervisor re-asserts BPM/play/record if a message is dropped. Transport buttons in the app are read-only reflectors — play/stop/record/BPM live on the device.</p>
+            </div>
+        </div>
+
+        <div class="text-center">
+            <a href="https://octopus.isystem.app" target="_blank" rel="noopener noreferrer"
+               class="inline-flex items-center gap-3 bg-[#22c55e] text-black font-bold py-4 px-10 rounded-lg hover:bg-white transition-colors brand tracking-widest text-sm shadow-[0_0_24px_rgba(34,197,94,0.35)]">
+                <i class="fa-solid fa-plug"></i> OPEN octopus.isystem.app
+            </a>
+            <p class="text-xs text-gray-600 mono mt-4">Chrome or Edge · USB connected · Web MIDI + SysEx · Playhead on SEQUENCER tab</p>
+        </div>
+    </section>
+
+    <!-- ════════════════════════ RESOURCES ════════════════════════ -->
+    <section id="resources" class="py-20 px-6 border-t border-[#111] bg-[#050508]">
+        <div class="max-w-5xl mx-auto text-center mb-12">
+            <h2 class="text-2xl md:text-3xl text-white mb-4">Resources &amp; Source</h2>
+            <p class="text-gray-500 text-sm max-w-2xl mx-auto">Firmware, OctopusApp, documentation, and release notes live in the public GitHub repository. This product page is hosted at <strong class="text-gray-300">octopus-info.isystem.app</strong>; the App is a separate subdomain for Web MIDI.</p>
+        </div>
+        <div class="max-w-4xl mx-auto grid sm:grid-cols-2 md:grid-cols-3 gap-6">
+            <a href="https://github.com/iSystemApp/Octopus-PRO-XL-v6.0" target="_blank" rel="noopener noreferrer"
+               class="feature-card block hover:border-[#06b6d4] text-left no-underline">
+                <div class="text-2xl mb-2 text-white"><i class="fa-brands fa-github"></i></div>
+                <h3 class="text-white font-bold mb-1">GitHub Repository</h3>
+                <p class="text-sm text-gray-400">ESP32-S3 firmware sources, OctopusApp.html, user manual, changelog, and deploy scripts.</p>
+            </a>
+            <a href="https://octopus.isystem.app" target="_blank" rel="noopener noreferrer"
+               class="feature-card block hover:border-[#22c55e] text-left no-underline">
+                <div class="text-2xl mb-2 text-[#22c55e]"><i class="fa-solid fa-plug"></i></div>
+                <h3 class="text-white font-bold mb-1">OctopusApp</h3>
+                <p class="text-sm text-gray-400">Live Web MIDI console — connect USB and edit patches, grid, mixer, and song chains.</p>
+            </a>
+            <a href="user_manual.md" class="feature-card block hover:border-[#a855f7] text-left no-underline">
+                <div class="text-2xl mb-2 text-[#a855f7]"><i class="fa-solid fa-book"></i></div>
+                <h3 class="text-white font-bold mb-1">User Manual</h3>
+                <p class="text-sm text-gray-400">Complete hardware menu reference, App-connected mode, and troubleshooting.</p>
+            </a>
+            <a href="CHANGELOG.md" class="feature-card block hover:border-[#f97316] text-left no-underline">
+                <div class="text-2xl mb-2 text-[#f97316]"><i class="fa-solid fa-list"></i></div>
+                <h3 class="text-white font-bold mb-1">Changelog</h3>
+                <p class="text-sm text-gray-400">v6.0.00 release notes — seq/harp ARP, OrgDrive, playhead sync, and transport model.</p>
+            </a>
+            <a href="README.md" class="feature-card block hover:border-[#06b6d4] text-left no-underline">
+                <div class="text-2xl mb-2 text-[#06b6d4]"><i class="fa-solid fa-code"></i></div>
+                <h3 class="text-white font-bold mb-1">README</h3>
+                <p class="text-sm text-gray-400">Build instructions, repository layout, and quick-start for hardware + App.</p>
+            </a>
+            <a href="https://isystem.app" target="_blank" rel="noopener noreferrer"
+               class="feature-card block hover:border-[#ec4899] text-left no-underline">
+                <div class="text-2xl mb-2 text-[#ec4899]"><i class="fa-solid fa-globe"></i></div>
+                <h3 class="text-white font-bold mb-1">iSystem</h3>
+                <p class="text-sm text-gray-400">DIODAC ELECTRONICS / iSystem — product home and support.</p>
+            </a>
+        </div>
+    </section>
+
+    <!-- ════════════════════════ CONNECTIVITY ════════════════════════ -->
+    <section class="py-20 px-6 border-t border-[#111]">
+        <div class="max-w-6xl mx-auto text-center">
+            <h2 class="text-2xl md:text-3xl text-white mb-4">Connectivity</h2>
+            <p class="text-gray-500 text-sm max-w-2xl mx-auto mb-10">v6.0 is <strong class="text-gray-300">USB-only</strong> — DIN UART MIDI was removed to simplify the stack and free GPIO. The sequencer, drums, and D-BEAM drive internal engines directly; optional USB play-in accepts standard channel voice MIDI.</p>
+            <div class="grid md:grid-cols-2 gap-8 text-left max-w-4xl mx-auto">
+                <div class="feature-card">
+                    <div class="text-2xl mb-3 text-[#06b6d4]"><i class="fa-brands fa-usb"></i></div>
+                    <h3 class="text-lg text-white mb-2">Native USB MIDI</h3>
+                    <p class="text-sm text-gray-400">Class-compliant USB MIDI carries OctopusApp SysEx control (0x7D App→device, 0x7C device→App) plus optional instrument play-in on configurable harp/seq/drum channels. No drivers on macOS, Windows, or Linux.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="text-2xl mb-3 text-[#a855f7]"><i class="fa-solid fa-arrows-left-right"></i></div>
+                    <h3 class="text-lg text-white mb-2">Standalone Operation</h3>
+                    <p class="text-sm text-gray-400">Every feature — laser harp, sequencer, drums, FX, song mode, P-locks, and NVS save — runs without a computer. Connect OctopusApp when you want deep editing; unplug and the hardware keeps performing.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ════════════════════════ SPECS ════════════════════════ -->
+    <section id="specs" class="py-24 px-6 bg-[#0a0a0e] border-t border-[#111]">
+        <div class="max-w-7xl mx-auto">
+            <h2 class="text-3xl md:text-4xl text-white mb-12 text-center">Technical Specifications</h2>
+
+            <div class="grid md:grid-cols-2 gap-12">
+                <div>
+                    <h4 class="text-white brand mb-4 border-b border-[#333] pb-2"><i class="fa-solid fa-microchip text-gray-500"></i> Platform &amp; Audio</h4>
+                    <table>
+                        <tr><td>Microcontroller</td><td>ESP32-S3 (dual-core, IDF5 / FreeRTOS)</td></tr>
+                        <tr><td>Core split</td><td>Core 0 = DSP/MIDI/UI &middot; Core 1 = laser</td></tr>
+                        <tr><td>Audio output</td><td>48 kHz, 16-bit stereo I2S (Philips)</td></tr>
+                        <tr><td>DSP</td><td>Floating-point + fixed-point phase accum.</td></tr>
+                        <tr><td>Polyphony</td><td>24 voices (8 harp + 8 seq + 8 drum)</td></tr>
+                        <tr><td>Wavetables</td><td>25 algorithms</td></tr>
+                        <tr><td>Presets / Scales</td><td>128 named presets &middot; 16 scales</td></tr>
+                        <tr><td>Sequencer</td><td>16 tracks (8 synth + 8 drum), 4 banks, up to 64 steps</td></tr>
+                        <tr><td>Arpeggiators</td><td>Seq melody ARP (8 pat / 8 rates) + Harp ARP (4 pat / 4 rates)</td></tr>
+                        <tr><td>Song mode</td><td>16 programs &times; 16 steps (bank chain + repeats)</td></tr>
+                        <tr><td>Drum kits</td><td>4 (TR-909 / TR-808 / Trap / House) + global D.PITCH</td></tr>
+                        <tr><td>MIDI I/O</td><td>USB only (SysEx + optional play-in) — no DIN port in v6.0</td></tr>
+                        <tr><td>Control protocol</td><td>14-bit SysEx, 190 commands (CMD 0–189)</td></tr>
+                        <tr><td>Persistence</td><td>NVS, versioned + CRC32, sparse blobs</td></tr>
+                    </table>
+                </div>
+
+                <div>
+                    <h4 class="text-white brand mb-4 border-b border-[#333] pb-2"><i class="fa-solid fa-bolt text-gray-500"></i> Laser &amp; Parameter Ranges</h4>
+                    <table>
+                        <tr><td>Laser strings</td><td>8 RGB beams (single galvo fan)</td></tr>
+                        <tr><td>Galvo / threshold DAC</td><td>MCP4922 dual 12-bit (ch A / ch B)</td></tr>
+                        <tr><td>Beam carrier</td><td>MCPWM ~9.656 kHz (MFB-matched)</td></tr>
+                        <tr><td>Detection</td><td>Reflective, ADC DMA + Kalman filter</td></tr>
+                        <tr><td>Play modes</td><td>POLY8 / STRINGS / SOLO + Harp ARP</td></tr>
+                        <tr><td>Fog reject</td><td>Optional differential gate (HARP SETUP menu)</td></tr>
+                        <tr><td>Attack / Decay / Release</td><td>0–2.0 s / 0–3.0 s / 0–4.0 s</td></tr>
+                        <tr><td>Filter cutoff</td><td>resonant SVF, up to ~14 kHz</td></tr>
+                        <tr><td>LFO rate</td><td>0.1 – 30 Hz, multi-target</td></tr>
+                        <tr><td>Oscillator detune</td><td>&plusmn;82 cents</td></tr>
+                        <tr><td>Master pitch</td><td>&plusmn;2 octaves (0.25&times;–4.0&times;)</td></tr>
+                        <tr><td>Master EQ (low / high)</td><td>&minus;12.0 dB to +12.0 dB</td></tr>
+                        <tr><td>Aux delay / reverb</td><td>delay 0–1.5 s, fb 0–95% &middot; size 0–0.95</td></tr>
+                    </table>
+                </div>
+            </div>
+            <p class="text-center text-xs text-gray-600 mono mt-10">Firmware v6.0.00 &middot; build 2026-06-20 &middot; ESP32-S3-DUALCORE-IDF5-FREERTOS &middot; SETTINGS 0x0615</p>
+        </div>
+    </section>
+
+    <footer class="bg-[#000] border-t border-[#222] py-12 text-center">
+        <div class="brand text-2xl font-bold mb-4 text-white opacity-50">
+            <i class="fa-solid fa-bolt"></i> Octopus <span class="text-[#06b6d4]">PRO XL</span>
+        </div>
+        <p class="text-xs text-gray-600 mono mb-2">&copy; 2026 DIODAC ELECTRONICS / iSystem. All Rights Reserved.</p>
+        <p class="text-xs text-gray-500 mono mb-4">
+            <a href="https://octopus-info.isystem.app" class="text-[#06b6d4] hover:underline">Product info</a>
+            &nbsp;&middot;&nbsp;
+            <a href="https://octopus.isystem.app" class="text-[#22c55e] hover:underline" target="_blank" rel="noopener">OctopusApp</a>
+            &nbsp;&middot;&nbsp;
+            <a href="https://github.com/iSystemApp/Octopus-PRO-XL-v6.0" class="text-gray-300 hover:underline" target="_blank" rel="noopener">GitHub</a>
+            &nbsp;&middot;&nbsp;
+            <a href="user_manual.md" class="text-[#06b6d4] hover:underline">User Manual</a>
+            &nbsp;&middot;&nbsp;
+            <a href="CHANGELOG.md" class="text-[#f97316] hover:underline">Changelog</a>
+        </p>
+        <p class="text-xs text-gray-700 mono max-w-xl mx-auto px-4">Proprietary and confidential. Unauthorized copying, distribution, modification, or use of this product, firmware, or OctopusApp software is strictly prohibited without prior written permission.</p>
+    </footer>
+
+</body>
+</html>

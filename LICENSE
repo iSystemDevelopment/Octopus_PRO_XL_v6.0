@@ -1,0 +1,30 @@
+Copyright (c) 2026 DIODAC ELECTRONICS / iSystem. All Rights Reserved.
+
+PROPRIETARY SOFTWARE LICENSE
+
+This repository contains proprietary and confidential software and documentation
+for the Octopus PRO XL product, including but not limited to firmware source code,
+OctopusApp.html, octopus_web.html, and associated assets.
+
+Unless you have a separate written agreement with DIODAC ELECTRONICS / iSystem,
+you may NOT:
+
+  • copy, modify, merge, publish, distribute, sublicense, or sell copies of
+    this software or documentation;
+  • use this software or documentation to create derivative works;
+  • reverse engineer, decompile, or disassemble the firmware except where
+    expressly permitted by applicable law.
+
+Limited permissions:
+
+  • You may view this repository if access is granted by the copyright holder.
+  • You may build and flash firmware onto hardware you own for personal use
+    of that hardware, subject to a valid product license from DIODAC ELECTRONICS.
+  • You may use OctopusApp from the official hosted URL (https://octopus.isystem.app)
+    with genuine Octopus PRO XL hardware.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+
+For licensing inquiries: contact DIODAC ELECTRONICS / iSystem.

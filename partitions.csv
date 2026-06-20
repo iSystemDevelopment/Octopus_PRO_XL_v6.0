@@ -1,0 +1,10 @@
+# Octopus PRO XL v6.0 — app @ 0x10000 (esptool ALWAYS flashes the app image to
+# 0x10000, so app0 MUST start there).  The four save blobs (settings + patterns
+# + banks + motion) need ~8-9 NVS pages, which do NOT fit the 28 KB gap before
+# the app — so NVS lives AFTER the app with generous headroom.  A coredump
+# partition is included so panics can be captured (fixes "No core dump partition
+# found").  Valid for any flash >= 4 MB.
+# Name,    Type, SubType,  Offset,    Size,      Flags
+app0,      app,  factory,  0x10000,   0x3A0000,
+nvs,       data, nvs,      0x3B0000,  0x40000,
+coredump,  data, coredump, 0x3F0000,  0x10000,
