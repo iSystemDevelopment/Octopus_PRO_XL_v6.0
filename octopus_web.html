@@ -138,6 +138,68 @@
             animation: float 6s ease-in-out infinite;
         }
 
+        /* Embedded media — circular logo + framed photos */
+        .img-circle {
+            border-radius: 50%;
+            object-fit: cover;
+            aspect-ratio: 1 / 1;
+        }
+        .img-frame {
+            position: relative;
+            overflow: hidden;
+            border-radius: 14px;
+            border: 1px solid rgba(6, 182, 212, 0.22);
+            background: #050508;
+            box-shadow: 0 0 32px rgba(6, 182, 212, 0.08);
+        }
+        .img-frame::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            border-radius: inherit;
+            box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+        }
+        .img-frame img {
+            display: block;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        .img-frame-laser {
+            border-color: rgba(6, 182, 212, 0.35);
+            box-shadow: 0 0 48px rgba(6, 182, 212, 0.14);
+        }
+        .img-frame-app {
+            border-color: rgba(34, 197, 94, 0.28);
+            box-shadow: 0 0 48px rgba(34, 197, 94, 0.1);
+        }
+        .img-frame-logo {
+            border-color: rgba(168, 85, 247, 0.35);
+            box-shadow: 0 0 40px rgba(168, 85, 247, 0.18);
+            background: radial-gradient(circle at 30% 20%, rgba(168, 85, 247, 0.12), #050508 65%);
+        }
+        .media-bento {
+            display: grid;
+            gap: 1rem;
+            grid-template-columns: 1fr;
+        }
+        @media (min-width: 768px) {
+            .media-bento {
+                grid-template-columns: 1.35fr 0.65fr;
+                grid-template-rows: auto auto;
+            }
+            .media-bento .span-main { grid-row: span 2; min-height: 340px; }
+        }
+        .media-caption {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.65rem;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: #6b7280;
+            margin-top: 0.5rem;
+        }
+
         @keyframes float {
             0% { transform: translateY(0px); }
             50% { transform: translateY(-20px); }
@@ -150,7 +212,7 @@
     <nav class="fixed w-full z-50 bg-[#050508]/92 backdrop-blur-md border-b border-[#222]">
         <div class="max-w-[96rem] mx-auto px-3 lg:px-5 py-2 flex items-center gap-2 lg:gap-4 min-h-[44px]">
             <a href="#" class="brand text-sm lg:text-base font-bold flex items-center gap-2 text-white shrink-0 no-underline">
-                <i class="fa-solid fa-bolt text-[#a855f7] text-sm"></i>
+                <img src="logo.jpg" alt="" class="w-7 h-7 img-circle border border-[#06b6d4]/30 shadow-[0_0_12px_rgba(6,182,212,0.25)]" width="28" height="28">
                 <span>Octopus <span class="text-[#06b6d4]">PRO XL</span></span>
             </a>
             <div class="top-nav-menu">
@@ -183,7 +245,7 @@
         <div class="absolute inset-0 z-[-1] opacity-20" style="background-image: linear-gradient(#333 1px, transparent 1px), linear-gradient(90deg, #333 1px, transparent 1px); background-size: 40px 40px;"></div>
 
         <div class="flex items-center gap-4 mb-6">
-            <img src="octopus-app-hero.png" alt="Octopus PRO XL" class="w-16 h-16 rounded-full object-cover shadow-[0_0_40px_rgba(6,182,212,0.4)]">
+            <img src="logo.jpg" alt="Octopus PRO XL" class="w-20 h-20 img-circle border-2 border-[#06b6d4]/40 shadow-[0_0_40px_rgba(6,182,212,0.45)] hero-img" width="80" height="80">
             <span class="brand tracking-[0.3em] text-sm text-gray-400">DIODAC ELECTRONICS</span>
             <span class="pill border-[#06b6d4]/40 text-[#06b6d4]">FIRMWARE v6.0.01</span>
         </div>
@@ -227,10 +289,27 @@
             <a href="https://octopus.isystem.app" class="text-[#22c55e] hover:underline" target="_blank" rel="noopener">octopus.isystem.app</a>.
         </p>
 
+        <!-- Product imagery -->
+        <div class="w-full max-w-6xl mx-auto mb-8 media-bento px-2">
+            <figure class="img-frame img-frame-laser span-main min-h-[240px] md:min-h-[360px]">
+                <img src="laser.jpg" alt="Octopus PRO XL — 8-beam reflective laser harp in performance" loading="lazy">
+            </figure>
+            <figure class="img-frame img-frame-logo aspect-square max-w-[220px] mx-auto md:mx-0 md:max-w-none">
+                <img src="logo.jpg" alt="Octopus PRO XL logo" class="img-circle" loading="lazy">
+            </figure>
+            <figure class="img-frame img-frame-app min-h-[140px]">
+                <img src="octopus-app-hero.jpg" alt="OctopusApp web console preview" loading="lazy">
+            </figure>
+        </div>
+        <p class="text-xs text-gray-600 mono max-w-2xl mx-auto mb-8 px-4">
+            ILDA-style galvo scan engine · note-reactive RGB · zero-install OctopusApp at
+            <a href="https://octopus.isystem.app" class="text-[#22c55e] hover:underline" target="_blank" rel="noopener">octopus.isystem.app</a>
+        </p>
+
         <!-- OctopusApp web console mockup -->
         <div class="w-full max-w-6xl mx-auto rounded-xl border border-[#1c2230] bg-[#0a0a0e] p-2 md:p-3 shadow-[0_0_70px_rgba(6,182,212,0.18)]">
-            <img src="octopus-app-hero.png" alt="OctopusApp web console — live editor for the Octopus PRO XL"
-                 class="w-full rounded-lg border border-[#111]">
+            <img src="octopus-app-hero.jpg" alt="OctopusApp web console — live editor for the Octopus PRO XL"
+                 class="w-full rounded-lg border border-[#111]" loading="lazy">
         </div>
         <p class="text-xs text-gray-600 mono mt-4">OctopusApp — zero-install Web MIDI console at <a href="https://octopus.isystem.app" class="text-[#22c55e] hover:underline" target="_blank" rel="noopener">octopus.isystem.app</a></p>
     </section>
@@ -280,6 +359,18 @@
                         </li>
                         <li class="flex items-start gap-3">
                             <i class="fa-solid fa-check text-[#06b6d4] mt-1"></i>
+                            <div><strong>Per-beam dynamic threshold:</strong> Each string gets its own 12-bit comparator DAC level — computed from live ADC telemetry, scale margin, per-string edge compensation, and colour multiplier. Threshold calibrates the sensor path only; the 74HC74 digital latch remains the sole note-on trigger.</div>
+                        </li>
+                        <li class="flex items-start gap-3">
+                            <i class="fa-solid fa-check text-[#06b6d4] mt-1"></i>
+                            <div><strong>Edge compensation:</strong> Independent per-string threshold trim for every scale (HARP SETUP &rarr; Edge Comp) — corrects weaker endpoint beams where the galvo reverses and overshoots; factory-seeded rows persist in NVS.</div>
+                        </li>
+                        <li class="flex items-start gap-3">
+                            <i class="fa-solid fa-check text-[#06b6d4] mt-1"></i>
+                            <div><strong>False-trigger protection:</strong> Asymmetric on/off counters require sustained breaks to note-on and sustained clears to note-off; optional fog-reject gate suppresses haze without blocking real hands; <code class="text-[#06b6d4]">beamStuckReleaseMs</code> fail-safe force-releases hung notes; minimum hold window via <code class="text-[#06b6d4]">beamGateHoldMs</code>.</div>
+                        </li>
+                        <li class="flex items-start gap-3">
+                            <i class="fa-solid fa-check text-[#06b6d4] mt-1"></i>
                             <div><strong>Dark-move sweep:</strong> The laser is blanked while the galvo travels between string positions (200–1000 µs settle), so the fan shows clean, solid beams and solid V-edges with zero faint trailing lines or jitter.</div>
                         </li>
                         <li class="flex items-start gap-3">
@@ -303,20 +394,29 @@
                         <span class="pill">POLY8</span><span class="pill">STRINGS (bowed ADSR)</span><span class="pill">SOLO (mono stab)</span><span class="pill">HARP ARP</span>
                     </div>
                 </div>
-                <div class="box-glow-cyan rounded-xl p-8 bg-[#050508] relative overflow-hidden">
+                <div class="space-y-6">
+                    <figure class="img-frame img-frame-laser min-h-[220px]">
+                        <img src="laser.jpg" alt="Laser harp beam fan — galvo-swept RGB strings" loading="lazy">
+                    </figure>
+                    <p class="media-caption text-center">Galvo-swept 8-beam fan · dark-move blanking</p>
+                    <div class="box-glow-cyan rounded-xl p-8 bg-[#050508] relative overflow-hidden">
                     <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-[#06b6d4] to-transparent opacity-50"></div>
-                    <h4 class="text-[#06b6d4] mb-4"><i class="fa-solid fa-bolt"></i> Beam Pipeline</h4>
-                    <p class="mono text-sm text-gray-400 leading-relaxed">
-                        GALVO DAC ........ MCP4922 ch A (12-bit)<br>
-                        DETECT THRESH .... MCP4922 ch B (12-bit)<br>
-                        BEAM CARRIER ..... MCPWM @ 9.656 kHz<br>
-                        SENSOR ........... MFB band-pass &rarr; ADC DMA<br>
-                        SMOOTHING ........ Kalman filter<br>
-                        STRINGS .......... 8 (RGB + hue ADSR)<br><br>
-                        &gt; Galvo sweep + trigger detection run on a dedicated
-                        FreeRTOS task pinned to Core 1, isolated from the audio
-                        engine on Core 0 to guarantee jitter-free projection.
+                    <h4 class="text-[#06b6d4] mb-4"><i class="fa-solid fa-bolt"></i> ILDA Galvo Engine</h4>
+                    <p class="mono text-sm text-gray-400 leading-relaxed mb-4">
+                        Vector laser-show pipeline: position on MCP4922 ch&nbsp;A, per-beam detect threshold on ch&nbsp;B,
+                        laser blanked during every galvo move (ILDA-style dark routing), then fired only at the settled string position.
                     </p>
+                    <p class="mono text-xs text-gray-500 leading-relaxed">
+                        GALVO DAC ........ MCP4922 ch A (12-bit)<br>
+                        DETECT THRESH .... MCP4922 ch B (12-bit, per string)<br>
+                        BEAM CARRIER ..... MCPWM @ 9.656 kHz (MFB-matched)<br>
+                        TRIGGER .......... LT1016 + 74HC74 latch (digital only)<br>
+                        SENSOR ........... MFB band-pass &rarr; ADC DMA + Kalman<br>
+                        SCAN ............. Ping-pong 8-beam fan, Core 1 task<br><br>
+                        &gt; Audio DSP on Core 0 stays isolated from galvo timing
+                        so projection stays jitter-free under full polyphony.
+                    </p>
+                    </div>
                 </div>
             </div>
         </div>
@@ -598,7 +698,7 @@
         <div class="max-w-7xl mx-auto">
             <h2 class="text-3xl md:text-4xl text-white mb-12 text-center">Technical Specifications</h2>
 
-            <div class="grid md:grid-cols-2 gap-12">
+            <div class="grid md:grid-cols-2 gap-12 mb-12">
                 <div>
                     <h4 class="text-white brand mb-4 border-b border-[#333] pb-2"><i class="fa-solid fa-microchip text-gray-500"></i> Platform &amp; Audio</h4>
                     <table>
@@ -620,22 +720,43 @@
                 </div>
 
                 <div>
-                    <h4 class="text-white brand mb-4 border-b border-[#333] pb-2"><i class="fa-solid fa-bolt text-gray-500"></i> Laser &amp; Parameter Ranges</h4>
+                    <h4 class="text-white brand mb-4 border-b border-[#333] pb-2"><i class="fa-solid fa-bolt text-gray-500"></i> Laser Harp &amp; ILDA Engine</h4>
                     <table>
-                        <tr><td>Laser strings</td><td>8 RGB beams (single galvo fan)</td></tr>
-                        <tr><td>Galvo / threshold DAC</td><td>MCP4922 dual 12-bit (ch A / ch B)</td></tr>
-                        <tr><td>Beam carrier</td><td>MCPWM ~9.656 kHz (MFB-matched)</td></tr>
-                        <tr><td>Detection</td><td>Reflective, ADC DMA + Kalman filter</td></tr>
+                        <tr><td>Projection model</td><td>ILDA-style vector scan (single galvo fan, dark routing)</td></tr>
+                        <tr><td>Laser strings</td><td>8 RGB beams · ping-pong scan · hue ADSR per string</td></tr>
+                        <tr><td>Galvo / threshold DAC</td><td>MCP4922 dual 12-bit (position ch A · detect ch B)</td></tr>
+                        <tr><td>Beam carrier</td><td>MCPWM ~9.656 kHz (MFB band-pass matched)</td></tr>
+                        <tr><td>Dynamic threshold</td><td>Per-string DAC from ADC + margin + edge comp + colour</td></tr>
+                        <tr><td>Edge compensation</td><td>Per-string % trim ×16 scales (NVS persisted)</td></tr>
+                        <tr><td>Galvo settle</td><td>600–800 µs dark move + 250 µs endpoint reversal extra</td></tr>
+                        <tr><td>Trigger path</td><td>LT1016 comparator &rarr; 74HC74 latch (digital only)</td></tr>
+                        <tr><td>False-trigger guard</td><td>Asymmetric on/off counters · fog reject · stuck timeout</td></tr>
+                        <tr><td>Hold / stuck failsafe</td><td>beamGateHoldMs · beamStuckReleaseMs (0–2000 ms)</td></tr>
+                        <tr><td>D-BEAM expression</td><td>ADC DMA + Kalman · local DSP (no MIDI CC)</td></tr>
                         <tr><td>Play modes</td><td>POLY8 / STRINGS / SOLO + Harp ARP</td></tr>
-                        <tr><td>Fog reject</td><td>Optional differential gate (HARP SETUP menu)</td></tr>
+                    </table>
+                </div>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-12">
+                <div>
+                    <h4 class="text-white brand mb-4 border-b border-[#333] pb-2"><i class="fa-solid fa-sliders text-gray-500"></i> Synth &amp; FX Ranges</h4>
+                    <table>
                         <tr><td>Attack / Decay / Release</td><td>0–2.0 s / 0–3.0 s / 0–4.0 s</td></tr>
-                        <tr><td>Filter cutoff</td><td>resonant SVF, up to ~14 kHz</td></tr>
+                        <tr><td>Filter cutoff</td><td>Resonant SVF, up to ~14 kHz</td></tr>
                         <tr><td>LFO rate</td><td>0.1 – 30 Hz, multi-target</td></tr>
                         <tr><td>Oscillator detune</td><td>&plusmn;82 cents</td></tr>
                         <tr><td>Master pitch</td><td>&plusmn;2 octaves (0.25&times;–4.0&times;)</td></tr>
                         <tr><td>Master EQ (low / high)</td><td>&minus;12.0 dB to +12.0 dB</td></tr>
-                        <tr><td>Aux delay / reverb</td><td>delay 0–1.5 s, fb 0–95% &middot; size 0–0.95</td></tr>
+                        <tr><td>Aux delay / reverb</td><td>Delay 0–1.5 s, fb 0–95% · size 0–0.95</td></tr>
+                        <tr><td>Fog reject</td><td>Optional differential gate (HARP SETUP menu)</td></tr>
                     </table>
+                </div>
+                <div class="flex flex-col items-center justify-center gap-6">
+                    <figure class="img-frame img-frame-logo w-40 h-40 shrink-0">
+                        <img src="logo.jpg" alt="Octopus PRO XL" class="img-circle" loading="lazy" width="160" height="160">
+                    </figure>
+                    <p class="media-caption text-center">Octopus PRO XL · DIODAC ELECTRONICS</p>
                 </div>
             </div>
             <p class="text-center text-xs text-gray-600 mono mt-10">Firmware v6.0.01 &middot; build 2026-06-20 &middot; ESP32-S3-DUALCORE-IDF5-FREERTOS &middot; SETTINGS 0x0615</p>
@@ -643,8 +764,9 @@
     </section>
 
     <footer class="bg-[#000] border-t border-[#222] py-12 text-center">
-        <div class="brand text-2xl font-bold mb-4 text-white opacity-50">
-            <i class="fa-solid fa-bolt"></i> Octopus <span class="text-[#06b6d4]">PRO XL</span>
+        <div class="brand text-2xl font-bold mb-4 text-white opacity-50 flex items-center justify-center gap-3">
+            <img src="logo.jpg" alt="" class="w-10 h-10 img-circle opacity-80" width="40" height="40">
+            <span>Octopus <span class="text-[#06b6d4]">PRO XL</span></span>
         </div>
         <p class="text-xs text-gray-600 mono mb-2">&copy; 2026 DIODAC ELECTRONICS / iSystem. All Rights Reserved.</p>
         <p class="text-xs text-gray-500 mono mb-4">
