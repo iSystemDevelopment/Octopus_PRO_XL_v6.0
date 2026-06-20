@@ -184,6 +184,75 @@
             margin-top: 0.5rem;
         }
 
+        /* Contact form */
+        .contact-form label {
+            display: block;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.65rem;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: #9ca3af;
+            margin-bottom: 0.35rem;
+        }
+        .contact-form input,
+        .contact-form textarea,
+        .contact-form select {
+            width: 100%;
+            background: #0a0a0e;
+            border: 1px solid #2a2a35;
+            border-radius: 8px;
+            padding: 10px 12px;
+            color: #e5e7eb;
+            font-family: 'Inter', sans-serif;
+            font-size: 0.9rem;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+        .contact-form input:focus,
+        .contact-form textarea:focus,
+        .contact-form select:focus {
+            outline: none;
+            border-color: rgba(6, 182, 212, 0.55);
+            box-shadow: 0 0 0 2px rgba(6, 182, 212, 0.12);
+        }
+        .contact-form textarea { min-height: 120px; resize: vertical; }
+        .contact-form .field { margin-bottom: 1rem; }
+        .contact-form button[type="submit"] {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 0.75rem;
+            font-weight: 700;
+            letter-spacing: 0.14em;
+            text-transform: uppercase;
+            background: #06b6d4;
+            color: #000;
+            border: none;
+            border-radius: 8px;
+            padding: 12px 24px;
+            cursor: pointer;
+            transition: background 0.2s, box-shadow 0.2s;
+        }
+        .contact-form button[type="submit"]:hover {
+            background: #fff;
+            box-shadow: 0 0 24px rgba(6, 182, 212, 0.35);
+        }
+        .contact-form button[type="submit"]:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        .contact-success {
+            display: none;
+            padding: 1rem 1.25rem;
+            border-radius: 8px;
+            border: 1px solid rgba(34, 197, 94, 0.35);
+            background: rgba(34, 197, 94, 0.08);
+            color: #86efac;
+            font-size: 0.875rem;
+        }
+        .contact-success.visible { display: block; }
+        .img-frame-product {
+            border-color: rgba(168, 85, 247, 0.3);
+            box-shadow: 0 0 48px rgba(168, 85, 247, 0.12);
+        }
+
         /* Resources — equal 2×3 tiles */
         .resource-grid {
             display: grid;
@@ -417,6 +486,7 @@
                 <a href="CHANGELOG.md" class="nav-link text-gray-400">Changelog</a>
                 <a href="#resources" class="nav-link text-gray-400">Docs</a>
                 <a href="#specs" class="nav-link text-gray-400">Specs</a>
+                <a href="#contact" class="nav-link text-gray-400">Contact</a>
                 <span class="w-px h-4 bg-[#2a2a35] shrink-0" aria-hidden="true"></span>
                 <a href="https://github.com/iSystemDevelopment/Octopus_PRO_XL_v6.0/blob/main/README.md"
                    target="_blank" rel="noopener noreferrer"
@@ -571,6 +641,10 @@
                     </div>
                 </div>
                 <div class="space-y-6">
+                    <figure class="img-frame img-frame-product min-h-[200px]">
+                        <img src="lharp.jpg" alt="Octopus PRO XL — laser harp groovebox workstation" loading="lazy">
+                    </figure>
+                    <p class="media-caption text-center">Octopus PRO XL · reflective scanning laser harp</p>
                     <figure class="img-frame img-frame-laser min-h-[220px]">
                         <img src="laser.jpg" alt="Laser harp beam fan — galvo-swept RGB strings" loading="lazy">
                     </figure>
@@ -1012,6 +1086,66 @@
         </div>
     </section>
 
+    <!-- ════════════════════════ CONTACT ════════════════════════ -->
+    <section id="contact" class="py-24 px-6 border-t border-[#111]">
+        <div class="max-w-6xl mx-auto">
+            <div class="text-center mb-12">
+                <h2 class="text-3xl md:text-4xl text-white mb-4"><span class="text-[#06b6d4]">Contact</span> DIODAC ELECTRONICS</h2>
+                <p class="max-w-2xl mx-auto text-gray-400 text-sm">Enquiries about Octopus PRO XL — sales, support, demos, or custom builds. We reply from
+                    <a href="mailto:diodac.electronics@gmail.com" class="text-[#06b6d4] hover:underline">diodac.electronics@gmail.com</a>.</p>
+            </div>
+
+            <div class="grid lg:grid-cols-2 gap-12 items-start">
+                <figure class="img-frame img-frame-product">
+                    <img src="lharp.jpg" alt="Octopus PRO XL laser harp — product photo" loading="lazy">
+                </figure>
+
+                <div class="box-glow-cyan rounded-xl p-6 md:p-8 bg-[#050508]">
+                    <div id="contactSuccess" class="contact-success mb-6" role="status">
+                        <i class="fa-solid fa-circle-check"></i> Message sent — thank you. We will get back to you at the email you provided.
+                    </div>
+
+                    <form id="contactForm" class="contact-form" action="https://formsubmit.co/diodac.electronics@gmail.com" method="POST">
+                        <input type="hidden" name="_subject" value="Octopus PRO XL — website enquiry">
+                        <input type="hidden" name="_template" value="table">
+                        <input type="hidden" name="_captcha" value="false">
+                        <input type="hidden" name="_next" value="https://octopus-info.isystem.app/#contact?sent=1">
+                        <input type="text" name="_honey" tabindex="-1" autocomplete="off" class="hidden" aria-hidden="true">
+
+                        <div class="field">
+                            <label for="contactName">Name</label>
+                            <input type="text" id="contactName" name="name" required autocomplete="name" placeholder="Your name">
+                        </div>
+                        <div class="field">
+                            <label for="contactEmail">Email</label>
+                            <input type="email" id="contactEmail" name="email" required autocomplete="email" placeholder="you@example.com">
+                        </div>
+                        <div class="field">
+                            <label for="contactTopic">Topic</label>
+                            <select id="contactTopic" name="topic">
+                                <option value="General enquiry">General enquiry</option>
+                                <option value="Sales / pricing">Sales / pricing</option>
+                                <option value="Technical support">Technical support</option>
+                                <option value="Demo / performance">Demo / performance</option>
+                                <option value="Other">Other</option>
+                            </select>
+                        </div>
+                        <div class="field">
+                            <label for="contactMessage">Message</label>
+                            <textarea id="contactMessage" name="message" required placeholder="How can we help?"></textarea>
+                        </div>
+                        <button type="submit" id="contactSubmit">
+                            <i class="fa-solid fa-paper-plane"></i> Send message
+                        </button>
+                    </form>
+                    <p class="text-xs text-gray-600 mono mt-4">Or email directly:
+                        <a href="mailto:diodac.electronics@gmail.com" class="text-[#06b6d4] hover:underline">diodac.electronics@gmail.com</a>
+                    </p>
+                </div>
+            </div>
+        </div>
+    </section>
+
     <footer class="bg-[#000] border-t border-[#222] py-12 text-center">
         <div class="brand text-2xl font-bold mb-4 text-white opacity-50 flex items-center justify-center gap-3">
             <img src="logo.jpg" alt="" class="w-10 h-10 img-circle opacity-80" width="40" height="40">
@@ -1030,6 +1164,8 @@
             <a href="user_manual.md" class="text-[#06b6d4] hover:underline">User Manual</a>
             &nbsp;&middot;&nbsp;
             <a href="CHANGELOG.md" class="text-[#f97316] hover:underline">Changelog</a>
+            &nbsp;&middot;&nbsp;
+            <a href="#contact" class="text-[#06b6d4] hover:underline">Contact</a>
         </p>
         <p class="text-xs text-gray-700 mono max-w-xl mx-auto px-4">Proprietary and confidential. Unauthorized copying, distribution, modification, or use of this product, firmware, or OctopusApp software is strictly prohibited without prior written permission.</p>
     </footer>
@@ -1136,6 +1272,26 @@
         const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
         if (!reducedMotion) {
             setInterval(() => setPlayhead((playStep + 1) % STEPS), TICK_MS);
+        }
+    })();
+
+    /* Contact form — show thank-you after FormSubmit redirect */
+    (function () {
+        const params = new URLSearchParams(window.location.search);
+        if (params.get('sent') === '1') {
+            const box = document.getElementById('contactSuccess');
+            const form = document.getElementById('contactForm');
+            if (box) box.classList.add('visible');
+            if (form) form.style.display = 'none';
+            history.replaceState(null, '', window.location.pathname + '#contact');
+        }
+        const form = document.getElementById('contactForm');
+        const btn = document.getElementById('contactSubmit');
+        if (form && btn) {
+            form.addEventListener('submit', () => {
+                btn.disabled = true;
+                btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Sending…';
+            });
         }
     })();
     </script>
