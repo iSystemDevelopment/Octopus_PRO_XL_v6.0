@@ -5,7 +5,10 @@ All notable changes to Octopus PRO XL firmware and OctopusApp are documented her
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning aligns with firmware `SYSTEM_FW_VERSION` in `code_info.h`.
 
-## [6.0.01] — 2026-06-20
+> **Current stable release: [6.0.00](#600--2026-06-20).**  
+> **[6.0.01](#601--2026-06-20-planned)** is documented below for the next upgrade session (not deployed to production yet).
+
+## [6.0.01] — 2026-06-20 (planned)
 
 ### Fixed
 

@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <!--
-  OctopusApp v6.0.01 — Octopus PRO XL Web MIDI Console
+  OctopusApp v6.0.00 — Octopus PRO XL Web MIDI Console
   © 2026 DIODAC ELECTRONICS / iSystem. All Rights Reserved.
   PROPRIETARY AND CONFIDENTIAL. Unauthorized use prohibited.
 -->
@@ -9,7 +9,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>OctopusApp v6.0.01 — OCTOPUS PRO XL</title>
+    <title>OctopusApp v6.0.00 — OCTOPUS PRO XL</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
@@ -1422,7 +1422,7 @@
                 <button class="btn active-red" onclick="app.toggleHelp()">CLOSE</button>
             </div>
             <div style="font-size:10px;color:#aaa;overflow-y:auto;flex:1;line-height:1.65;padding-right:4px">
-                <p style="color:#fff;font-size:9px;border-bottom:1px solid #1c1c2e;padding-bottom:4px;margin-bottom:8px;font-family:'Orbitron',sans-serif">FIRMWARE 6.0.01 · OCTOPUSAPP v6.0.01</p>
+                <p style="color:#fff;font-size:9px;border-bottom:1px solid #1c1c2e;padding-bottom:4px;margin-bottom:8px;font-family:'Orbitron',sans-serif">FIRMWARE 6.0.00 · OCTOPUSAPP v6.0.00</p>
                 <p style="margin-top:0;font-size:9px;margin-bottom:10px">
                     <a href="https://octopus-info.isystem.app" target="_blank" rel="noopener" style="color:var(--purple)">Product site</a>
                     · <a href="https://octopus.isystem.app" style="color:var(--cyan)">octopus.isystem.app</a>
@@ -1449,11 +1449,8 @@
                 • <b>App telemetry</b> — CPU load in header; SYSEX MON panel (FILTER hides PING / STEP / CPU streams).<br>
                 • <b>USB-only MIDI</b> — DIN MIDI removed; v6.0 SysEx protocol (manufacturer 0x7C device→App, 0x7D App→device).</p>
 
-                <p style="margin-top:10px"><b style="color:var(--pink)">WHAT'S NEW IN v6.0.01</b> (firmware + App)<br>
-                • <b>Audio / FX</b> — master EQ shelf law fix; aux reverb/delay tails drain correctly; softer mute (release not hard cut).<br>
-                • <b>Harp</b> — SOLO/POLY8 stuck-note reconcile; beam hysteresis; panic clears laser hold state; click-free legato retrigger.<br>
-                • <b>Seq arp patterns</b> — Up/Down/DnUp laser row sync; DnUp ping-pong corrected; AsIs preserves latch order.<br>
-                • <b>App playhead</b> — fixed wrap glitch on 1-step patterns and pattern loop snap (length=1 no longer flashes every beat).</p>
+                <p style="margin-top:10px"><b style="color:var(--pink)">PLANNED — v6.0.01</b> (next upgrade — see <a href="https://github.com/iSystemDevelopment/Octopus_PRO_XL_v6.0/blob/main/CHANGELOG.md#601--2026-06-20-planned" target="_blank" rel="noopener" style="color:var(--pink)">CHANGELOG</a>)<br>
+                • FX / click / stuck-note hardening · seq/harp arp pitch-row sync · App playhead wrap fixes.</p>
 
                 <p style="margin-top:10px"><b style="color:var(--cyan)">CONNECTION &amp; SYNC</b><br>
                 Select the ★ Octopus MIDI port → click <b>CONNECT</b> (or auto-connect when detected) → App sends CMD_APP_SYNC_REQ → device echoes full state. Badge shows LINKING then ONLINE once firmware replies. Heartbeat PING every ~800 ms keeps the OLED on "APP CONNECTED".<br>
@@ -3200,7 +3197,7 @@
                         }
                     }
                 });
-                this.log('OctopusApp v6.0.01 · ' + location.origin);
+                this.log('OctopusApp v6.0.00 · ' + location.origin);
             },
 
             // Long dropdown names: a closed <select> ellipsizes overflowing text, so

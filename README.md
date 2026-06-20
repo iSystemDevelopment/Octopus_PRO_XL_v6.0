@@ -2,17 +2,19 @@
 
 **Laser Harp Groovebox — Firmware & Companion Application**
 
-![Octopus PRO XL — OctopusApp web console](./octopus-app-hero.png)
+![Octopus PRO XL — OctopusApp web console](https://octopus-info.isystem.app/octopus-app-hero.jpg)
 
 | | |
 |---|---|
-| **Version** | 6.0.01 |
+| **Version** | **6.0.00** (stable) |
 | **Platform** | ESP32-S3 (dual-core, FreeRTOS, ESP-IDF 5) |
 | **Author** | DIODAC ELECTRONICS / [iSystem](https://isystem.app) |
 | **Launch App** | **[octopus.isystem.app](https://octopus.isystem.app)** |
 | **Product site** | **[octopus-info.isystem.app](https://octopus-info.isystem.app)** |
 | **Source code** | **[GitHub](https://github.com/iSystemDevelopment/Octopus_PRO_XL_v6.0)** |
-| **Documentation** | [User Manual](./user_manual.md) · [Deployment](./DEPLOYMENT.md) · [Changelog](./CHANGELOG.md) |
+| **Documentation** | [User Manual](./user_manual.md) · [Deployment](./DEPLOYMENT.md) · [Changelog](./CHANGELOG.md) · [Roadmap](./Upgrade.md) |
+
+> **6.0.01** fixes are documented in [CHANGELOG.md](./CHANGELOG.md) for the next upgrade session; production is pinned to **6.0.00** until field testing completes.
 
 ---
 
@@ -28,8 +30,7 @@
 | **Architecture** | [code_info.h](./code_info.h) |
 | **Maintainer roadmap** | [Upgrade.md](./Upgrade.md) |
 
-> GitHub Pages (optional mirror): enable Actions deploy — see [DEPLOYMENT.md](./DEPLOYMENT.md).  
-> Production product site: **octopus-info.isystem.app** on VPS.
+Production product site and OctopusApp are hosted on VPS subdomains (see [DEPLOYMENT.md](./DEPLOYMENT.md)).
 
 ---
 
@@ -103,7 +104,7 @@ flowchart LR
 3. Edit patches, grid, mixer, and song chains in the App.
 4. Use **hardware** for play/stop, record arm, and tempo.
 
-See [User Manual §3.4](./user_manual.md#34-app-connected-mode) for App-connected hardware behaviour.
+See [User Manual §3.4 — App-connected mode](./user_manual.md#34-app-connected-mode) for App-connected hardware behaviour.
 
 ---
 
@@ -114,11 +115,11 @@ See [User Manual §3.4](./user_manual.md#34-app-connected-mode) for App-connecte
 | `Octopus_PRO_XL_v6.0.ino` | Boot kernel, task scheduling |
 | `harp.cpp` / `groovebox.cpp` / `effect.cpp` | Instrument engines |
 | `OctopusApp.html` | Web MIDI console → deploy to **octopus.isystem.app** |
-| `octopus_web.html` | Product site → deploy to **octopus-info.isystem.app** (or GitHub Pages mirror) |
 | `user_manual.md` | End-user documentation |
-| `code_info.h` | Developer architecture manifest |
-| `deploy/` | VPS nginx config + deploy scripts |
-| `.github/workflows/pages.yml` | GitHub Pages automation |
+| `code_info.h` | Developer architecture manifest (`SYSTEM_FW_VERSION`) |
+| `DEPLOYMENT.md` | VPS deploy checklist |
+
+Product site HTML and images (`octopus_web.html`, `logo.jpg`, etc.) may be maintained on the VPS or in a separate backup bundle — see [DEPLOYMENT.md §3](./DEPLOYMENT.md#3-product-site-octopus-infoisystemapp).
 
 ---
 
@@ -144,16 +145,9 @@ Consult **`code_info.h`** before changing SysEx commands or persistence.
 
 | Target | Guide |
 |--------|--------|
-| Product site (VPS) | [DEPLOYMENT.md §3](./DEPLOYMENT.md#3-vps--product-site-at-octopus-infoisystemapp) |
-| OctopusApp (VPS) | [DEPLOYMENT.md §4](./DEPLOYMENT.md#4-vps--octopusapp-at-octopusisystemapp) |
-| GitHub Pages (mirror) | [DEPLOYMENT.md §1](./DEPLOYMENT.md#1-github-repository-setup) |
-
-Quick VPS deploy (PowerShell):
-
-```powershell
-.\deploy\deploy-web.ps1 -Remote "user@your-vps" -CreateDir   # product site
-.\deploy\deploy-app.ps1 -Remote "user@your-vps" -CreateDir  # OctopusApp
-```
+| OctopusApp (VPS) | [DEPLOYMENT.md §2](./DEPLOYMENT.md#2-octopusapp-octopusisystemapp) |
+| Product site (VPS) | [DEPLOYMENT.md §3](./DEPLOYMENT.md#3-product-site-octopus-infoisystemapp) |
+| Firmware flash | [DEPLOYMENT.md §5](./DEPLOYMENT.md#5-firmware) |
 
 ---
 
@@ -161,10 +155,8 @@ Quick VPS deploy (PowerShell):
 
 - [CONTRIBUTING.md](./CONTRIBUTING.md) — issues, authorized PRs  
 - [SECURITY.md](./SECURITY.md) — vulnerability reporting  
-- [CHANGELOG.md](./CHANGELOG.md) — release history  
-- GitHub Issues — include firmware **`6.0.01`** (or `SYSTEM_FW_VERSION` from Serial boot), App connected Y/N, repro steps  
-
-See [**CHANGELOG.md**](./CHANGELOG.md) for the full **6.0.01** fix list (FX, clicks, stuck notes, arp patterns).
+- [CHANGELOG.md](./CHANGELOG.md) — release history (stable **6.0.00**; **6.0.01** planned)  
+- GitHub Issues — include firmware **`6.0.00`** (or `SYSTEM_FW_VERSION` from Serial boot), App connected Y/N, repro steps  
 
 | Link | URL |
 |------|-----|
