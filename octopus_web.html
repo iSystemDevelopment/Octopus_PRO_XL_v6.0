@@ -184,6 +184,214 @@
             margin-top: 0.5rem;
         }
 
+        /* Resources — equal 2×3 tiles */
+        .resource-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 1.25rem;
+        }
+        @media (min-width: 640px) {
+            .resource-grid { grid-template-columns: repeat(2, 1fr); }
+        }
+        .resource-tile {
+            display: flex;
+            flex-direction: column;
+            min-height: 168px;
+            height: 100%;
+        }
+        .resource-tile p { flex: 1; margin-bottom: 0; }
+
+        /* Sequencer OLED grid preview (hardware matrix editor) */
+        .seq-oled-wrap {
+            max-width: 100%;
+        }
+        .seq-oled {
+            background: #1a1a1e;
+            border: 2px solid #333;
+            border-radius: 8px;
+            overflow: hidden;
+            font-family: 'JetBrains Mono', 'Courier New', monospace;
+            box-shadow: 0 0 28px rgba(236, 72, 153, 0.12);
+        }
+        .seq-oled-header,
+        .seq-oled-footer {
+            background: #0f0f12;
+            padding: 8px 12px;
+            color: #00ff99;
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+        }
+        .seq-oled-header { border-bottom: 1px solid #333; }
+        .seq-oled-footer { border-top: 1px solid #333; }
+        .seq-grid {
+            background: #050508;
+            padding: 8px;
+            display: grid;
+            grid-template-columns: repeat(16, 1fr);
+            gap: 2px;
+            aspect-ratio: 2 / 1;
+        }
+        .seq-cell {
+            background: #1a1a1e;
+            border: 1px solid #222;
+            border-radius: 2px;
+            aspect-ratio: 1;
+            transition: background 0.12s, border-color 0.12s, box-shadow 0.12s;
+            cursor: pointer;
+        }
+        .seq-cell:hover:not(.on):not(.on-synth):not(.on-drum) {
+            background: #252530;
+            border-color: #333;
+        }
+        .seq-cell.playhead {
+            background: rgba(0, 255, 153, 0.08);
+            border-color: rgba(0, 255, 153, 0.45);
+            box-shadow: inset 0 0 0 1px rgba(0, 255, 153, 0.2);
+        }
+        .seq-cell.on {
+            background: #00ff99;
+            border-color: #00dd77;
+            box-shadow: 0 0 4px rgba(0, 255, 153, 0.55);
+        }
+        .seq-cell.cur {
+            border: 2px solid #00ff99;
+            box-shadow: 0 0 8px rgba(0, 255, 153, 0.65), inset 0 0 4px rgba(0, 255, 153, 0.25);
+        }
+        .seq-oled-duo {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+        .seq-oled.compact .seq-oled-header,
+        .seq-oled.compact .seq-oled-footer {
+            font-size: 9px;
+            padding: 6px 10px;
+        }
+        .seq-oled.compact .seq-grid {
+            padding: 6px;
+            gap: 1px;
+        }
+        .seq-oled-drum .seq-oled-header,
+        .seq-oled-drum .seq-oled-footer { color: #ff9944; }
+        .seq-oled-drum .seq-cell.on {
+            background: #ff9944;
+            border-color: #dd7722;
+            box-shadow: 0 0 4px rgba(255, 153, 68, 0.55);
+        }
+        .seq-oled-drum .seq-cell.cur {
+            border-color: #ff9944;
+            box-shadow: 0 0 8px rgba(255, 153, 68, 0.65), inset 0 0 4px rgba(255, 153, 68, 0.25);
+        }
+        .seq-oled-drum .seq-cell.playhead {
+            background: rgba(255, 153, 68, 0.1);
+            border-color: rgba(255, 153, 68, 0.5);
+            box-shadow: inset 0 0 0 1px rgba(255, 153, 68, 0.22);
+        }
+        .seq-oled-drum .seq-cell.on.playhead {
+            box-shadow: 0 0 8px rgba(255, 153, 68, 0.75), inset 0 0 6px rgba(255, 255, 255, 0.12);
+        }
+        .seq-cell.on.playhead {
+            box-shadow: 0 0 8px rgba(0, 255, 153, 0.75), inset 0 0 6px rgba(255, 255, 255, 0.12);
+        }
+        /* OctopusApp full 16×16 matrix */
+        .seq-app-panel {
+            background: #0a0a0e;
+            border: 2px solid rgba(34, 197, 94, 0.35);
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 0 36px rgba(34, 197, 94, 0.12);
+        }
+        .seq-app-header {
+            background: #111;
+            padding: 10px 14px;
+            border-bottom: 1px solid #222;
+            font-family: 'Orbitron', sans-serif;
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.12em;
+            color: #22c55e;
+        }
+        .seq-app-grid {
+            background: #050508;
+            padding: 10px;
+            display: grid;
+            grid-template-columns: repeat(16, 1fr);
+            gap: 3px;
+            aspect-ratio: 1;
+        }
+        .seq-app-grid .seq-cell {
+            border-radius: 3px;
+        }
+        .seq-app-grid .seq-cell.playhead {
+            background: rgba(34, 197, 94, 0.12);
+            border-color: rgba(34, 197, 94, 0.55);
+            box-shadow: inset 0 0 0 1px rgba(34, 197, 94, 0.25);
+        }
+        .seq-app-grid .seq-cell.on-synth.playhead {
+            background: #f472b6;
+            border-color: #ec4899;
+            box-shadow: 0 0 10px rgba(236, 72, 153, 0.65), inset 0 0 0 1px rgba(255, 255, 255, 0.15);
+        }
+        .seq-app-grid .seq-cell.on-drum.playhead {
+            background: #fb923c;
+            border-color: #f97316;
+            box-shadow: 0 0 10px rgba(249, 115, 22, 0.65), inset 0 0 0 1px rgba(255, 255, 255, 0.15);
+        }
+        .seq-app-grid .seq-cell:hover:not(.on-synth):not(.on-drum) {
+            background: #1f1f28;
+            border-color: #333;
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .seq-cell { transition: none; }
+        }
+        .seq-app-grid .seq-cell.on-synth {
+            background: #ec4899;
+            border-color: #db2777;
+            box-shadow: 0 0 5px rgba(236, 72, 153, 0.45);
+        }
+        .seq-app-grid .seq-cell.on-drum {
+            background: #f97316;
+            border-color: #ea580c;
+            box-shadow: 0 0 5px rgba(249, 115, 22, 0.45);
+        }
+        .seq-app-grid .seq-cell.row-split {
+            box-shadow: 0 -2px 0 0 rgba(236, 72, 153, 0.35);
+        }
+        .seq-app-legend {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 1rem;
+            justify-content: center;
+            padding: 8px 12px;
+            border-top: 1px solid #222;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 10px;
+            color: #6b7280;
+        }
+        .seq-app-legend span { display: inline-flex; align-items: center; gap: 6px; }
+        .seq-app-legend i {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 2px;
+        }
+        .seq-legend {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+            line-height: 1.75;
+            color: #9ca3af;
+        }
+        .seq-legend kbd {
+            display: inline-block;
+            padding: 1px 6px;
+            border-radius: 4px;
+            border: 1px solid #333;
+            background: #111;
+            color: #d1d5db;
+            font-size: 10px;
+        }
+
         @keyframes float {
             0% { transform: translateY(0px); }
             50% { transform: translateY(-20px); }
@@ -206,6 +414,7 @@
                 <a href="#seq" class="nav-link text-gray-400">Seq</a>
                 <a href="#fx" class="nav-link text-gray-400">FX</a>
                 <a href="#app" class="nav-link text-gray-400">App</a>
+                <a href="CHANGELOG.md" class="nav-link text-gray-400">Changelog</a>
                 <a href="#resources" class="nav-link text-gray-400">Docs</a>
                 <a href="#specs" class="nav-link text-gray-400">Specs</a>
                 <span class="w-px h-4 bg-[#2a2a35] shrink-0" aria-hidden="true"></span>
@@ -240,7 +449,7 @@
         <p class="text-lg md:text-xl text-gray-400 max-w-3xl leading-relaxed mb-8">
             A stand-alone live-performance instrument built on the dual-core ESP32-S3: an
             8-beam reflective scanning <strong>laser harp</strong>, a 24-voice bi-timbral
-            <strong>synth + drum groovebox</strong>, a 64-step <strong>matrix sequencer</strong>
+            <strong>synth + drum groovebox</strong>, a <strong>16&times;16 polyphonic matrix sequencer</strong>
             with song chains and built-in <strong>arpeggiators</strong>, a studio FX rack, and a
             zero-install <strong>OctopusApp Web MIDI console</strong> — all in one box.
         </p>
@@ -267,13 +476,8 @@
             </a>
             <a href="#app" class="bg-transparent border border-[#333] text-white font-bold py-3 px-8 rounded hover:border-[#06b6d4] transition-colors brand tracking-widest">ABOUT THE APP</a>
         </div>
-        <p class="text-xs text-gray-600 mono max-w-xl mx-auto mb-10">
-            You are on the product site (<strong class="text-gray-400">octopus-info.isystem.app</strong>).
-            Open the live Web MIDI console at
-            <a href="https://octopus.isystem.app" class="text-[#22c55e] hover:underline" target="_blank" rel="noopener">octopus.isystem.app</a>.
-        </p>
 
-        <p class="text-xs text-gray-600 mono max-w-2xl mx-auto mb-8 px-4">
+        <p class="text-xs text-gray-600 mono max-w-2xl mx-auto mb-10 px-4">
             ILDA-style galvo scan engine · note-reactive RGB · zero-install OctopusApp at
             <a href="https://octopus.isystem.app" class="text-[#22c55e] hover:underline" target="_blank" rel="noopener">octopus.isystem.app</a>
         </p>
@@ -302,7 +506,7 @@
                 <div class="feature-card">
                     <div class="text-3xl mb-3 text-[#f97316]"><i class="fa-solid fa-sliders"></i></div>
                     <h3 class="text-lg text-white mb-2">Groove Underneath</h3>
-                    <p class="text-sm text-gray-400">A second synth engine and an 8-voice drum machine run from the matrix sequencer, locked to one tempo, so a full track grooves while you solo.</p>
+                    <p class="text-sm text-gray-400">A second synth engine and an 8-voice drum machine run from the 16&times;16 pad matrix (8 synth + 8 drum rows), locked to one tempo, so a full track grooves while you solo.</p>
                 </div>
                 <div class="feature-card">
                     <div class="text-3xl mb-3 text-[#22c55e]"><i class="fa-solid fa-laptop-code"></i></div>
@@ -471,14 +675,92 @@
     <section id="seq" class="py-24 px-6 bg-[#0a0a0e] border-t border-[#111]">
         <div class="max-w-7xl mx-auto">
             <div class="text-center mb-16">
-                <h2 class="text-3xl md:text-4xl text-white mb-4"><span class="text-[#ec4899]">04.</span> 16-Track Matrix Sequencer</h2>
-                <p class="max-w-2xl mx-auto">Eight synth rows over eight drum rows in one unified pattern slot, clocked by an audio-locked step engine. Built-in melody ARP, song chains, and P-lock motion — up to 64 steps across banks A–D.</p>
+                <h2 class="text-3xl md:text-4xl text-white mb-4"><span class="text-[#ec4899]">04.</span> 16&times;16 Polyphonic Matrix Sequencer</h2>
+                <p class="max-w-3xl mx-auto mb-4">One <strong>16&times;16 pattern matrix</strong> per bank (256 cells). On the <strong>1.3&Prime; SH1106 OLED</strong> you edit it as <strong>two 16&times;8 views</strong> — synth rows 0–7 and drum rows 8–15 — while <strong>OctopusApp</strong> shows the full <strong>16&times;16</strong> grid at once (up to 64 steps via P1–P4).</p>
+                <p class="max-w-2xl mx-auto text-sm text-gray-500">Both surfaces address the same slot; synth + drums always play together. Built-in melody ARP, song chains, and P-lock motion across banks A–D.</p>
+            </div>
+
+            <div class="max-w-6xl mx-auto mb-10 grid lg:grid-cols-2 gap-10 items-start">
+                <!-- 1.3″ OLED — two display pages (16×8 each) -->
+                <div>
+                    <p class="media-caption mb-3"><i class="fa-solid fa-display"></i> Hardware · 1.3&Prime; OLED (128&times;64) · 2 views</p>
+                    <div class="seq-oled-duo">
+                        <div class="seq-oled compact" id="seqOledSynth">
+                            <div class="seq-oled-header">BANK-A [SYNTH] MATRIX · rows 0–7</div>
+                            <div class="seq-grid" id="seqOledGridSynth" aria-label="OLED synth view 16 by 8"></div>
+                            <div class="seq-oled-footer" id="seqOledSynthFooter">View: SYNTH &nbsp;·&nbsp; Step <span class="seq-step">1</span> &nbsp;·&nbsp; Row 2 Col 3</div>
+                        </div>
+                        <div class="seq-oled compact seq-oled-drum" id="seqOledDrum">
+                            <div class="seq-oled-header">BANK-A [DRUM] MATRIX · rows 8–15</div>
+                            <div class="seq-grid" id="seqOledGridDrum" aria-label="OLED drum view 16 by 8"></div>
+                            <div class="seq-oled-footer" id="seqOledDrumFooter">View: DRUM &nbsp;·&nbsp; Step <span class="seq-step">1</span> &nbsp;·&nbsp; SEQ SETUP toggles page</div>
+                        </div>
+                    </div>
+                    <p class="text-xs text-gray-600 mono mt-3">Same pattern slot — flip <strong class="text-gray-400">Synth / Drum</strong> page on hardware. Demo: click to toggle steps; playhead loops (preview only).</p>
+                </div>
+
+                <!-- OctopusApp — full 16×16 -->
+                <div>
+                    <p class="media-caption mb-3"><i class="fa-solid fa-laptop-code"></i> OctopusApp · full 16&times;16 matrix</p>
+                    <div class="seq-app-panel">
+                        <div class="seq-app-header">BANK A · 16 ROWS &times; 16 STEPS &nbsp;·&nbsp; PLAY <span class="seq-step">1</span>/16</div>
+                        <div class="seq-app-grid" id="seqAppGrid" aria-label="OctopusApp 16 by 16 sequencer grid"></div>
+                        <div class="seq-app-legend">
+                            <span><i style="background:#ec4899"></i> Rows 0–7 synth</span>
+                            <span><i style="background:#f97316"></i> Rows 8–15 drums</span>
+                            <span>P1–P4 &rarr; 64 steps</span>
+                        </div>
+                    </div>
+                    <p class="text-xs text-gray-600 mono mt-3">All 16 tracks visible together — edits sync to the same <code>hwSeqData[bank][0]</code> as the OLED.</p>
+                </div>
+            </div>
+
+            <div class="max-w-6xl mx-auto mb-12">
+                    <h4 class="text-[#ec4899] brand text-sm mb-4 tracking-wider"><i class="fa-solid fa-table-cells"></i> Sequencer grid model</h4>
+                    <p class="text-sm text-gray-400 leading-relaxed mb-4">
+                        Each pattern bank holds <strong class="text-gray-200">one unified slot</strong> in
+                        <code class="text-[#ec4899]">hwSeqData[bank][0]</code> — <strong>16 rows</strong> played together every step.
+                        The <strong class="text-gray-200">1.3&Prime; OLED</strong> shows <strong>16&times;8</strong> at a time (synth page or drum page);
+                        <strong class="text-gray-200">OctopusApp</strong> shows the full <strong>16&times;16</strong> (16 steps per page, P1–P4 for depth).
+                    </p>
+                    <ul class="space-y-3 text-sm text-gray-400 mb-6">
+                        <li class="flex gap-2"><span class="text-[#ec4899] shrink-0">0–7</span><span><strong class="text-gray-300">Synth melody</strong> — 8-note polyphonic bassline / lead (sequencer voices; row <em>r</em> &rarr; <code>seqVoices[r]</code>)</span></li>
+                        <li class="flex gap-2"><span class="text-[#f97316] shrink-0">8–15</span><span><strong class="text-gray-300">Drums</strong> — KICK, SNARE, CLAP, HH-C, HH-O, TOM-H, TOM-L, PERC (8 TR-909 voices)</span></li>
+                    </ul>
+                    <p class="text-sm text-gray-500 mb-4">
+                        Banks <strong class="text-gray-300">A / B / C / D</strong> map to indices 0–3. The legacy chain dimension is
+                        <strong class="text-gray-300">pinned to 0</strong> everywhere — synth and drums are never separate playback slots.
+                        On the OLED, <strong class="text-gray-300">Synth vs Drum</strong> is a <strong>display page</strong> (<code class="text-xs">seqUI_page</code>) — two views of one matrix, not a chain switch — so hardware, dashboard, and OctopusApp edits are heard identically.
+                    </p>
+                    <div class="seq-legend p-4 rounded-lg border border-[#222] bg-[#0a0a0e]">
+                        <div class="text-gray-500 uppercase tracking-wider text-[10px] mb-2">Matrix navigation</div>
+                        <div><kbd>Enc</kbd> rotate = move row &nbsp;·&nbsp; <kbd>Enc</kbd> click = toggle step</div>
+                        <div><kbd>Scale</kbd> = step left &nbsp;·&nbsp; <kbd>OC</kbd> = step right</div>
+                        <div class="mt-3 pt-3 border-t border-[#222] text-gray-500 text-[10px] leading-relaxed">
+                            Smart wrap: step 15 + right &rarr; next bank step 0 · row 7 synth + down &rarr; drum row 0 · drum row 7 + down &rarr; next bank synth
+                        </div>
+                    </div>
+            </div>
+
+            <div class="max-w-4xl mx-auto mb-10 box-glow-purple rounded-xl p-6 md:p-8 bg-[#050508] border border-[#ec4899]/20">
+                <h4 class="text-[#ec4899] brand text-sm mb-4 tracking-wider"><i class="fa-solid fa-layer-group"></i> Full matrix (per bank)</h4>
+                <div class="grid grid-cols-2 gap-4 mono text-xs md:text-sm">
+                    <div class="p-4 bg-[#111] rounded border border-[#333]">
+                        <div class="text-white font-bold mb-1">Rows 0–7 · Synth</div>
+                        <div class="text-gray-500">8 polyphonic melody tracks &times; up to 64 steps (P1–P4 in App)</div>
+                    </div>
+                    <div class="p-4 bg-[#111] rounded border border-[#333]">
+                        <div class="text-white font-bold mb-1">Rows 8–15 · Drums</div>
+                        <div class="text-gray-500">8 drum voices &times; up to 64 steps — same slot, same clock</div>
+                    </div>
+                </div>
+                <p class="text-xs text-gray-600 mt-4 text-center">Logical matrix: 16 rows &times; up to 64 steps &nbsp;·&nbsp; OLED: 16&times;8 per view &nbsp;·&nbsp; App: 16&times;16 at once</p>
             </div>
             <div class="grid md:grid-cols-3 gap-8">
                 <div class="feature-card">
                     <div class="text-3xl mb-3 text-[#ec4899]"><i class="fa-solid fa-table-cells"></i></div>
                     <h3 class="text-lg text-white mb-2">Banks A–D, up to 64 steps</h3>
-                    <p class="text-sm text-gray-400">Four pattern banks, each holding synth rows 0–7 and drum rows 8–15 together in one slot. Length is 16, 32, 48, or 64 steps — the App pages P1–P4 while the playhead follows the hardware STEP_SYNC clock.</p>
+                    <p class="text-sm text-gray-400">Four pattern banks, each holding the full 16&times;16 matrix (synth rows 0–7 + drum rows 8–15). Length is 16, 32, 48, or 64 steps — the App pages P1–P4 while the playhead follows the hardware STEP_SYNC clock.</p>
                 </div>
                 <div class="feature-card">
                     <div class="text-3xl mb-3 text-[#ec4899]"><i class="fa-solid fa-list-ol"></i></div>
@@ -571,7 +853,7 @@
             </div>
             <div class="box-glow-green rounded-xl p-6 bg-[#050508]">
                 <h4 class="text-[#22c55e] font-bold mb-2"><i class="fa-solid fa-table-cells"></i> Sequencer View</h4>
-                <p class="text-sm text-gray-400">64-step grid (P1–P4 pages), seq ARP controls, song-chain editor, pattern loaders, and a playhead locked to hardware STEP_SYNC — with automatic page follow during playback.</p>
+                <p class="text-sm text-gray-400">16&times;16 pad matrix (8 synth + 8 drum rows), up to 64 steps (P1–P4), seq ARP, song-chain editor, pattern loaders, and a playhead locked to hardware STEP_SYNC.</p>
             </div>
         </div>
 
@@ -601,43 +883,38 @@
             <h2 class="text-2xl md:text-3xl text-white mb-4">Resources &amp; Source</h2>
             <p class="text-gray-500 text-sm max-w-2xl mx-auto">Firmware, OctopusApp, documentation, and release notes live in the public GitHub repository. This product page is hosted at <strong class="text-gray-300">octopus-info.isystem.app</strong>; the App is a separate subdomain for Web MIDI.</p>
         </div>
-        <div class="max-w-4xl mx-auto grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+        <div class="max-w-3xl mx-auto resource-grid">
             <a href="https://github.com/iSystemDevelopment/Octopus_PRO_XL_v6.0" target="_blank" rel="noopener noreferrer"
-               class="feature-card block hover:border-[#06b6d4] text-left no-underline">
+               class="feature-card resource-tile block hover:border-[#06b6d4] text-left no-underline">
                 <div class="text-2xl mb-2 text-white"><i class="fa-brands fa-github"></i></div>
                 <h3 class="text-white font-bold mb-1">GitHub Repository</h3>
-                <p class="text-sm text-gray-400">ESP32-S3 firmware sources, OctopusApp.html, user manual, changelog, and deploy scripts.</p>
+                <p class="text-sm text-gray-400">ESP32-S3 firmware sources, OctopusApp.html, user manual, and deploy scripts.</p>
             </a>
             <a href="https://octopus.isystem.app" target="_blank" rel="noopener noreferrer"
-               class="feature-card block hover:border-[#22c55e] text-left no-underline">
+               class="feature-card resource-tile block hover:border-[#22c55e] text-left no-underline">
                 <div class="text-2xl mb-2 text-[#22c55e]"><i class="fa-solid fa-plug"></i></div>
                 <h3 class="text-white font-bold mb-1">OctopusApp</h3>
                 <p class="text-sm text-gray-400">Live Web MIDI console — connect USB and edit patches, grid, mixer, and song chains.</p>
             </a>
-            <a href="user_manual.md" class="feature-card block hover:border-[#a855f7] text-left no-underline">
+            <a href="user_manual.md" class="feature-card resource-tile block hover:border-[#a855f7] text-left no-underline">
                 <div class="text-2xl mb-2 text-[#a855f7]"><i class="fa-solid fa-book"></i></div>
                 <h3 class="text-white font-bold mb-1">User Manual</h3>
                 <p class="text-sm text-gray-400">Complete hardware menu reference, App-connected mode, and troubleshooting.</p>
             </a>
-            <a href="CHANGELOG.md" class="feature-card block hover:border-[#f97316] text-left no-underline">
-                <div class="text-2xl mb-2 text-[#f97316]"><i class="fa-solid fa-list"></i></div>
-                <h3 class="text-white font-bold mb-1">Changelog</h3>
-                <p class="text-sm text-gray-400">v6.0.01 — FX/stuck-note fixes, arp patterns, App playhead wrap fix.</p>
-            </a>
             <a href="https://github.com/iSystemDevelopment/Octopus_PRO_XL_v6.0/blob/main/README.md" target="_blank" rel="noopener noreferrer"
-               class="feature-card block hover:border-[#06b6d4] text-left no-underline">
+               class="feature-card resource-tile block hover:border-[#06b6d4] text-left no-underline">
                 <div class="text-2xl mb-2 text-[#06b6d4]"><i class="fa-solid fa-code"></i></div>
                 <h3 class="text-white font-bold mb-1">README</h3>
                 <p class="text-sm text-gray-400">Build instructions, repository layout, and quick-start for hardware + App.</p>
             </a>
             <a href="https://www.facebook.com/diodac.co.uk/" target="_blank" rel="noopener noreferrer"
-               class="feature-card block hover:border-[#1877f2] text-left no-underline">
+               class="feature-card resource-tile block hover:border-[#1877f2] text-left no-underline">
                 <div class="text-2xl mb-2 text-[#1877f2]"><i class="fa-brands fa-facebook"></i></div>
                 <h3 class="text-white font-bold mb-1">DIODAC Facebook</h3>
                 <p class="text-sm text-gray-400">News, demos, and support from DIODAC ELECTRONICS.</p>
             </a>
             <a href="https://isystem.app" target="_blank" rel="noopener noreferrer"
-               class="feature-card block hover:border-[#ec4899] text-left no-underline">
+               class="feature-card resource-tile block hover:border-[#ec4899] text-left no-underline">
                 <div class="text-2xl mb-2 text-[#ec4899]"><i class="fa-solid fa-globe"></i></div>
                 <h3 class="text-white font-bold mb-1">iSystem</h3>
                 <p class="text-sm text-gray-400">DIODAC ELECTRONICS / iSystem — product home and support.</p>
@@ -681,7 +958,7 @@
                         <tr><td>Polyphony</td><td>24 voices (8 harp + 8 seq + 8 drum)</td></tr>
                         <tr><td>Wavetables</td><td>25 algorithms</td></tr>
                         <tr><td>Presets / Scales</td><td>128 named presets &middot; 16 scales</td></tr>
-                        <tr><td>Sequencer</td><td>16 tracks (8 synth + 8 drum), 4 banks, up to 64 steps</td></tr>
+                        <tr><td>Sequencer grid</td><td>16&times;16 logical (App) · 1.3&Prime; OLED 2&times;16&times;8 views · 64 steps</td></tr>
                         <tr><td>Arpeggiators</td><td>Seq melody ARP (8 pat / 8 rates) + Harp ARP (4 pat / 4 rates)</td></tr>
                         <tr><td>Song mode</td><td>16 programs &times; 16 steps (bank chain + repeats)</td></tr>
                         <tr><td>Drum kits</td><td>4 (TR-909 / TR-808 / Trap / House) + global D.PITCH</td></tr>
@@ -757,5 +1034,110 @@
         <p class="text-xs text-gray-700 mono max-w-xl mx-auto px-4">Proprietary and confidential. Unauthorized copying, distribution, modification, or use of this product, firmware, or OctopusApp software is strictly prohibited without prior written permission.</p>
     </footer>
 
+    <script>
+    /* Sequencer grids — demo UI: clickable toggles + looping playhead (no backend) */
+    (function () {
+        const STEPS = 16;
+        const TICK_MS = 220;
+        const curR = 2, curC = 3;
+
+        const synthOn = [
+            [1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+            [0,1,0,0,0,1,0,0,0,0,0,0,0,0,0,0],
+            [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+            [0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0],
+            [0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+            [0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0],
+            [0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0],
+            [0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,1]
+        ];
+        const drumOn = [
+            [1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0],
+            [0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0],
+            [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+            [1,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0],
+            [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+            [0,0,1,0,0,0,1,0,0,0,1,0,0,0,1,0],
+            [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+            [0,0,0,1,0,0,0,0,0,0,0,1,0,0,0,0]
+        ];
+
+        const allCells = [];
+
+        function bindToggle(cell, onClass) {
+            cell.setAttribute('role', 'button');
+            cell.setAttribute('tabindex', '0');
+            cell.setAttribute('aria-pressed', cell.classList.contains(onClass) ? 'true' : 'false');
+            const toggle = () => {
+                const on = cell.classList.toggle(onClass);
+                cell.setAttribute('aria-pressed', on ? 'true' : 'false');
+            };
+            cell.addEventListener('click', toggle);
+            cell.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    toggle();
+                }
+            });
+        }
+
+        function fillOled(gridEl, pattern, isDrum) {
+            if (!gridEl) return;
+            for (let r = 0; r < 8; r++) {
+                for (let c = 0; c < STEPS; c++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'seq-cell';
+                    cell.dataset.col = String(c);
+                    if (pattern[r][c]) cell.classList.add('on');
+                    if (!isDrum && r === curR && c === curC) cell.classList.add('cur');
+                    bindToggle(cell, 'on');
+                    gridEl.appendChild(cell);
+                    allCells.push(cell);
+                }
+            }
+        }
+
+        fillOled(document.getElementById('seqOledGridSynth'), synthOn, false);
+        fillOled(document.getElementById('seqOledGridDrum'), drumOn, true);
+
+        const appGrid = document.getElementById('seqAppGrid');
+        if (appGrid) {
+            for (let r = 0; r < 16; r++) {
+                const row = r < 8 ? synthOn[r] : drumOn[r - 8];
+                const isSynth = r < 8;
+                const onClass = isSynth ? 'on-synth' : 'on-drum';
+                for (let c = 0; c < STEPS; c++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'seq-cell';
+                    cell.dataset.col = String(c);
+                    if (r === 8) cell.classList.add('row-split');
+                    if (row[c]) cell.classList.add(onClass);
+                    bindToggle(cell, onClass);
+                    appGrid.appendChild(cell);
+                    allCells.push(cell);
+                }
+            }
+        }
+
+        let playStep = 0;
+        const stepLabels = document.querySelectorAll('.seq-step');
+
+        function setPlayhead(step) {
+            playStep = step;
+            for (const cell of allCells) {
+                cell.classList.toggle('playhead', Number(cell.dataset.col) === step);
+            }
+            const human = step + 1;
+            for (const el of stepLabels) el.textContent = String(human);
+        }
+
+        setPlayhead(0);
+
+        const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        if (!reducedMotion) {
+            setInterval(() => setPlayhead((playStep + 1) % STEPS), TICK_MS);
+        }
+    })();
+    </script>
 </body>
 </html>
