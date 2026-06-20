@@ -1093,7 +1093,8 @@
 ═══════════════════════════════════════════════════════════════════════════ -->
     <header>
         <div class="brand-mark"><i class="fa-solid fa-bolt" style="color:var(--purple)"></i>OCTOPUS<span style="color:var(--cyan)">PRO</span></div>
-        <select class="display-box" id="midiOut" style="width:150px"></select>
+        <select class="display-box" id="midiOut" style="width:150px" title="USB MIDI output port"></select>
+        <button class="btn" id="btnConnect" style="color:var(--green);border-color:var(--green)" onclick="app.connectSelected()" title="Connect to the selected MIDI port"><i class="fa-solid fa-plug"></i>CONNECT</button>
         <div id="connBadge" class="conn-badge" style="color:#444;border-color:#1a1a26"><i class="fa-solid fa-circle" style="font-size:6px"></i>OFFLINE</div>
 
         <div class="header-sep"></div>
@@ -1455,7 +1456,7 @@
                 • <b>App playhead</b> — fixed wrap glitch on 1-step patterns and pattern loop snap (length=1 no longer flashes every beat).</p>
 
                 <p style="margin-top:10px"><b style="color:var(--cyan)">CONNECTION &amp; SYNC</b><br>
-                Select the Octopus MIDI output → App sends CMD_APP_SYNC_REQ → device echoes full state (params, 64-step grid, transport snapshot, playhead step). App is master for <b>parameter</b> editing; device keeps its live bank and transport when you reconnect. Heartbeat PING every ~800 ms keeps the OLED on "APP CONNECTED".<br>
+                Select the ★ Octopus MIDI port → click <b>CONNECT</b> (or auto-connect when detected) → App sends CMD_APP_SYNC_REQ → device echoes full state. Badge shows LINKING then ONLINE once firmware replies. Heartbeat PING every ~800 ms keeps the OLED on "APP CONNECTED".<br>
                 <b>Hardware while connected:</b> SCALE = play/stop · OC long = record-arm · encoder = BPM · encoder long = SAVE menu.<br>
                 <b>Playhead:</b> switch to the <b>SEQUENCER</b> tab while playing — cyan bar follows STEP_SYNC (BPM-timed glide; snaps only on page change or pattern wrap). Set <b>LEN</b> to 1 for a single-step loop without playhead flicker. ▶ / ■ / REC in the header mirror device state only (clicking them shows a hint, they do not start transport).<br>
                 <b>No inbound echo?</b> Close other OctopusApp tabs, hard-refresh (Ctrl+Shift+R), open MON with FILTER off — you must see ← lines when moving hardware controls.</p>
@@ -3116,8 +3117,58 @@
             _phForceRemeasure: false,
             _phGeo: null,
             _sxRxBuf: null, // reassemble split inbound SysEx (some USB stacks fragment frames)
+            _lastDeviceRxMs: 0,   // last 0x7C echo from firmware (link verify)
+            _linkGraceUntil: 0,   // ms — allow boot/sync before declaring dead link
+            _connOnline: false,   // true once device echo seen this session
+            _linkWarned: false,   // one-shot hint when no 0x7C echo after connect
 
-            // ── Init ─────────────────────────────────────────────────────────────────
+            // Match Octopus USB MIDI ports (Windows names vary wildly).
+            _isOctopusPortName(name) {
+                const n = (name || '').toLowerCase();
+                return n.includes('octopus') || n.includes('esp32') || n.includes('diodac') ||
+                    n.includes('pro s3') || n.includes('pro xl') || n.includes('303a');
+            },
+            _portLive(port) {
+                if (!port) return false;
+                const st = port.state || port.connection;
+                return st !== 'disconnected' && st !== 'closed';
+            },
+            async _openMidiPort(port) {
+                if (!port || typeof port.open !== 'function') return true;
+                if (port.connection === 'open') return true;
+                try {
+                    await port.open();
+                    return true;
+                } catch (e) {
+                    this.log('MIDI port open failed: ' + (e.message || e));
+                    return false;
+                }
+            },
+            async _openAllMidiPorts(access) {
+                if (!access) return;
+                const jobs = [];
+                for (const p of access.inputs.values()) jobs.push(this._openMidiPort(p));
+                for (const p of access.outputs.values()) jobs.push(this._openMidiPort(p));
+                await Promise.all(jobs);
+            },
+            _pickAutoOutput(access) {
+                const outs = [...access.outputs.values()].filter(o => this._portLive(o));
+                const named = outs.filter(o => this._isOctopusPortName(o.name));
+                if (named.length) {
+                    return named.find(o => /out/i.test(o.name) && !/in/i.test(o.name)) ||
+                        named.find(o => !/in/i.test(o.name)) || named[0];
+                }
+                return outs.length === 1 ? outs[0] : null;
+            },
+            _touchDeviceRx() {
+                this._lastDeviceRxMs = Date.now();
+                this._linkWarned = false;
+                if (!this._connOnline) {
+                    this._connOnline = true;
+                    this.updateConnBadge(true);
+                    this.log('Connected — adopting live device state (transport untouched).');
+                }
+            },
             async init() {
                 this.populateDropdowns();
                 this.buildKnobs('laser-show-knobs', KNOBS.laserShow, false);
@@ -3218,6 +3269,7 @@
             // Parse one complete device→App SysEx frame (manufacturer 0x7C).
             _parseDeviceSysex(data) {
                 if (!data || data.length < 7 || data[0] !== 0xF0 || data[1] !== 0x7C) return;
+                this._touchDeviceRx();
                 const sub = data[2];
                 if (sub === 0x02) {
                     const base = (data[3] === 0) ? CMD.H_WAVE : CMD.S_WAVE;
@@ -3293,14 +3345,12 @@
             },
             // Bind ALL MIDI inputs before any outbound sync — auto-connect used to call
             // onConnect() before handlers existed, dropping the initial echo burst.
-            _bindMidiInputs(access) {
+            async _bindMidiInputs(access) {
                 if (!access) return 0;
                 let n = 0;
                 for (const inp of access.inputs.values()) {
                     inp.onmidimessage = (e) => this._handleMidiIn(e);
-                    if (typeof inp.open === 'function' && inp.connection !== 'open') {
-                        inp.open().catch(() => {});
-                    }
+                    await this._openMidiPort(inp);
                     n++;
                 }
                 return n;
@@ -3309,86 +3359,118 @@
             // ── MIDI ─────────────────────────────────────────────────────────────────
             async setupMIDI() {
                 if (!navigator.requestMIDIAccess) {
-                    this.log('WebMIDI not available');
+                    this.log('WebMIDI not available — use Chrome/Edge over HTTPS');
                     return;
                 }
                 try {
                     const access = await navigator.requestMIDIAccess({
                         sysex: true
                     });
+                    await this._openAllMidiPorts(access);
                     this._midiAccess = access; // [RECONNECT] kept so the watchdog can re-scan by name
-                    this._scanMidi = () => {
+                    this._scanMidi = async () => {
                         const sel = document.getElementById('midiOut');
                         if (sel) {
                             // First entry doubles as the explicit DISCONNECT action.
                             sel.innerHTML = '<option value="">\u23CF Disconnect</option>';
                         }
                         // RX before TX — inbound handlers must exist before APP_SYNC_REQ.
-                        const inN = this._bindMidiInputs(access);
-                        if (inN === 0) this.log('No MIDI inputs found — close other Octopus tabs and replug USB');
+                        const inN = await this._bindMidiInputs(access);
                         let autoOut = null;
-                        for (const out of access.outputs.values()) {
-                            if (sel) sel.appendChild(new Option(out.name, out.id));
-                            if (!this._userDisconnected &&
-                                (out.name.toLowerCase().includes('octopus') || out.name.toLowerCase().includes('esp32'))) {
+                        const outList = [...access.outputs.values()];
+                        for (const out of outList) {
+                            if (sel) {
+                                const tag = this._isOctopusPortName(out.name) ? '\u2605 ' : '';
+                                sel.appendChild(new Option(tag + out.name, out.id));
+                            }
+                            if (!autoOut && !this._userDisconnected && this._isOctopusPortName(out.name) &&
+                                this._portLive(out)) {
                                 autoOut = out;
                             } else if (this.midiOut && out.id === this.midiOut.id && sel) {
                                 sel.value = out.id;
                             }
                         }
+                        if (!autoOut && !this._userDisconnected)
+                            autoOut = this._pickAutoOutput(access);
                         if (autoOut) {
                             const fresh = !this.midiOut || this.midiOut.id !== autoOut.id;
                             this.midiOut = autoOut;
                             if (sel) sel.value = autoOut.id;
-                            if (fresh) this.onConnect();
-                            else this._bindMidiInputs(access);
+                            if (fresh) await this.onConnect();
+                            else await this._bindMidiInputs(access);
+                        } else if (outList.length) {
+                            this.log(`MIDI: ${outList.length} out / ${access.inputs.size} in — select port + CONNECT`);
+                        } else {
+                            this.log('No MIDI outputs — plug in Octopus via USB and allow Web MIDI');
                         }
+                        if (inN === 0 && outList.length)
+                            this.log('Warning: no MIDI inputs — close other tabs using this device');
                     };
-                    this._scanMidi();
-                    access.onstatechange = () => this._scanMidi();
+                    await this._scanMidi();
+                    access.onstatechange = () => { this._scanMidi(); };
                     const sel = document.getElementById('midiOut');
                     if (sel) sel.onchange = e => {
                         if (!e.target.value) { this.disconnect(); return; } // ⏏ Disconnect
                         this._userDisconnected = false;
                         this.midiOut = access.outputs.get(e.target.value);
-                        if (this.midiOut) this.onConnect();
+                        if (this.midiOut) this.connectSelected();
                     };
                 } catch (e) {
                     this.log('MIDI access denied: ' + e.message);
                 }
             },
 
+            async connectSelected() {
+                const sel = document.getElementById('midiOut');
+                if (!this._midiAccess || !sel || !sel.value) {
+                    this.log('Pick the Octopus MIDI port from the list first');
+                    return;
+                }
+                this._userDisconnected = false;
+                this.midiOut = this._midiAccess.outputs.get(sel.value);
+                if (!this.midiOut) {
+                    this.log('MIDI port not found — try replugging USB');
+                    return;
+                }
+                await this.onConnect();
+            },
+
             // Device reboots after FULL/SETTINGS SAVE and all scoped RESETs.  The USB
             // port goes stale; drop the link and poll until the device re-enumerates.
             _prepareForDeviceReboot() {
                 this.stopHeartbeat();
+                this._connOnline = false;
                 this.updateConnBadge(false);
                 this.midiOut = null;
                 const sel = document.getElementById('midiOut');
                 if (sel) sel.value = '';
                 if (!this._userDisconnected) this._startReconnectPoll();
             },
-            onConnect() {
+            async onConnect() {
                 // [SYNC] NON-DESTRUCTIVE connect — never touches transport or bank.
-                // The device owns and KEEPS its live state (it may be mid-performance,
-                // e.g. after a temporary ⏏ Disconnect). We only request a full state
-                // echo and ADOPT whatever the device reports: bank, transport (play/
-                // rec), BPM, the full grid, and the running playhead (STEP_SYNC). So a
-                // disconnect→reconnect never stops or reshuffles a playing pattern —
-                // it just re-attaches the UI. (Previously this force-pinned Bank A,
-                // which yanked a mid-performance device off its current bank.)
-                this._stopReconnectPoll(); // [RECONNECT] we're live again — cancel any watchdog
+                this._stopReconnectPoll();
                 this._loadSlotMeta();
                 this._sxRxBuf = null;
+                this._connOnline = false;
+                this._linkWarned = false;
+                this._lastDeviceRxMs = 0;
+                this._linkGraceUntil = Date.now() + 4000;
+                this.updateConnBadge('linking');
+                if (this.midiOut) await this._openMidiPort(this.midiOut);
                 if (this._midiAccess) {
-                    const inN = this._bindMidiInputs(this._midiAccess);
+                    await this._openAllMidiPorts(this._midiAccess);
+                    const inN = await this._bindMidiInputs(this._midiAccess);
                     if (inN === 0)
-                        this.log('Warning: no MIDI input ports — hardware echoes unavailable (close other tabs using this device)');
+                        this.log('Warning: no MIDI inputs — pick ★ Octopus port + CONNECT');
+                }
+                if (!this.midiOut || !this._portLive(this.midiOut)) {
+                    this.updateConnBadge(false);
+                    this.log('MIDI output unavailable — replug USB or pick another port');
+                    return;
                 }
                 this.txSysex(CMD.APP_SYNC_REQ, 0);
-                this.updateConnBadge(true);
-                this.startHeartbeat(); // keep the ESP "connected" while this tab is open
-                this.log('Connected — adopting live device state (transport untouched).');
+                this.startHeartbeat();
+                this.log('Connecting to ' + (this.midiOut.name || 'MIDI') + '…');
             },
             // Periodic heartbeat: the firmware marks the link "connected" only while it
             // keeps receiving App sysex (CMD.PING refreshes lastWebSysexMs).  Sending a
@@ -3438,16 +3520,27 @@
                 this._audioKeepAlive();
                 this.txSysex(CMD.PING, 0); // immediate first beat
                 const beat = () => {
-                    // If the device vanished (unplug / sleep / reboot-after-reset), drop the
-                    // link cleanly — but keep a watchdog polling so it auto-reconnects when the
-                    // device re-enumerates, even if `onstatechange` doesn't fire reliably after
-                    // a fast reboot (issue #1: previously this needed a manual page reload).
-                    if (!this.midiOut || this.midiOut.state === 'disconnected') {
+                    if (!this.midiOut || !this._portLive(this.midiOut)) {
                         this.stopHeartbeat();
+                        this._connOnline = false;
                         this.updateConnBadge(false);
                         this.log('Device disconnected — watching for reconnect…');
                         if (!this._userDisconnected) this._startReconnectPoll();
                         return;
+                    }
+                    const now = Date.now();
+                    if (now > this._linkGraceUntil) {
+                        const stale = !this._lastDeviceRxMs || (now - this._lastDeviceRxMs) > 4500;
+                        if (stale) {
+                            if (this._connOnline) {
+                                this._connOnline = false;
+                                this.updateConnBadge(false);
+                            }
+                            if (!this._linkWarned) {
+                                this._linkWarned = true;
+                                this.log('No device echo — select ★ Octopus port + CONNECT (or reflash firmware)');
+                            }
+                        }
                     }
                     this.txSysex(CMD.PING, 0);
                 };
@@ -3479,21 +3572,17 @@
             // when the user deliberately disconnected.
             _startReconnectPoll() {
                 if (this._reconnectTimer) return;
-                this._reconnectTimer = setInterval(() => {
+                this._reconnectTimer = setInterval(async () => {
                     if (this._userDisconnected || !this._midiAccess) { this._stopReconnectPoll(); return; }
-                    for (const out of this._midiAccess.outputs.values()) {
-                        const nm = (out.name || '').toLowerCase();
-                        if ((nm.includes('octopus') || nm.includes('esp32')) && out.state !== 'disconnected') {
-                            this._stopReconnectPoll();
-                            if (this._scanMidi) this._scanMidi(); /* re-bind RX after USB re-enumerate */
-                            this.midiOut = out;
-                            const sel = document.getElementById('midiOut');
-                            if (sel) sel.value = out.id;
-                            this.log('Device returned — reconnecting…');
-                            this.onConnect(); // re-binds inputs via scan/onstatechange; restarts heartbeat
-                            return;
-                        }
-                    }
+                    const candidate = this._pickAutoOutput(this._midiAccess);
+                    if (!candidate) return;
+                    this._stopReconnectPoll();
+                    if (this._scanMidi) await this._scanMidi();
+                    this.midiOut = candidate;
+                    const sel = document.getElementById('midiOut');
+                    if (sel) sel.value = candidate.id;
+                    this.log('Device returned — reconnecting…');
+                    await this.onConnect();
                 }, 1000);
             },
             _stopReconnectPoll() {
@@ -3505,18 +3594,23 @@
             // Sticky (_userDisconnected) so a device rescan won't auto-reconnect.
             disconnect() {
                 this._userDisconnected = true;
-                this._stopReconnectPoll(); // [RECONNECT] deliberate disconnect — don't auto-reconnect
+                this._stopReconnectPoll();
                 this.stopHeartbeat();
+                this._connOnline = false;
                 this.midiOut = null;
                 this.updateConnBadge(false);
                 const sel = document.getElementById('midiOut');
                 if (sel) sel.value = '';
-                this.log('Disconnected — session kept. Pick the device to reconnect.');
+                this.log('Disconnected — session kept. Pick the device + CONNECT to reconnect.');
             },
             updateConnBadge(connected) {
                 const b = document.getElementById('connBadge');
                 if (!b) return;
-                if (connected) {
+                if (connected === 'linking') {
+                    b.style.color = 'var(--orange)';
+                    b.style.borderColor = 'var(--orange)';
+                    b.innerHTML = '<i class="fa-solid fa-circle" style="font-size:6px"></i>LINKING';
+                } else if (connected) {
                     b.style.color = 'var(--green)';
                     b.style.borderColor = 'var(--green)';
                     b.innerHTML = '<i class="fa-solid fa-circle" style="font-size:6px"></i>ONLINE';
@@ -3537,8 +3631,13 @@
                 const v = Math.max(0, Math.min(16383, Math.floor(+val)));
                 const hi = (v >> 7) & 0x7F,
                     lo = v & 0x7F;
-                if (cmd < 128) this.midiOut.send([0xF0, 0x7D, 0x00, cmd & 0x7F, hi, lo, 0xF7]);
-                else this.midiOut.send([0xF0, 0x7D, 0x01, (cmd - 128) & 0x7F, hi, lo, 0xF7]);
+                try {
+                    if (cmd < 128) this.midiOut.send([0xF0, 0x7D, 0x00, cmd & 0x7F, hi, lo, 0xF7]);
+                    else this.midiOut.send([0xF0, 0x7D, 0x01, (cmd - 128) & 0x7F, hi, lo, 0xF7]);
+                } catch (e) {
+                    this.log('MIDI send failed: ' + (e.message || e));
+                    return;
+                }
                 this.monSysex('→', cmd, v); // [MON-FIX] trace outbound frame
             },
             /* [WS4] One cmd may map to multiple knob widgets (e.g. AUX on drum row +
