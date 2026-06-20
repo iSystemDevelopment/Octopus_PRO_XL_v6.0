@@ -125,7 +125,7 @@ static inline void IRAM_ATTR fire_tuned_drum(int ch, float velocity) {
 
   /* [FIX-2] Snapshot 4 drum params atomically — prevents torn reads if the App
    * or encoder writes drum params concurrently with the step engine trigger.  */
-  uint16_t drumSnap[4];
+  uint16_t drumSnap[4] = {};  /* [FIX-INIT] zero before critical section */
   {
     portENTER_CRITICAL(&patchMux);
     const int base = ch << 2;
@@ -295,8 +295,12 @@ static inline bool IRAM_ATTR drum_fill_buf(int16_t* out_buf, size_t frames) {
           const int32_t body = drum_wave(d->body_wave, d->phase1); /* [FIX-3] */
           d->filter_low += ((body - d->filter_low) * (int32_t)d->tone_val) >> 15;
           d->filter_low = std::min(DRUM_SAT_LIMIT, std::max(-DRUM_SAT_LIMIT, d->filter_low));
+          /* [FIX-CLICK] Cast (180u - phase3) to int32 before multiplying by the
+           * signed fast_noise() result.  Without the cast C++ promotes the
+           * int32 noise value to uint32, turning any negative noise sample into
+           * a huge positive, producing a distorted click on ~50% of samples.  */
           const int32_t click = (d->phase3 < 180u)
-              ? (int32_t)((180u - d->phase3) * (fast_noise() >> 5)) : 0;
+              ? ((int32_t)(180u - d->phase3) * (fast_noise() >> 5)) : 0;
           /* [gbox BUG-1] |click| can reach ~91980; click * noise_mix (≤32766)
            * exceeds int32 (~3.0e9). Widen only this multiply to int64.        */
           out = drum_clip(((d->filter_low * (int32_t)(32768 - d->noise_mix)) >> 15) +

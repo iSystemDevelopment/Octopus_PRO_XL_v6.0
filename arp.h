@@ -185,7 +185,9 @@ struct Engine {
     }
     case RANDOM: {
       rng = rng * 1664525u + 1013904223u;
-      idx = (int)(rng % (uint32_t)count);
+      /* [FIX-RANDOM] Defensive: guard against count==0 reaching the modulo even
+       * if the caller's early-exit is bypassed by a compiler edge case.         */
+      idx = (int)(rng % (uint32_t)std::max(1, (int)count));
       break;
     }
     case AS_PLAYED:

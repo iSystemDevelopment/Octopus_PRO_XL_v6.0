@@ -381,7 +381,7 @@ static inline void IRAM_ATTR laserForString(int idx) {
     /* ── HUE ── */
     float hue = laserBaseHue.load(std::memory_order_relaxed);
     if (midiHueControl.load(std::memory_order_relaxed)) {
-      const int   note     = (int)g_showBeamNote[bm];
+      const int   note     = (int)g_showBeamNote[bm].load(std::memory_order_relaxed);
       const float noteNorm = std::min(1.0f, std::max(0.0f,
                                (float)(note - 36) * (1.0f / 48.0f))); /* C2..C6 */
       hue += noteNorm;             /* note sweeps the wheel; base hue rotates it */

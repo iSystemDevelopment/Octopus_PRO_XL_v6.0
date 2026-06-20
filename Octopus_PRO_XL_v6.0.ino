@@ -183,6 +183,7 @@ void setup() {
    * loaded (or factory) blob; calling initDrumParameters() now would overwrite
    * those persisted values with placeholders, wiping saved drum tuning on every
    * boot.  The reset paths inside settings_load() still init-then-sync.        */
+  initShowBeamNotes(); /* [FIX-RACE] zero-safe init of atomic g_showBeamNote[] */
 
   /* PHASE 5 — Hardware I/O */
   Serial.print(F("  [5] SPI bus ... "));

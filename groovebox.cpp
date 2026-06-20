@@ -176,7 +176,7 @@ static void seqArpTick(uint32_t tick, bool laser_show) {
   s_seqArp.sounding_midi = midi;
   s_seqArp.sounding_row  = row;
   if (laser_show) {
-    g_showBeamNote[row] = midi;
+    g_showBeamNote[row].store(midi, std::memory_order_relaxed);
     harpHueNoteOn(row);
   }
 }
@@ -644,8 +644,12 @@ void seqUI_selectBank(int bank) {
 
 void seqUI_toggleStep() {
   const int page = seqUI_page.load(std::memory_order_relaxed) & 1;
-  const int row  = seqUI_row.load(std::memory_order_relaxed);
-  const int col  = seqUI_col.load(std::memory_order_relaxed);
+  /* [FIX-OOB] Clamp before cast: an out-of-range atomic value (corrupt encoder
+   * ISR) would silently wrap to uint8 and index hwSeqData[bank][chain][18+],
+   * overwriting adjacent memory.  toggleHardwareGridStep bounds-checks too, but
+   * an unsigned-wrap before that call bypasses it.                              */
+  const int row = std::max(0, std::min(7,  seqUI_row.load(std::memory_order_relaxed)));
+  const int col = std::max(0, std::min(15, seqUI_col.load(std::memory_order_relaxed)));
   const int hwRow = (page == 0) ? row : (row + 8);
   toggleHardwareGridStep((uint8_t)hwRow, (uint8_t)col);
 }
@@ -887,6 +891,11 @@ void IRAM_ATTR sequencer_render_block(uint32_t frames) {
         if (mc == CMD_TRANSPOSE && mv > 24u) continue;
         if ((mc == CMD_HW_H_OCT || mc == CMD_HW_S_OCT) && mv > 8u) continue;
         if (mc == CMD_HW_S_LEN && (mv < 1u || mv > 64u)) continue;
+        /* [FIX-PLOCK] Validate discrete-layout bank and chain cmds so a corrupt
+         * automation entry cannot pass an out-of-range value to applySeqBank /
+         * applySeqChain, which index into hwSeqData[bank][chain].              */
+        if (mc == CMD_BANK && mv > 15u) continue;
+        if (mc == CMD_SEQ_CHAIN && mv > 3u) continue;
         motCmds[l]   = mc;
         motVals[l]   = mv;
         motActive[l] = true;
@@ -946,7 +955,7 @@ void IRAM_ATTR sequencer_render_block(uint32_t frames) {
         newMelodyMask |= (uint16_t)(1u << row);
 
         if (laserShowMode.load(std::memory_order_relaxed)) {
-          g_showBeamNote[row] = (int8_t)midiNote;
+          g_showBeamNote[row].store((int8_t)midiNote, std::memory_order_relaxed);
           harpHueNoteOn(row);
         }
       }

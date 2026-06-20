@@ -1059,8 +1059,16 @@ inline HueEnvelopeState stringHueEnv[MAX_STRINGS];
 /* [LASER-SHOW] Per-beam MIDI note that drives the beam's hue while LASER SHOW is
  * active.  Written by the sequencer melody trigger (audio core) on note-on and
  * LATCHED through the note's release so the colour stays put while the hue ADSR
- * fades — read lock-free by the laser task (single-byte cells, no torn reads). */
-inline int8_t g_showBeamNote[MAX_STRINGS] = { 60, 60, 60, 60, 60, 60, 60, 60 };
+ * fades — read lock-free by the laser task.
+ * [FIX-RACE] Promoted to std::atomic<int8_t>: written by Core-0 audio task,
+ * read by Core-1 laser task with no explicit lock.  Use relaxed ordering —
+ * atomic guarantees no torn byte on ESP32.  initShowBeamNotes() replaces the
+ * removed brace-initialiser (C++17 atomic arrays cannot be brace-initialised). */
+inline std::atomic<int8_t> g_showBeamNote[MAX_STRINGS];
+static inline void initShowBeamNotes() {
+  for (int i = 0; i < MAX_STRINGS; ++i)
+    g_showBeamNote[i].store(60, std::memory_order_relaxed);
+}
 
 /* ═══════════════════════════════════════════════════════════════════════════
  * SECTION 16 — DISPLAY & TELEMETRY STATE
