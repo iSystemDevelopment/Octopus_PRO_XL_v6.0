@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <!--
-  OctopusApp v6.0.00 — Octopus PRO XL Web MIDI Console
+  OctopusApp v6.0.01 — Octopus PRO XL Web MIDI Console
   © 2026 DIODAC ELECTRONICS / iSystem. All Rights Reserved.
   PROPRIETARY AND CONFIDENTIAL. Unauthorized use prohibited.
 -->
@@ -9,7 +9,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>OctopusApp v6.0.00 — OCTOPUS PRO XL</title>
+    <title>OctopusApp v6.0.01 — OCTOPUS PRO XL</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
@@ -1422,7 +1422,7 @@
                 <button class="btn active-red" onclick="app.toggleHelp()">CLOSE</button>
             </div>
             <div style="font-size:10px;color:#aaa;overflow-y:auto;flex:1;line-height:1.65;padding-right:4px">
-                <p style="color:#fff;font-size:9px;border-bottom:1px solid #1c1c2e;padding-bottom:4px;margin-bottom:8px;font-family:'Orbitron',sans-serif">FIRMWARE 6.0.00 · OCTOPUSAPP v6.0.00</p>
+                <p style="color:#fff;font-size:9px;border-bottom:1px solid #1c1c2e;padding-bottom:4px;margin-bottom:8px;font-family:'Orbitron',sans-serif">FIRMWARE 6.0.01 · OCTOPUSAPP v6.0.01</p>
                 <p style="margin-top:0;font-size:9px;margin-bottom:10px">
                     <a href="https://octopus-info.isystem.app" target="_blank" rel="noopener" style="color:var(--purple)">Product site</a>
                     · <a href="https://octopus.isystem.app" style="color:var(--cyan)">octopus.isystem.app</a>
@@ -1449,13 +1449,15 @@
                 • <b>App telemetry</b> — CPU load in header; SYSEX MON panel (FILTER hides PING / STEP / CPU streams).<br>
                 • <b>USB-only MIDI</b> — DIN MIDI removed; v6.0 SysEx protocol (manufacturer 0x7C device→App, 0x7D App→device).</p>
 
-                <p style="margin-top:10px"><b style="color:var(--pink)">PLANNED — v6.0.01</b> (next upgrade — see <a href="https://github.com/iSystemDevelopment/Octopus_PRO_XL_v6.0/blob/main/CHANGELOG.md#601--2026-06-20-planned" target="_blank" rel="noopener" style="color:var(--pink)">CHANGELOG</a>)<br>
-                • FX / click / stuck-note hardening · seq/harp arp pitch-row sync · App playhead wrap fixes.</p>
+                <p style="margin-top:10px"><b style="color:var(--green)">WHAT'S NEW IN v6.0.01</b><br>
+                • <b>PLL playhead mirror</b> — smooth 60 fps glide between steps; hardware anchors, App interpolates. No more USB-jitter jumps.<br>
+                • <b>Connect-while-playing fix</b> — playhead no longer flashes to step 0 when the App connects mid-sequence.<br>
+                • <b>Bug fixes</b> — data race on beam-note array (atomic), kick click integer overflow, arp divide-by-zero guard, seqUI OOB row/col clamp, P-lock bank/chain range checks.</p>
 
                 <p style="margin-top:10px"><b style="color:var(--cyan)">CONNECTION &amp; SYNC</b><br>
                 Select the ★ Octopus MIDI port → click <b>CONNECT</b> (or auto-connect when detected) → App sends CMD_APP_SYNC_REQ → device echoes full state. Badge shows LINKING then ONLINE once firmware replies. Heartbeat PING every ~800 ms keeps the OLED on "APP CONNECTED".<br>
                 <b>Hardware while connected:</b> SCALE = play/stop · OC long = record-arm · encoder = BPM · encoder long = SAVE menu.<br>
-                <b>Playhead:</b> switch to the <b>SEQUENCER</b> tab while playing — cyan bar follows STEP_SYNC (BPM-timed glide; snaps only on page change or pattern wrap). Set <b>LEN</b> to 1 for a single-step loop without playhead flicker. ▶ / ■ / REC in the header mirror device state only (clicking them shows a hint, they do not start transport).<br>
+                <b>Playhead:</b> switch to the <b>SEQUENCER</b> tab while playing — cyan bar glides smoothly at 60 fps via a PLL slaved to STEP_SYNC (hardware anchors every step, App interpolates sub-step position). Snaps hard only on page change or pattern wrap. BPM range 40–240. ▶ / ■ / REC mirror device state only (clicking shows a hint). ▶<br>
                 <b>No inbound echo?</b> Close other OctopusApp tabs, hard-refresh (Ctrl+Shift+R), open MON with FILTER off — you must see ← lines when moving hardware controls.</p>
 
                 <p style="margin-top:10px"><b style="color:var(--orange)">DRUM KITS</b><br>
@@ -3113,6 +3115,9 @@
             _phPendingStep: -1,
             _phForceRemeasure: false,
             _phGeo: null,
+            // [v6.0.01 PLL] phase-locked local tick clock — hardware anchors, App interpolates
+            _pllAnchorStep: -1,  // hardware step received on last STEP_SYNC
+            _pllAnchorTime: -1,  // performance.now() at that STEP_SYNC
             _sxRxBuf: null, // reassemble split inbound SysEx (some USB stacks fragment frames)
             _lastDeviceRxMs: 0,   // last 0x7C echo from firmware (link verify)
             _linkGraceUntil: 0,   // ms — allow boot/sync before declaring dead link
@@ -3197,7 +3202,7 @@
                         }
                     }
                 });
-                this.log('OctopusApp v6.0.00 · ' + location.origin);
+                this.log('OctopusApp v6.0.01 · ' + location.origin);
             },
 
             // Long dropdown names: a closed <select> ellipsizes overflowing text, so
@@ -3943,7 +3948,13 @@
                     if (cmd === CMD.STEP_SYNC) {
                         const s = v14 | 0;
                         this.visStep = s;
-                        if (this.isPlaying) this._phPendingStep = s;
+                        if (this.isPlaying) {
+                            // [v6.0.01 PLL] Re-anchor the local tick clock on every hardware step.
+                            // _pllPositionTick() interpolates position between anchors in rAF.
+                            this._pllAnchorStep = s;
+                            this._pllAnchorTime = performance.now();
+                            this._phPendingStep = s; // page-follow + LED still driven by events
+                        }
                     }
                     if (cmd === CMD.CPU_LOAD) {
                         // [v6.0] Live audio-core load (raw 0-100 %); colour-shift warns near clip.
@@ -3997,6 +4008,8 @@
                 if (!playing) {
                     this.visStep = 0;
                     this._playAbsStep = -1;
+                    this._pllAnchorStep = -1;  // [v6.0.01 PLL] stop the tick clock
+                    this._pllAnchorTime = -1;
                     this._hidePlayhead();
                 } else if (!wasPlaying) {
                     this._playCol = -1;
@@ -4004,7 +4017,13 @@
                     this._playAbsStep = -1;
                     this._playLast = -1;
                     this._phForceRemeasure = true;
-                    this._phPendingStep = 0;
+                    this._pllAnchorStep = -1;  // [v6.0.01 PLL] wait for first STEP_SYNC
+                    this._pllAnchorTime = -1;
+                    // [v6.0.01 BUG-FIX] Do NOT pre-set _phPendingStep=0 here.
+                    // On mid-play connect the device sends STEP_SYNC(currentStep) immediately
+                    // after the transport echo; forcing 0 causes a visible flash to the wrong
+                    // column before the correct step arrives.  On fresh seq_start() the
+                    // firmware pushes STEP_SYNC(0) within ms — the delay is imperceptible.
                 }
             },
             play() {
@@ -4698,17 +4717,19 @@
                 const snapped = pageWrap || patternWrap || this._playCol < 0
                     || stepDelta > 1 || stepDelta < 0;
 
-                const bpm = Math.max(20, this.bpm || 120);
-                const stepMs = 60000 / bpm / 4;
-                const glideMs = Math.max(40, Math.min(stepMs * 0.92, 220));
-
+                // [v6.0.01 PLL] _pllPositionTick() owns transform; advancePlayhead only
+                // sets size + opacity and resets the PLL anchor on hard snaps so the
+                // tick clock starts from the correct column immediately.
                 ph.style.width = geo.width + 'px';
                 ph.style.height = geo.height + 'px';
-                ph.style.transition = snapped
-                    ? 'none'
-                    : ('transform ' + glideMs + 'ms linear, opacity 80ms linear');
-                ph.style.transform = 'translate3d(' + (geo.x0 + col * geo.pitch) + 'px,0,0)';
+                ph.style.transition = 'opacity 80ms linear'; // no transform transition — PLL is smooth
                 ph.style.opacity = '1';
+                if (snapped) {
+                    // Force the tick clock to snap: set anchor time to "now - 0 ms" so
+                    // _pllPositionTick computes frac=0 and positions exactly at this column.
+                    this._pllAnchorStep = s;
+                    this._pllAnchorTime = performance.now();
+                }
                 this._playCol = col;
                 this._playPage = page;
                 this._playAbsStep = s;
@@ -4732,6 +4753,37 @@
                 this._playLast = -1;
                 if (this._playheadEl) this._playheadEl.style.opacity = '0';
                 for (let i = 0; i < 4; i++) document.getElementById('led-' + i) ?.classList.remove('active');
+            },
+
+            // [v6.0.01 PLL] Sub-step playhead interpolation — called every rAF frame.
+            // Hardware STEP_SYNC sets _pllAnchorStep + _pllAnchorTime; we extrapolate
+            // the fractional column using performance.now() and the current BPM stepMs.
+            // This decouples smooth visual motion from USB packet timing so the playhead
+            // glides continuously at 60 fps regardless of USB batching or jitter.
+            _pllPositionTick() {
+                if (!this.isPlaying || this._pllAnchorStep < 0) return;
+                const ph = this._playheadEl;
+                if (!ph || ph.style.opacity === '0') return;
+                const geo = this._phGeo;
+                if (!geo) return;
+
+                const now = performance.now();
+                const bpm = Math.max(40, this.bpm || 120);
+                const stepMs = 60000 / bpm / 4;   // 16th-note duration in ms (40–240 BPM)
+                const len = Math.max(1, this.seqLen | 0);
+
+                // Fractional steps elapsed since last hardware anchor.
+                // Cap at 0.98 so we never visually jump past the next step before its
+                // STEP_SYNC arrives (USB is always faster than one full step interval).
+                const frac = Math.min(0.98, (now - this._pllAnchorTime) / stepMs);
+
+                // Absolute step position (fractional), wrapped to pattern length.
+                const absF = (this._pllAnchorStep + frac);
+                const col  = (this._pllAnchorStep & 15);          // integer column on current page
+                const colF = Math.min(15, col + frac);            // sub-column — stop at page edge
+
+                const x = geo.x0 + colF * geo.pitch;
+                ph.style.transform = 'translate3d(' + x.toFixed(1) + 'px, 0, 0)';
             },
 
             // ── Build sequencer grid ──────────────────────────────────────────────────
@@ -5184,10 +5236,11 @@
                     if (this._phPendingStep >= 0) {
                         const step = this._phPendingStep;
                         this._phPendingStep = -1;
-                        this.advancePlayhead(step);
+                        this.advancePlayhead(step); // page-follow, LED, geo, snap detection
                     } else if (this._phForceRemeasure) {
                         this.advancePlayhead(this.visStep);
                     }
+                    this._pllPositionTick(); // [v6.0.01] sub-step glide — runs every rAF frame
                 }
                 const mixerOn = document.getElementById('view-mixer')?.classList.contains('active');
                 const l = document.getElementById('vu-left'),
