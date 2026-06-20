@@ -11,6 +11,79 @@ then implement clean — no scattered visions. Edit freely; mark items as you de
 - USB-MIDI SysEx protocol: `0x7C` device→app, `0x7D` app→device. Command IDs in
   `sysex.h`; mirrored in `OctopusApp.html` `CMD{}` map. Next free ID = **193**.
 
+---
+
+## Active upgrade anchor — **v6.0.01**
+
+**Production baseline today:** firmware + OctopusApp **6.0.00** (stable; field-tested rollback).
+
+**Next release target:** **6.0.01** — **all new TODO items added after this anchor belong to v6.0.01** and ship together unless explicitly marked otherwise. Do not bump `SYSTEM_FW_VERSION`, `SETTINGS_VERSION`, or App title/help strings until the 6.0.01 bundle is tested and flashed.
+
+Cross-reference: [CHANGELOG.md §6.0.01 (planned)](./CHANGELOG.md#601--2026-06-20-planned) · [README.md](./README.md) (stable 6.0.00 note).
+
+### TODO — v6.0.01: App playhead mirror (PLL slaved tick clock)
+
+**Problem (field test).** The hardware OLED **16-box playhead** (`DRAW_STEP_BARGRAPH` in
+`display.cpp`) is sample-locked to the groovebox clock and is visually the most
+accurate indicator — **master / valid**. The OctopusApp playhead is a **read-only
+mirror** but today can feel jumpy, drift, or glitch when the USB/Web MIDI link is
+busy. Users still expect **smooth** mirror motion even though transport and step
+timing remain hardware-owned.
+
+**Architecture (agreed).**
+
+| Role | Owner |
+|------|--------|
+| Step clock, note triggers, OLED bar | **Hardware** (`seqCurrentStep` in audio task) |
+| Cyan grid playhead in browser | **App** — visual mirror only, never the sequencer |
+
+The App must **not** run an independent BPM sequencer or rely on heavy wrap/snap
+heuristics. Instead: **hardware ticks, web interpolates between them** (PLL).
+
+**Fix — phase-locked local `tick_clock()` (App-only MVP).**
+
+1. **Anchor on hardware** (minimal SysEx — already in 6.0.00):
+   - `CMD_STEP_SYNC` (105) each step change → store `{ anchorStep, anchorTime }`
+   - `CMD_BPM` + transport (`CMD_TRANSPORT` play/stop/rec) → start/stop mirror;
+     `stepMs = 60000 / bpm / 4` (16th notes)
+   - `CMD_HW_S_LEN` / bank → wrap via math: `visualStep % len`, page = `step >> 4`
+
+2. **One `tick_clock()` in rAF** while `isPlaying`:
+   - `visualStep = anchorStep + (performance.now() - anchorTime) / stepMs`
+   - Map `visualStep` → column (0–15) + grid page P1–P4
+   - Position `#seq-playhead` via `transform: translateX(col * pitch)` — detached
+     from grid DOM rebuilds (page follow repaints cells, not the overlay element)
+
+3. **Re-anchor on each `STEP_SYNC`**:
+   - Small drift (e.g. &lt;25 ms): update anchor quietly
+   - Large drift / missed tick / step jump: hard snap to hardware step
+   - STOP or link loss: hide playhead, stop clock
+
+4. **Retire / simplify** in `OctopusApp.html`:
+   - CSS `transition` glide as the **primary** clock (optional cosmetic only)
+   - `_phPendingStep`-only drive when PLL clock is running
+   - LEN=1 / pattern-wrap / `stepDelta > 1` edge cases → single modulo on
+     `visualStep` instead of special-case handlers
+
+5. **Optional firmware (6.0.01+ if PLL alone is not enough):**
+   - Sub-step phase 0…1 in STEP_SYNC (or low-rate echo) for in-step glide when
+     USB batches messages. **Not required for MVP** if re-anchor every step suffices.
+
+6. **Acceptance tests:**
+   - OLED 16-box bar and App cyan bar on same step at 60–180 BPM; LEN 16/32/64
+   - SEQUENCER tab + MON: regular `← STEP_SYNC` while badge ONLINE
+   - LEN=1 loop: no flicker / false wrap
+   - P1–P4 page follow: overlay survives grid repaint
+   - Mid-play disconnect: playhead stops; reconnect + PLAY: first STEP_SYNC anchors
+
+**Files:** `OctopusApp.html` (primary); confirm `groovebox.cpp` / `midi.cpp` never
+dedupe `STEP_SYNC`; note mirror model in `code_info.h`.
+
+**Status:** 📋 **TODO — v6.0.01** (supersedes partial Workstream 7 §7.4 glide work;
+see also CHANGELOG 6.0.01 playhead + FX/harp items).
+
+---
+
 ## Product documentation & headers (v6.0.00) ✅
 
 - `octopus_web.html` — full v6.0 product page (USB-only, ARP, fog reject, transport model, 190 SysEx cmds).
@@ -680,6 +753,10 @@ engine carries ~16× of 8-voice headroom (the `>>19` per-voice scale in
 
 ## Workstream 7 — Firmware↔App SYNC, transport & playhead 1:1  (GAP RESEARCH)
 
+> **v6.0.01:** Playhead mirror rework is anchored above — **PLL slaved `tick_clock()`**
+> replaces STEP_SYNC-only + CSS-glide as primary motion. Items 7.2–7.5 still apply;
+> item 7.4 implementation plan is superseded by the v6.0.01 TODO.
+
 Goal: device and app perfectly mirror each other; transport buttons reflect
 hardware ops; BPM streams as both a value AND a smooth tick; app playhead glides
 on the clock, decoupled from the grid DOM. Findings below are grounded in code
@@ -769,10 +846,12 @@ on the clock, decoupled from the grid DOM. Findings below are grounded in code
   wins; today hardware forces the page).
 
 ### Ordered fix steps (do in this sequence)
+0. **v6.0.01 playhead PLL mirror** (see **Active upgrade anchor — v6.0.01** above):
+   `tick_clock()` + STEP_SYNC re-anchor; simplify wrap logic.
 1. **App transport SOT** (7.2): one setter drives play/stop/rec buttons from
    CMD.TRANSPORT; fix missing `btnStop` highlight.
-2. **App playhead glide** (7.4 + 7.3): detach overlay to transform + BPM-timed CSS
-   transition, phase-lock to STEP_SYNC; feed `bpm`/`seqLen`.
+2. **App playhead glide** (7.4 + 7.3): ~~detach overlay to transform + BPM-timed CSS
+   transition, phase-lock to STEP_SYNC~~ → **superseded by v6.0.01 PLL `tick_clock()`**.
 3. **Matrix save** (7.1): explicit ENC-LONG in matrix branch + SAVED toast + stay
    in grid; verify handshake while playing.
 4. **Full-sync coverage** (7.5 + 7.6): audit `sendFullStateSync()`; add missing
