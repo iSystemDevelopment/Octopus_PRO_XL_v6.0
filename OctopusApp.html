@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <!--
-  OctopusApp v6.0.00 — Octopus PRO XL Web MIDI Console
+  OctopusApp v6.0.01 — Octopus PRO XL Web MIDI Console
   © 2026 DIODAC ELECTRONICS / iSystem. All Rights Reserved.
   PROPRIETARY AND CONFIDENTIAL. Unauthorized use prohibited.
 -->
@@ -9,7 +9,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>OctopusApp v6.0.00 — OCTOPUS PRO XL</title>
+    <title>OctopusApp v6.0.01 — OCTOPUS PRO XL</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
@@ -1421,11 +1421,12 @@
                 <button class="btn active-red" onclick="app.toggleHelp()">CLOSE</button>
             </div>
             <div style="font-size:10px;color:#aaa;overflow-y:auto;flex:1;line-height:1.65;padding-right:4px">
-                <p style="color:#fff;font-size:9px;border-bottom:1px solid #1c1c2e;padding-bottom:4px;margin-bottom:8px;font-family:'Orbitron',sans-serif">FIRMWARE 6.0.00 · OCTOPUSAPP v6.0.00</p>
+                <p style="color:#fff;font-size:9px;border-bottom:1px solid #1c1c2e;padding-bottom:4px;margin-bottom:8px;font-family:'Orbitron',sans-serif">FIRMWARE 6.0.01 · OCTOPUSAPP v6.0.01</p>
                 <p style="margin-top:0;font-size:9px;margin-bottom:10px">
                     <a href="https://octopus-info.isystem.app" target="_blank" rel="noopener" style="color:var(--purple)">Product site</a>
                     · <a href="https://octopus.isystem.app" style="color:var(--cyan)">octopus.isystem.app</a>
-                    · <a href="https://github.com/iSystemApp/Octopus-PRO-XL-v6.0" target="_blank" rel="noopener" style="color:#aaa">GitHub</a>
+                    · <a href="https://github.com/iSystemDevelopment/Octopus_PRO_XL_v6.0/blob/main/README.md" target="_blank" rel="noopener" style="color:#aaa">GitHub</a>
+                    · <a href="https://www.facebook.com/diodac.co.uk/" target="_blank" rel="noopener" style="color:#1877f2">Facebook</a>
                 </p>
 
                 <p style="margin-top:0"><b style="color:var(--cyan)">OCTOPUS PRO XL — HARDWARE DSP SOUND MODULE</b><br>
@@ -1447,10 +1448,16 @@
                 • <b>App telemetry</b> — CPU load in header; SYSEX MON panel (FILTER hides PING / STEP / CPU streams).<br>
                 • <b>USB-only MIDI</b> — DIN MIDI removed; v6.0 SysEx protocol (manufacturer 0x7C device→App, 0x7D App→device).</p>
 
+                <p style="margin-top:10px"><b style="color:var(--pink)">WHAT'S NEW IN v6.0.01</b> (firmware + App)<br>
+                • <b>Audio / FX</b> — master EQ shelf law fix; aux reverb/delay tails drain correctly; softer mute (release not hard cut).<br>
+                • <b>Harp</b> — SOLO/POLY8 stuck-note reconcile; beam hysteresis; panic clears laser hold state; click-free legato retrigger.<br>
+                • <b>Seq arp patterns</b> — Up/Down/DnUp laser row sync; DnUp ping-pong corrected; AsIs preserves latch order.<br>
+                • <b>App playhead</b> — fixed wrap glitch on 1-step patterns and pattern loop snap (length=1 no longer flashes every beat).</p>
+
                 <p style="margin-top:10px"><b style="color:var(--cyan)">CONNECTION &amp; SYNC</b><br>
                 Select the Octopus MIDI output → App sends CMD_APP_SYNC_REQ → device echoes full state (params, 64-step grid, transport snapshot, playhead step). App is master for <b>parameter</b> editing; device keeps its live bank and transport when you reconnect. Heartbeat PING every ~800 ms keeps the OLED on "APP CONNECTED".<br>
                 <b>Hardware while connected:</b> SCALE = play/stop · OC long = record-arm · encoder = BPM · encoder long = SAVE menu.<br>
-                <b>Playhead:</b> switch to the <b>SEQUENCER</b> tab while playing — cyan bar follows STEP_SYNC. ▶ / ■ / REC in the header mirror device state only (clicking them shows a hint, they do not start transport).<br>
+                <b>Playhead:</b> switch to the <b>SEQUENCER</b> tab while playing — cyan bar follows STEP_SYNC (BPM-timed glide; snaps only on page change or pattern wrap). Set <b>LEN</b> to 1 for a single-step loop without playhead flicker. ▶ / ■ / REC in the header mirror device state only (clicking them shows a hint, they do not start transport).<br>
                 <b>No inbound echo?</b> Close other OctopusApp tabs, hard-refresh (Ctrl+Shift+R), open MON with FILTER off — you must see ← lines when moving hardware controls.</p>
 
                 <p style="margin-top:10px"><b style="color:var(--orange)">DRUM KITS</b><br>
@@ -1469,7 +1476,8 @@
 
                 <p style="margin-top:10px;color:#666;font-size:9px">
                     <a href="https://octopus-info.isystem.app" target="_blank" rel="noopener" style="color:var(--purple)">octopus-info.isystem.app</a> — product info &amp; specs<br>
-                    <a href="https://github.com/iSystemApp/Octopus-PRO-XL-v6.0" target="_blank" rel="noopener" style="color:#888">github.com/iSystemApp/Octopus-PRO-XL-v6.0</a> — firmware, manual, changelog
+                    <a href="https://github.com/iSystemDevelopment/Octopus_PRO_XL_v6.0" target="_blank" rel="noopener" style="color:#888">github.com/iSystemDevelopment/Octopus_PRO_XL_v6.0</a> — firmware, manual, changelog<br>
+                    <a href="https://www.facebook.com/diodac.co.uk/" target="_blank" rel="noopener" style="color:#1877f2">facebook.com/diodac.co.uk</a> — DIODAC news &amp; support
                 </p>
             </div>
         </div>
@@ -3141,7 +3149,7 @@
                         }
                     }
                 });
-                this.log('OctopusApp v6.0.00 · ' + location.origin);
+                this.log('OctopusApp v6.0.01 · ' + location.origin);
             },
 
             // Long dropdown names: a closed <select> ellipsizes overflowing text, so
@@ -3731,6 +3739,10 @@
                         this.seqLen = Math.max(1, Math.min(64, v14 | 0));
                         document.getElementById('seqLen').value = String(this.seqLen);
                         this._updatePageButtons();
+                        if (this.isPlaying) {
+                            this._phForceRemeasure = true;
+                            this._phPendingStep = Math.min(this.visStep | 0, this.seqLen - 1);
+                        }
                     }
                     if (cmd === CMD.TRANSPOSE) {
                         // Wire: v14 = semitone + 12 (0..24). Reject full-scale knob values.
@@ -3894,6 +3906,7 @@
                     this._playCol = -1;
                     this._playPage = -1;
                     this._playAbsStep = -1;
+                    this._playLast = -1;
                     this._phForceRemeasure = true;
                     this._phPendingStep = 0;
                 }
@@ -4269,6 +4282,11 @@
                 this.seqLen = Math.max(1, Math.min(64, Math.round(+v)));
                 this.txSysex(CMD.HW_S_LEN, this.seqLen);
                 this._updatePageButtons();
+                /* Length change can invalidate wrap/playhead state — re-sync if playing. */
+                if (this.isPlaying) {
+                    this._phForceRemeasure = true;
+                    this._phPendingStep = Math.min(this.visStep | 0, this.seqLen - 1);
+                }
             },
             // P1–P4: each page shows 16 columns of the 64-step pattern for the active bank.
             setGridPage(p, repaint = true) {
@@ -4550,9 +4568,17 @@
                 const ph = this._playheadEl;
                 if (!ph) return;
 
+                const len = Math.max(1, this.seqLen | 0);
+                const lastIdx = len - 1;
+                if (s > lastIdx) s = lastIdx;
+                if (s < 0) s = 0;
+
                 const page = (s >> 4) & 3;
                 const col = s & 15;
                 const prevAbs = this._playAbsStep;
+
+                /* Same step, geometry stable — skip redundant DOM work (common on LEN=1). */
+                if (s === this._playLast && prevAbs === s && !this._phForceRemeasure) return;
 
                 if (this.isPlaying && page !== this.gridPageIdx) {
                     this.setGridPage(page, true);
@@ -4564,13 +4590,18 @@
                 if (this._phForceRemeasure || !this._phGeo)
                     this._phGeo = this._measurePlayheadGeo();
                 const geo = this._phGeo || this._measurePlayheadGeo();
-                if (!geo) return;
+                if (!geo) {
+                    this._phForceRemeasure = true;
+                    return;
+                }
 
                 const stepDelta = (prevAbs >= 0) ? (s - prevAbs) : 0;
-                const loopWrap = prevAbs >= 0 && s === 0 && prevAbs >= this.seqLen - 1;
-                const pageWrap = page !== this._playPage;
-                const snapped = pageWrap || loopWrap || this._playCol < 0
-                    || stepDelta < 0 || stepDelta > 1;
+                /* Pattern wrap = last step → 0 only (not LEN=1 where lastIdx is 0). */
+                const patternWrap = prevAbs >= 0 && lastIdx > 0 && prevAbs === lastIdx && s === 0;
+                const pageWrap = this._playPage >= 0 && page !== this._playPage;
+                const snapped = pageWrap || patternWrap || this._playCol < 0
+                    || stepDelta > 1 || stepDelta < 0;
+
                 const bpm = Math.max(20, this.bpm || 120);
                 const stepMs = 60000 / bpm / 4;
                 const glideMs = Math.max(40, Math.min(stepMs * 0.92, 220));
@@ -4585,6 +4616,7 @@
                 this._playCol = col;
                 this._playPage = page;
                 this._playAbsStep = s;
+                this._playLast = s;
                 this._phForceRemeasure = false;
 
                 const beat = col >> 2;
@@ -4601,6 +4633,7 @@
                 this._playPage = -1;
                 this._playBeat = -1;
                 this._playAbsStep = -1;
+                this._playLast = -1;
                 if (this._playheadEl) this._playheadEl.style.opacity = '0';
                 for (let i = 0; i < 4; i++) document.getElementById('led-' + i) ?.classList.remove('active');
             },

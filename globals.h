@@ -187,14 +187,19 @@ static inline float IRAM_ATTR safe_sinf(float x) {
 }
 #endif /* SAFE_SINF_DEFINED */
 
-/* Lock-free PRNG — eliminates cross-core correlation artefacts. */
+/* PRNG for seq/drum hot path (Core-0 audio task only — no atomic CAS).
+ * The old compare_exchange fired up to 4096×/buffer under noise-heavy patches,
+ * adding latency jitter that could present as crackle.  Same LCG as harp h_noise(). */
 static inline int32_t IRAM_ATTR fast_noise() {
-  static std::atomic<uint32_t> seed{ 0xADEAD888u };
-  uint32_t old_s = seed.load(std::memory_order_relaxed), new_s;
-  do { new_s = old_s * 1664525u + 1013904223u; }
-  while (!seed.compare_exchange_weak(old_s, new_s, std::memory_order_relaxed));
-  return (int32_t)(new_s >> 17) - 16384;
+  static uint32_t seed = 0xADEAD888u;
+  seed = seed * 1664525u + 1013904223u;
+  return (int32_t)(seed >> 17) - 16384;
 }
+
+/* Per-voice headroom when N voices sum: Q15 ≈ 32768/√N (1 voice = unity). */
+static constexpr uint16_t POLY_GAIN_Q15[9] = {
+  32768, 32768, 23170, 18919, 16384, 14654, 13377, 12361, 11585
+};
 
 /* MIDI note → frequency. */
 static inline float IRAM_ATTR midi_note_to_freq(uint8_t note) {
@@ -1397,8 +1402,26 @@ inline DrumVoice drums[DRUM_POLYPHONY];
 inline SynthGlobal harp_synth_g;
 inline SynthGlobal seq_synth_g;
 
-/* Physical string active-tracking (non-atomic: only .ino loop() touches) */
+/* Physical string hold (laser Core 1 writes, audio Core 0 reads for stuck-note
+ * reconcile).  stringActive[] is the display/laser local view; stringActiveMask
+ * is the cross-core snapshot — one atomic load per buffer in harp_synth_fill_buf. */
 inline bool stringActive[MAX_STRINGS] = { false };
+inline std::atomic<uint8_t> stringActiveMask{ 0 };
+
+static inline void stringActiveSet(int stringIdx, bool active) {
+  if (stringIdx < 0 || stringIdx >= MAX_STRINGS) return;
+  stringActive[stringIdx] = active;
+  const uint8_t bit = (uint8_t)(1u << (stringIdx & 7));
+  uint8_t m = stringActiveMask.load(std::memory_order_relaxed);
+  if (active) m |= bit;
+  else        m &= (uint8_t)~bit;
+  stringActiveMask.store(m, std::memory_order_release);
+}
+
+static inline void stringActiveClearAll() {
+  for (int s = 0; s < MAX_STRINGS; ++s) stringActive[s] = false;
+  stringActiveMask.store(0u, std::memory_order_release);
+}
 
 /* SOLO play-mode "king": the one beam currently sounding on the shared mono
  * voice (-1 = none). Maintained by harp.cpp's SOLO held stack; read by the laser
@@ -1506,14 +1529,14 @@ static inline void allNotesOff() {
     drums[d].env_amp = 0;
     drums[d].active.store(false, std::memory_order_relaxed);
   }
+  stringActiveClearAll();
   std::atomic_thread_fence(std::memory_order_release);
 }
 
 /* ── noteOffHarp: clears physical string-active flag only ──────────────── */
 /* Does NOT trigger DSP release — call harpNoteOff()/harpReleaseVoice() (harp.h). */
 static inline void noteOffHarp(int stringIdx) {
-  if (stringIdx >= 0 && stringIdx < MAX_STRINGS)
-    stringActive[stringIdx] = false;
+  stringActiveSet(stringIdx, false);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════

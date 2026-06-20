@@ -33,10 +33,9 @@
  * ─────────────────────────────────────────────────────────────────────────────*/
 static inline void IRAM_ATTR releaseHarpString(int s) {
   if (s < 0 || s >= MAX_STRINGS) return;
-  stringActive[s & 7] = false;
-  harpHueNoteOff(s); /* [HARP-SPLIT] hue → RELEASE */
-  noteOffHarp(s);    /* clears physical string-active flag */
-  harpNoteOff(s);    /* frees owner + DSP release under patchMux */
+  harpHueNoteOff(s);
+  noteOffHarp(s);    /* stringActive + mask */
+  harpNoteOff(s);    /* voice owner + DSP release under patchMux */
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -469,10 +468,8 @@ void IRAM_ATTR laser_sweep_task(void* pvParameters) {
       const int siNow = harpScaleIndex.load(std::memory_order_relaxed) & (NUM_SCALES - 1);
 
       allNotesOff();                       /* RELEASE held voice envelopes (DSP) */
-      /* allNotesOff() does NOT touch stringActive[] (it only releases voices),
-       * so clear the physical-hold truth here too. */
+      stringActiveClearAll();
       for (int s = 0; s < MAX_STRINGS; ++s) {
-        stringActive[s]   = false;
         touchCounter[s]   = 0u;
         releaseCounter[s] = 0u;
         noteOnTime[s]     = 0u;
@@ -514,8 +511,8 @@ void IRAM_ATTR laser_sweep_task(void* pvParameters) {
      * the new mode starts from a clean slate.  No re-home / blackout: the scan is
      * already live and the comparator never went dark. */
     if (g_beamClearReq.exchange(false, std::memory_order_acq_rel)) {
+      stringActiveClearAll();
       for (int s = 0; s < MAX_STRINGS; ++s) {
-        stringActive[s]   = false;
         touchCounter[s]   = 0u;
         releaseCounter[s] = 0u;
         noteOnTime[s]     = 0u;
@@ -537,8 +534,17 @@ void IRAM_ATTR laser_sweep_task(void* pvParameters) {
     }
 
     /* ── Panic ──────────────────────────────────────────────────────────── */
-    if (panicRequested.exchange(false, std::memory_order_relaxed))
+    if (panicRequested.exchange(false, std::memory_order_relaxed)) {
       allNotesOff();
+      harpAllNotesOff();
+      for (int s = 0; s < MAX_STRINGS; ++s) {
+        touchCounter[s]   = 0u;
+        releaseCounter[s] = 0u;
+        noteOnTime[s]     = 0u;
+        lastHoldUs[s]     = 0u;
+      }
+      fastWrite(PIN_PEAK_CLR, LOW);
+    }
 
     /* ── Harp mode gate ─────────────────────────────────────────────────── */
     const HarpMode hMode = harpMode.load(std::memory_order_relaxed);
@@ -641,14 +647,19 @@ void IRAM_ATTR laser_sweep_task(void* pvParameters) {
           const bool beamBrokenHW = beamBrokenRaw && fogAccept(ci);
           const uint8_t onNeeded = std::max((uint8_t)1u, scaleTouchConfirm[scaleIdx]);
           uint8_t offNeeded = std::max((uint8_t)1u, scaleReleaseConfirm[scaleIdx]);
-          /* [SOLO-FIX] SOLO ping-pong on the 2nd-last note: a steadily-held beam
-           * whose reflection momentarily dips would false-release then re-press,
-           * re-stealing "king" from the other held beam (audible A/B/A/B).  SOLO
-           * is monophonic last-note priority, so snappy per-string release matters
-           * far less than rock-solid hold — give it ~4× release hysteresis so brief
-           * dropouts can't fake a release.  POLY8/STRINGS keep their crisp release. */
-          if (currentPlayMode.load(std::memory_order_relaxed) == PlayMode::SOLO)
+          /* Play-mode release hysteresis — brief reflection dropouts must not
+           * false-trigger note-off (audible as clicks / SOLO king ping-pong):
+           *   SOLO    4× — monophonic stack; hold stability beats snap release
+           *   STRINGS 3× — sustained beam = held note until hand leaves
+           *   POLY8   2× — mild debounce without losing poly separation       */
+          const PlayMode beamPm =
+              currentPlayMode.load(std::memory_order_relaxed);
+          if (beamPm == PlayMode::SOLO)
             offNeeded = (uint8_t)std::min(60, (int)offNeeded * 4);
+          else if (beamPm == PlayMode::STRINGS)
+            offNeeded = (uint8_t)std::min(48, (int)offNeeded * 3);
+          else
+            offNeeded = (uint8_t)std::min(32, (int)offNeeded * 2);
 
           /* ── Note ON / OFF detection — hardened against STUCK NOTES ───────
            * Two independent guarantees, both robust to the AC-coupled LT1016
@@ -673,7 +684,7 @@ void IRAM_ATTR laser_sweep_task(void* pvParameters) {
             if (!stringActive[ci]) {
               if (touchCounter[ci] < onNeeded) ++touchCounter[ci];
               if (touchCounter[ci] >= onNeeded) {
-                stringActive[ci]   = true;
+                stringActiveSet(ci, true);
                 noteOnTime[ci]     = nowUs;
                 lastHoldUs[ci]     = nowUs;
                 releaseCounter[ci] = 0u;
@@ -707,7 +718,7 @@ void IRAM_ATTR laser_sweep_task(void* pvParameters) {
               if ((counterDone || stuckTimeout) &&
                   (uint32_t)(nowUs - noteOnTime[ci]) >= holdWindow) {
                 releaseCounter[ci] = touchCounter[ci] = 0u;
-                stringActive[ci]   = false;
+                stringActiveSet(ci, false);
                 harpHueNoteOff(ci);           /* hue ADSR → RELEASE */
                 noteOffHarp(ci);
                 harpNoteOff(ci);              /* frees owner + DSP release */

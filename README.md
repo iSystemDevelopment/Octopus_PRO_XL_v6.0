@@ -6,12 +6,12 @@
 
 | | |
 |---|---|
-| **Version** | 6.0.00 |
+| **Version** | 6.0.01 |
 | **Platform** | ESP32-S3 (dual-core, FreeRTOS, ESP-IDF 5) |
 | **Author** | DIODAC ELECTRONICS / [iSystem](https://isystem.app) |
 | **Launch App** | **[octopus.isystem.app](https://octopus.isystem.app)** |
 | **Product site** | **[octopus-info.isystem.app](https://octopus-info.isystem.app)** |
-| **Source code** | **[GitHub](https://github.com/iSystemApp/Octopus-PRO-XL-v6.0)** |
+| **Source code** | **[GitHub](https://github.com/iSystemDevelopment/Octopus_PRO_XL_v6.0)** |
 | **Documentation** | [User Manual](./user_manual.md) · [Deployment](./DEPLOYMENT.md) · [Changelog](./CHANGELOG.md) |
 
 ---
@@ -22,7 +22,8 @@
 |----------|-----|
 | **OctopusApp** (Web MIDI console) | [https://octopus.isystem.app](https://octopus.isystem.app) |
 | **Product / info site** | [https://octopus-info.isystem.app](https://octopus-info.isystem.app) |
-| **GitHub repository** | [github.com/iSystemApp/Octopus-PRO-XL-v6.0](https://github.com/iSystemApp/Octopus-PRO-XL-v6.0) |
+| **GitHub repository** | [github.com/iSystemDevelopment/Octopus_PRO_XL_v6.0](https://github.com/iSystemDevelopment/Octopus_PRO_XL_v6.0) |
+| **Facebook** | [facebook.com/diodac.co.uk](https://www.facebook.com/diodac.co.uk/) |
 | **User manual** | [user_manual.md](./user_manual.md) |
 | **Architecture** | [code_info.h](./code_info.h) |
 | **Maintainer roadmap** | [Upgrade.md](./Upgrade.md) |
@@ -161,7 +162,14 @@ Quick VPS deploy (PowerShell):
 - [CONTRIBUTING.md](./CONTRIBUTING.md) — issues, authorized PRs  
 - [SECURITY.md](./SECURITY.md) — vulnerability reporting  
 - [CHANGELOG.md](./CHANGELOG.md) — release history  
-- GitHub Issues — include firmware `6.0.00`, App connected Y/N, repro steps  
+- GitHub Issues — include firmware **`6.0.01`** (or `SYSTEM_FW_VERSION` from Serial boot), App connected Y/N, repro steps  
+
+See [**CHANGELOG.md**](./CHANGELOG.md) for the full **6.0.01** fix list (FX, clicks, stuck notes, arp patterns).
+
+| Link | URL |
+|------|-----|
+| GitHub | [github.com/iSystemDevelopment/Octopus_PRO_XL_v6.0](https://github.com/iSystemDevelopment/Octopus_PRO_XL_v6.0) |
+| Facebook | [facebook.com/diodac.co.uk](https://www.facebook.com/diodac.co.uk/) |
 
 ---
 

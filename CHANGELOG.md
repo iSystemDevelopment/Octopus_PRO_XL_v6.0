@@ -5,6 +5,19 @@ All notable changes to Octopus PRO XL firmware and OctopusApp are documented her
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning aligns with firmware `SYSTEM_FW_VERSION` in `code_info.h`.
 
+## [6.0.01] — 2026-06-20
+
+### Fixed
+
+- **FX engine** — Master EQ shelf/peaking dB→linear (`10^(dB/40)`); shared aux tail drains after sends go to zero; safe output when FX chain uninitialized; compressor GR clamp + denormal flush; CPU tail-only path when engines idle.
+- **Click / crackle** — Harp/seq/drum mute uses envelope release instead of hard voice kill; click-free seq voice retrigger; harp SOLO legato (phase reset on pitch change); poly headroom before soft-clip (√N scaling).
+- **Stuck notes** — Cross-core `stringActiveMask`; per-buffer `harpReconcileStuckNotesLocked()` for SOLO/POLY8; beam release hysteresis; panic + MIDI CC120/123 full harp/laser state reset; held-beam silent recovery.
+- **Arpeggiator (`arp.h`)** — `pitch_rows[]` kept in sync with sorted notes (correct laser row for Up/Down patterns); **DnUp** ping-pong sequence corrected; **AsIs** uses latch-order rows only.
+
+### Changed
+
+- **OctopusApp v6.0.01** — help/changelog aligned with firmware; playhead wrap fix for 1-step patterns; LEN change re-syncs playhead while playing.
+
 ## [6.0.00] — 2026-06-20
 
 ### Added
@@ -39,5 +52,6 @@ Versioning aligns with firmware `SYSTEM_FW_VERSION` in `code_info.h`.
 |-------|----------|
 | Product site | [https://octopus-info.isystem.app](https://octopus-info.isystem.app) |
 | OctopusApp | [https://octopus.isystem.app](https://octopus.isystem.app) |
-| Source | [GitHub](https://github.com/iSystemApp/Octopus-PRO-XL-v6.0) |
+| Source | [GitHub](https://github.com/iSystemDevelopment/Octopus_PRO_XL_v6.0) |
+| Facebook | [facebook.com/diodac.co.uk](https://www.facebook.com/diodac.co.uk/) |
 | User manual | [user_manual.md](./user_manual.md) |

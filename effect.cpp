@@ -140,7 +140,8 @@ void FxBiquad::setLowPass(float freq, float q) {
 void FxBiquad::setLowShelf(float freq, float gain_db) {
   freq = constrain(freq, 20.f, 20000.f);
   float w = 2.0f * (float)M_PI * freq * FX_INV_SR;
-  float A = exp2f(gain_db / 40.0f);
+  /* [FX-BUG2] Was exp2(dB/40)=2^(dB/40); shelves need 10^(dB/40) per RBJ. */
+  float A = exp2f(gain_db * FX_DB40_TO_A);
   float alpha = sinf(w) / 2.0f * sqrtf((A + 1.0f / A) * (1.0f / 0.707f - 1.0f) + 2.0f);
   float cs = cosf(w);
   float ai = 1.0f / ((A + 1.0f) + (A - 1.0f) * cs + 2.0f * sqrtf(A) * alpha);
@@ -153,7 +154,7 @@ void FxBiquad::setLowShelf(float freq, float gain_db) {
 void FxBiquad::setHighShelf(float freq, float gain_db) {
   freq = constrain(freq, 20.f, 20000.f);
   float w = 2.0f * (float)M_PI * freq * FX_INV_SR;
-  float A = exp2f(gain_db / 40.0f);
+  float A = exp2f(gain_db * FX_DB40_TO_A);
   float alpha = sinf(w) / 2.0f * sqrtf((A + 1.0f / A) * (1.0f / 0.707f - 1.0f) + 2.0f);
   float cs = cosf(w);
   float ai = 1.0f / ((A + 1.0f) - (A - 1.0f) * cs + 2.0f * sqrtf(A) * alpha);
@@ -166,7 +167,7 @@ void FxBiquad::setHighShelf(float freq, float gain_db) {
 void FxBiquad::setPeaking(float freq, float q, float gain_db) {
   freq = constrain(freq, 20.f, 20000.f);
   q = std::max(0.1f, q);
-  const float A = powf(10.f, gain_db / 40.f);
+  const float A = exp2f(gain_db * FX_DB40_TO_A);
   const float w = 2.0f * (float)M_PI * freq * FX_INV_SR;
   const float alpha = sinf(w) / (2.0f * q);
   const float cs = cosf(w);
@@ -244,7 +245,10 @@ void IRAM_ATTR fx_process_multi_buf_safe(
   /* [FX-OPT1] Single-pass pipeline — no scratch buffers.  Guard on the chain
    * being fully initialised (replaces the old fx_buf_* null checks, and is the
    * safety precondition for the FxDelayLine _unsafe ops in the insert FX). */
-  if (!fx.initialized) return;
+  if (!fx.initialized) {
+    memset(out_buf, 0, frames * 2u * sizeof(int16_t));
+    return;
+  }
 
   /* [CLICK-FREE] one-pole smoothed master gain (per-sample). */
   static float s_masterGain = 0.0f;
@@ -307,7 +311,9 @@ void IRAM_ATTR fx_process_multi_buf_safe(
   fx.masterFx.dj_res    = djRes.load(std::memory_order_relaxed);
   fx.masterFx.eq_low    = masterEqLow.load(std::memory_order_relaxed);
   fx.masterFx.eq_high   = masterEqHigh.load(std::memory_order_relaxed);
-  fx.drumFx.update_params();
+  const bool enginesActive = hOn || sOn || dOn;
+  if (enginesActive || fx.drumFx.drive > 0.001f)
+    fx.drumFx.update_params();
   fx.masterFx.update_params();
 
   /* Per-instrument gain (mute flag + volume × [MIX-CAL] bus loudness trim).
@@ -342,8 +348,11 @@ void IRAM_ATTR fx_process_multi_buf_safe(
   const float sPL = s_sPL, sPR = s_sPR;
   const float dPL = s_dPL, dPR = s_dPR;
 
-  /* ── Stage 3 setup: aux bus — ring while s_auxRingBuf > 0 (gate below) ──── */
-  const bool runAux = sendUp && (s_auxRingBuf > 0);
+  /* ── Stage 3 setup: aux bus — ring while s_auxRingBuf > 0 (gate below) ────
+   * [FX-BUG3] Do NOT gate on sendUp here: once armed, shared delay/reverb must
+   * keep processing until the amplitude tail gate clears — otherwise turning
+   * sends to zero mid-decay freezes the aux state and chops the tail.        */
+  const bool runAux = (s_auxRingBuf > 0);
 
   /* [SNAPSHOT] Latch the six insert-send floats ONCE per buffer.  They are plain
    * floats written under patchMux (patches.h applyFxSend / loadInsert); reading
@@ -374,13 +383,23 @@ void IRAM_ATTR fx_process_multi_buf_safe(
   int16_t* __restrict__ out_p = out_buf;
   for (size_t i = 0; i < frames; ++i, out_p += 2) {
     /* Stage 1+2: int16 → float gain → insert FX (all three in registers) */
-    float harpMono = fx_clampf((float)h_buf[i] * hG);
-    float seqMono  = fx_clampf((float)s_buf[i] * sG);
-    float drumMono = fx_clampf((float)d_buf[i] * dG);
-    fx.harpInsert.process_mono(harpMono);
-    fx.seqInsert .process_mono(seqMono);
-    fx.drumFx    .process_mono(drumMono);
-    fx.drumInsert.process_mono(drumMono);
+    float harpMono = 0.0f, seqMono = 0.0f, drumMono = 0.0f;
+    if (enginesActive) {
+      harpMono = fx_clampf((float)h_buf[i] * hG);
+      seqMono  = fx_clampf((float)s_buf[i] * sG);
+      drumMono = fx_clampf((float)d_buf[i] * dG);
+      fx.harpInsert.process_mono(harpMono);
+      fx.seqInsert .process_mono(seqMono);
+      fx.drumFx    .process_mono(drumMono);
+      fx.drumInsert.process_mono(drumMono);
+    } else {
+      /* [FX-OPT9] Aux tail-only: source buffers are zeroed when engines idle.
+       * Inserts still tick (delay-line cursor + any insert wet decay); drum bus
+       * saturation/tone is skipped — input is identically zero.              */
+      fx.harpInsert.process_mono(harpMono);
+      fx.seqInsert .process_mono(seqMono);
+      fx.drumInsert.process_mono(drumMono);
+    }
 
     /* Stage 3: aux send bus */
     float wetL = 0.0f, wetR = 0.0f;

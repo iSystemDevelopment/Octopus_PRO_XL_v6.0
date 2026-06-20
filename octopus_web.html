@@ -1,5 +1,5 @@
 <!--
-  Octopus PRO XL v6.0.00 — Product information page
+  Octopus PRO XL v6.0.01 — Product information page
   © 2026 DIODAC ELECTRONICS / iSystem. All Rights Reserved.
   PROPRIETARY AND CONFIDENTIAL. Unauthorized use prohibited.
 -->
@@ -8,7 +8,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Octopus PRO XL v6.0.00 | Laser-Harp Groovebox Workstation</title>
+    <title>Octopus PRO XL v6.0.01 | Laser-Harp Groovebox Workstation</title>
     <meta name="description" content="Octopus PRO XL v6.0 — 8-beam reflective laser harp, 24-voice groovebox, 64-step sequencer, studio FX, and zero-install OctopusApp Web MIDI console at octopus.isystem.app.">
     <link rel="canonical" href="https://octopus-info.isystem.app/">
     <script src="https://cdn.tailwindcss.com"></script>
@@ -57,8 +57,58 @@
             -webkit-text-fill-color: transparent;
         }
 
-        .nav-link { position: relative; transition: color 0.2s; }
+        .nav-link { position: relative; transition: color 0.2s; white-space: nowrap; }
         .nav-link:hover { color: var(--cyan); }
+
+        /* Top bar — compact single-row menu (lg+) */
+        .top-nav-menu {
+            display: none;
+            flex: 1 1 auto;
+            flex-wrap: nowrap;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 0.55rem;
+            min-width: 0;
+            font-family: 'Orbitron', sans-serif;
+            font-size: 9px;
+            font-weight: 600;
+            letter-spacing: 0.11em;
+            text-transform: uppercase;
+        }
+        @media (min-width: 1024px) {
+            .top-nav-menu { display: flex; }
+        }
+        @media (min-width: 1280px) {
+            .top-nav-menu { gap: 0.7rem; font-size: 10px; letter-spacing: 0.13em; }
+        }
+        .top-nav-social {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 26px;
+            height: 26px;
+            border-radius: 6px;
+            border: 1px solid #2a2a35;
+            color: #9ca3af;
+            transition: color 0.2s, border-color 0.2s, background 0.2s;
+        }
+        .top-nav-social:hover {
+            color: #fff;
+            border-color: rgba(6, 182, 212, 0.45);
+            background: rgba(6, 182, 212, 0.08);
+        }
+        .top-nav-cta {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 9px;
+            font-weight: 700;
+            letter-spacing: 0.12em;
+            padding: 6px 11px;
+            border-radius: 6px;
+            white-space: nowrap;
+        }
+        @media (min-width: 1280px) {
+            .top-nav-cta { font-size: 10px; padding: 7px 13px; }
+        }
 
         /* Table Styles */
         table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
@@ -97,25 +147,32 @@
 </head>
 <body>
 
-    <nav class="fixed w-full z-50 bg-[#050508]/90 backdrop-blur-md border-b border-[#222]">
-        <div class="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
-            <div class="brand text-xl font-bold flex items-center gap-3 text-white">
-                <i class="fa-solid fa-bolt text-[#a855f7]"></i> Octopus <span class="text-[#06b6d4]">PRO XL</span>
-            </div>
-            <div class="hidden md:flex gap-7 font-semibold text-xs tracking-widest brand items-center">
-                <a href="#harp" class="nav-link text-gray-400">LASER HARP</a>
-                <a href="#engine" class="nav-link text-gray-400">SOUND ENGINE</a>
-                <a href="#drums" class="nav-link text-gray-400">DRUMS</a>
-                <a href="#seq" class="nav-link text-gray-400">SEQUENCER</a>
-                <a href="#fx" class="nav-link text-gray-400">STUDIO FX</a>
-                <a href="#app" class="nav-link text-gray-400">OCTOPUSAPP</a>
-                <a href="#resources" class="nav-link text-gray-400">RESOURCES</a>
-                <a href="#specs" class="nav-link text-gray-400">SPECS</a>
-                <a href="https://github.com/iSystemApp/Octopus-PRO-XL-v6.0" target="_blank" rel="noopener noreferrer"
-                   class="nav-link text-gray-400"><i class="fa-brands fa-github"></i> GITHUB</a>
+    <nav class="fixed w-full z-50 bg-[#050508]/92 backdrop-blur-md border-b border-[#222]">
+        <div class="max-w-[96rem] mx-auto px-3 lg:px-5 py-2 flex items-center gap-2 lg:gap-4 min-h-[44px]">
+            <a href="#" class="brand text-sm lg:text-base font-bold flex items-center gap-2 text-white shrink-0 no-underline">
+                <i class="fa-solid fa-bolt text-[#a855f7] text-sm"></i>
+                <span>Octopus <span class="text-[#06b6d4]">PRO XL</span></span>
+            </a>
+            <div class="top-nav-menu">
+                <a href="#harp" class="nav-link text-gray-400">Harp</a>
+                <a href="#engine" class="nav-link text-gray-400">Engine</a>
+                <a href="#drums" class="nav-link text-gray-400">Drums</a>
+                <a href="#seq" class="nav-link text-gray-400">Seq</a>
+                <a href="#fx" class="nav-link text-gray-400">FX</a>
+                <a href="#app" class="nav-link text-gray-400">App</a>
+                <a href="#resources" class="nav-link text-gray-400">Docs</a>
+                <a href="#specs" class="nav-link text-gray-400">Specs</a>
+                <span class="w-px h-4 bg-[#2a2a35] shrink-0" aria-hidden="true"></span>
+                <a href="https://github.com/iSystemDevelopment/Octopus_PRO_XL_v6.0/blob/main/README.md"
+                   target="_blank" rel="noopener noreferrer"
+                   class="nav-link text-gray-400" title="GitHub — README"><i class="fa-brands fa-github"></i> GitHub</a>
+                <a href="https://www.facebook.com/diodac.co.uk/" target="_blank" rel="noopener noreferrer"
+                   class="top-nav-social shrink-0" title="DIODAC on Facebook" aria-label="Facebook">
+                    <i class="fa-brands fa-facebook-f text-[11px]"></i>
+                </a>
                 <a href="https://octopus.isystem.app" target="_blank" rel="noopener noreferrer"
-                   class="ml-2 bg-[#22c55e] text-black px-4 py-2 rounded font-bold hover:bg-white transition-colors">
-                    LAUNCH APP
+                   class="top-nav-cta bg-[#22c55e] text-black hover:bg-white transition-colors shrink-0">
+                    Launch App
                 </a>
             </div>
         </div>
@@ -128,7 +185,7 @@
         <div class="flex items-center gap-4 mb-6">
             <img src="octopus-app-hero.png" alt="Octopus PRO XL" class="w-16 h-16 rounded-full object-cover shadow-[0_0_40px_rgba(6,182,212,0.4)]">
             <span class="brand tracking-[0.3em] text-sm text-gray-400">DIODAC ELECTRONICS</span>
-            <span class="pill border-[#06b6d4]/40 text-[#06b6d4]">FIRMWARE v6.0.00</span>
+            <span class="pill border-[#06b6d4]/40 text-[#06b6d4]">FIRMWARE v6.0.01</span>
         </div>
 
         <h1 class="text-5xl md:text-7xl font-black mb-6 tracking-tight text-white glow-cyan">
@@ -147,16 +204,20 @@
             <span class="pill"><i class="fa-solid fa-bolt text-[#22c55e]"></i> 8 RGB Laser Beams</span>
             <span class="pill"><i class="fa-solid fa-drum text-[#f97316]"></i> 4 Drum Kits</span>
             <span class="pill"><i class="fa-solid fa-repeat text-[#ec4899]"></i> Seq + Harp ARP</span>
-            <span class="pill"><i class="fa-solid fa-laptop-code text-[#ec4899]"></i> OctopusApp v6.0</span>
+            <span class="pill"><i class="fa-solid fa-laptop-code text-[#ec4899]"></i> OctopusApp v6.0.01</span>
         </div>
         <div class="flex flex-wrap gap-4 justify-center mb-6">
             <a href="https://octopus.isystem.app" target="_blank" rel="noopener noreferrer"
                class="bg-[#22c55e] text-black font-bold py-3 px-8 rounded hover:bg-white transition-colors brand tracking-widest shadow-[0_0_20px_rgba(34,197,94,0.45)]">
                 <i class="fa-solid fa-plug"></i> LAUNCH OCTOPUSAPP
             </a>
-            <a href="https://github.com/iSystemApp/Octopus-PRO-XL-v6.0" target="_blank" rel="noopener noreferrer"
+            <a href="https://github.com/iSystemDevelopment/Octopus_PRO_XL_v6.0/blob/main/README.md" target="_blank" rel="noopener noreferrer"
                class="border border-[#333] text-gray-300 font-bold py-3 px-8 rounded hover:border-[#06b6d4] hover:text-white transition-colors brand tracking-widest text-sm">
                 <i class="fa-brands fa-github"></i> GITHUB
+            </a>
+            <a href="https://www.facebook.com/diodac.co.uk/" target="_blank" rel="noopener noreferrer"
+               class="border border-[#333] text-gray-300 font-bold py-3 px-8 rounded hover:border-[#1877f2] hover:text-white transition-colors brand tracking-widest text-sm">
+                <i class="fa-brands fa-facebook"></i> FACEBOOK
             </a>
             <a href="#app" class="bg-transparent border border-[#333] text-white font-bold py-3 px-8 rounded hover:border-[#06b6d4] transition-colors brand tracking-widest">ABOUT THE APP</a>
         </div>
@@ -468,8 +529,8 @@
             <h2 class="text-2xl md:text-3xl text-white mb-4">Resources &amp; Source</h2>
             <p class="text-gray-500 text-sm max-w-2xl mx-auto">Firmware, OctopusApp, documentation, and release notes live in the public GitHub repository. This product page is hosted at <strong class="text-gray-300">octopus-info.isystem.app</strong>; the App is a separate subdomain for Web MIDI.</p>
         </div>
-        <div class="max-w-4xl mx-auto grid sm:grid-cols-2 md:grid-cols-3 gap-6">
-            <a href="https://github.com/iSystemApp/Octopus-PRO-XL-v6.0" target="_blank" rel="noopener noreferrer"
+        <div class="max-w-4xl mx-auto grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+            <a href="https://github.com/iSystemDevelopment/Octopus_PRO_XL_v6.0" target="_blank" rel="noopener noreferrer"
                class="feature-card block hover:border-[#06b6d4] text-left no-underline">
                 <div class="text-2xl mb-2 text-white"><i class="fa-brands fa-github"></i></div>
                 <h3 class="text-white font-bold mb-1">GitHub Repository</h3>
@@ -489,12 +550,19 @@
             <a href="CHANGELOG.md" class="feature-card block hover:border-[#f97316] text-left no-underline">
                 <div class="text-2xl mb-2 text-[#f97316]"><i class="fa-solid fa-list"></i></div>
                 <h3 class="text-white font-bold mb-1">Changelog</h3>
-                <p class="text-sm text-gray-400">v6.0.00 release notes — seq/harp ARP, OrgDrive, playhead sync, and transport model.</p>
+                <p class="text-sm text-gray-400">v6.0.01 — FX/stuck-note fixes, arp patterns, App playhead wrap fix.</p>
             </a>
-            <a href="README.md" class="feature-card block hover:border-[#06b6d4] text-left no-underline">
+            <a href="https://github.com/iSystemDevelopment/Octopus_PRO_XL_v6.0/blob/main/README.md" target="_blank" rel="noopener noreferrer"
+               class="feature-card block hover:border-[#06b6d4] text-left no-underline">
                 <div class="text-2xl mb-2 text-[#06b6d4]"><i class="fa-solid fa-code"></i></div>
                 <h3 class="text-white font-bold mb-1">README</h3>
                 <p class="text-sm text-gray-400">Build instructions, repository layout, and quick-start for hardware + App.</p>
+            </a>
+            <a href="https://www.facebook.com/diodac.co.uk/" target="_blank" rel="noopener noreferrer"
+               class="feature-card block hover:border-[#1877f2] text-left no-underline">
+                <div class="text-2xl mb-2 text-[#1877f2]"><i class="fa-brands fa-facebook"></i></div>
+                <h3 class="text-white font-bold mb-1">DIODAC Facebook</h3>
+                <p class="text-sm text-gray-400">News, demos, and support from DIODAC ELECTRONICS.</p>
             </a>
             <a href="https://isystem.app" target="_blank" rel="noopener noreferrer"
                class="feature-card block hover:border-[#ec4899] text-left no-underline">
@@ -570,7 +638,7 @@
                     </table>
                 </div>
             </div>
-            <p class="text-center text-xs text-gray-600 mono mt-10">Firmware v6.0.00 &middot; build 2026-06-20 &middot; ESP32-S3-DUALCORE-IDF5-FREERTOS &middot; SETTINGS 0x0615</p>
+            <p class="text-center text-xs text-gray-600 mono mt-10">Firmware v6.0.01 &middot; build 2026-06-20 &middot; ESP32-S3-DUALCORE-IDF5-FREERTOS &middot; SETTINGS 0x0615</p>
         </div>
     </section>
 
@@ -584,7 +652,9 @@
             &nbsp;&middot;&nbsp;
             <a href="https://octopus.isystem.app" class="text-[#22c55e] hover:underline" target="_blank" rel="noopener">OctopusApp</a>
             &nbsp;&middot;&nbsp;
-            <a href="https://github.com/iSystemApp/Octopus-PRO-XL-v6.0" class="text-gray-300 hover:underline" target="_blank" rel="noopener">GitHub</a>
+            <a href="https://github.com/iSystemDevelopment/Octopus_PRO_XL_v6.0" class="text-gray-300 hover:underline" target="_blank" rel="noopener">GitHub</a>
+            &nbsp;&middot;&nbsp;
+            <a href="https://www.facebook.com/diodac.co.uk/" class="text-[#1877f2] hover:underline" target="_blank" rel="noopener">Facebook</a>
             &nbsp;&middot;&nbsp;
             <a href="user_manual.md" class="text-[#06b6d4] hover:underline">User Manual</a>
             &nbsp;&middot;&nbsp;

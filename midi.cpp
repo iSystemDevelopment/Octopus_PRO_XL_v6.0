@@ -369,7 +369,11 @@ static void IRAM_ATTR handleControlChange(uint8_t channel, uint8_t cc, uint8_t v
     /* CC 0 (Bank MSB) and CC 32 (Bank LSB) are intercepted in parseMidiByte
      * before this function is called — they never arrive here. [MIDI-BUG1] */
     case 120:
-    case 123: allNotesOff(); return;
+    case 123:
+      allNotesOff();
+      harpAllNotesOff();
+      g_beamClearReq.store(true, std::memory_order_release);
+      return;
     case 121: return;
     default: break;
   }

@@ -1,17 +1,17 @@
 # Octopus PRO XL v6.0 — User Manual
 
-**Laser Harp Groovebox · Firmware 6.0.00**
+**Laser Harp Groovebox · Firmware 6.0.01**
 
 | Field | Value |
 |-------|-------|
 | Document type | End-user & integrator reference |
-| Firmware | `6.0.00` (`SETTINGS_VERSION 0x0615`) |
+| Firmware | `6.0.01` (`SETTINGS_VERSION 0x0615`) |
 | Companion app | [octopus.isystem.app](https://octopus.isystem.app) (Web MIDI / SysEx) |
 | Hardware UI | SH1106 OLED · rotary encoder · SCALE · OC |
 
 This manual describes the Octopus PRO XL from initial setup through complete operation of the hardware menu system, companion application, signal routing, and musical tools (sequencer topology, arpeggiator layouts, D-BEAM response curves, and effects character). Menu labels and category order match the on-device OLED display exactly (`display.h`).
 
-For repository overview and build instructions, see [**README.md**](./README.md). Product site: [**octopus-info.isystem.app**](https://octopus-info.isystem.app). App: [**octopus.isystem.app**](https://octopus.isystem.app). Source: [**GitHub**](https://github.com/iSystemApp/Octopus-PRO-XL-v6.0). For developer architecture, see [**code_info.h**](./code_info.h).
+For repository overview and build instructions, see [**README.md**](https://github.com/iSystemDevelopment/Octopus_PRO_XL_v6.0/blob/main/README.md). Product site: [**octopus-info.isystem.app**](https://octopus-info.isystem.app). App: [**octopus.isystem.app**](https://octopus.isystem.app). Source: [**GitHub**](https://github.com/iSystemDevelopment/Octopus_PRO_XL_v6.0). [Facebook](https://www.facebook.com/diodac.co.uk/). For developer architecture, see [**code_info.h**](./code_info.h).
 
 ---
 
@@ -427,6 +427,8 @@ UpDown cycle for 3 notes (indices 0,1,2,1):
 
 **Harp arp** maps UI indices 0–3 to **Up, Down, UpDn, Rnd** only. In **POLY8**, the engine latches all held strings; in **SOLO**, the king note defines the motif. Single-beam input expands to a **scale motif** so patterns remain musically distinct.
 
+> **v6.0.01:** Pitch-order patterns (Up/Down/UpDn/DnUp/Rnd/Oct) pair each sorted note with its grid row (`pitch_rows[]` in `arp.h`) so laser-show highlighting matches the note you hear. **AsIs** always follows latch order (step scan order), not sorted pitch.
+
 ### 7.3 D-BEAM response curves
 
 D-BEAM converts hand proximity (ADC, Kalman-filtered) into a normalised **0…1 expression** value. A **user-selectable curve** shapes sensitivity before routing to the target synth.
@@ -714,7 +716,7 @@ Same four scopes. SAVE persists to NVS (+ reboot). LOAD reloads from NVS without
 
 ## 9. OctopusApp companion
 
-Open **[octopus.isystem.app](https://octopus.isystem.app)** (or local `OctopusApp.html`) in Chrome or Edge over **HTTPS**. Product documentation lives at **[octopus-info.isystem.app](https://octopus-info.isystem.app)**; firmware and sources at **[GitHub](https://github.com/iSystemApp/Octopus-PRO-XL-v6.0)**. Web MIDI carries SysEx (`0x7D` host→device, `0x7C` device→host). USB MIDI runs in your browser only — not through the web server.
+Open **[octopus.isystem.app](https://octopus.isystem.app)** (or local `OctopusApp.html`) in Chrome or Edge over **HTTPS**. Product documentation lives at **[octopus-info.isystem.app](https://octopus-info.isystem.app)**; firmware and sources at **[GitHub](https://github.com/iSystemDevelopment/Octopus_PRO_XL_v6.0)**. Web MIDI carries SysEx (`0x7D` host→device, `0x7C` device→host). USB MIDI runs in your browser only — not through the web server.
 
 ### 9.1 View structure
 

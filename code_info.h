@@ -6,7 +6,7 @@
  * or use of this software or firmware, in whole or in part, is strictly prohibited
  * without prior written permission from DIODAC ELECTRONICS.
  * ═════════════════════════════════════════════════════════════════════════════
- * code_info.h — v6.0.00  ARCHITECTURE MANIFEST, SSOT BLUEPRINT & DEVELOPER GUIDE
+ * code_info.h — v6.0.01  ARCHITECTURE MANIFEST, SSOT BLUEPRINT & DEVELOPER GUIDE
  *
  * PURPOSE: This file contains NO executable code.  It is the authoritative
  * reference document for any developer (human or AI) maintaining or extending
@@ -15,12 +15,29 @@
  * ─────────────────────────────────────────────────────────────────────────────
  * VERSION IDENTIFIERS
  * ─────────────────────────────────────────────────────────────────────────────
- * SYSTEM_FW_VERSION "6.0.00"
+ * SYSTEM_FW_VERSION "6.0.01"
  * SYSTEM_BUILD_DATE "2026-06-20"
  * SYSTEM_ARCH_TAG   "ESP32-S3-DUALCORE-IDF5-FREERTOS"
  * SETTINGS_VERSION  0x0615   (0x0614 seq arp; 0x0615 harp arp)
  * CMD_COUNT         190       (sysex indices 0-189; … 182-185 seq arp;
  *                              186-189 harp arp)
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * WHAT CHANGED IN v6.0.01 (2026-06-20 maintenance pass)
+ * ─────────────────────────────────────────────────────────────────────────────
+ *   • [FX-FIX] Master EQ shelf gain uses 10^(dB/40) (FX_DB40_TO_A), not exp2.
+ *     Shared aux tail drains after insert sends hit zero; !initialized zeroes out.
+ *     Compressor GR clamp + denormal flush; tail-only CPU path when engines idle.
+ *   • [CLICK-FIX] Seq/harp/drum mute → ENV_RELEASE (not hard active=false).
+ *     Click-free seq voice retrigger (gb_arm_seq_voice mirrors h_arm_voice).
+ *     Harp SOLO legato: new pitch resets phase/filter, keeps envelope.
+ *   • [HARP-ROBUST] SOLO/POLY8/STRINGS play-mode revision; beam release hysteresis
+ *     (SOLO 4× / STRINGS 3× / POLY8 2× confirm); arp + direct-voice isolation.
+ *   • [STUCK-FIX] stringActiveMask (Core1→Core0); harpReconcileStuckNotesLocked()
+ *     once per audio buffer; panic + CC120/123 + allNotesOff clear hold mask;
+ *     held-beam silent recovery (re-arm when voice died while beam still held).
+ *   • [ARP-FIX] arp.h: pitch_rows[] sorted with notes (Up/Down laser row sync);
+ *     DnUp ping-pong corrected; AsIs uses latch-order rows only.
  *
  * ─────────────────────────────────────────────────────────────────────────────
  * WHAT CHANGED IN v6.0 (vs v5.3.x)
@@ -57,7 +74,7 @@
 #ifndef CODE_INFO_H
 #define CODE_INFO_H
 
-#define SYSTEM_FW_VERSION "6.0.00"
+#define SYSTEM_FW_VERSION "6.0.01"
 #define SYSTEM_BUILD_DATE "2026-06-20"
 #define SYSTEM_ARCH_TAG   "ESP32-S3-DUALCORE-IDF5-FREERTOS"
 
@@ -137,7 +154,7 @@
  *         loadFactorySynthPattern (companion preset).
  *
  * ═══════════════════════════════════════════════════════════════════════════ 
- * 3. SYSEX COMMAND TABLE (CMD 0–189, canonical as of v6.0.00)
+ * 3. SYSEX COMMAND TABLE (CMD 0–189, canonical as of v6.0.01)
  *
  *   Wire format: [0xF0] [ID] [sub] [cmd_wire] [hi7] [lo7] [0xF7]
  *   ID = 0x7D  App → device  (only ID the firmware RX accepts)
@@ -510,17 +527,32 @@
  *   C. NO CLICKS ON NOTE ON / OFF
  *      • Synth voices: minimum 5 ms attack ramp from zero (no on-click) and
  *        minimum 10 ms release ramp to zero (no off-click) — harp.cpp/groovebox.cpp.
+ *      • [v6.0.01] Retrigger policy: same-pitch re-touch keeps phase/filter/env;
+ *        new pitch while ringing keeps envelope, resets phase+filter (SOLO legato).
+ *        Seq arp + direct poly cannot stack (harpSilenceDirectVoicesLocked on latch).
  *      • Voice steal in SOLO mode is a soft-kill (→ ENV_RELEASE), never a hard
  *        zero.  Laser-harp voices use a DETERMINISTIC 1:1 string→voice map
- *        (vi = stringIdx % HARP_POLYPHONY, both = 8) so trigger and release are
- *        always symmetric — no stuck notes / hung sustain (harp.cpp).  STRINGS
- *        mode forces sustain to true zero so plucks fully decay and free the
- *        voice.  The MIDI-note path (noteOnHarpMidi) tracks ownership and
- *        prefers a free voice, falling back to a soft steal.
- *      • Sequencer 50 % gate releases notes via ENV_RELEASE at mid-step.
+ *        (vi = stringIdx % HARP_POLYPHONY, both = 8).  STRINGS uses patch ADSR
+ *        sustain while the beam is held; release on beam-clear (harpNoteOff).
+ *        Mute (harp/seq/drum) starts ENV_RELEASE — never hard-cuts active=false.
+ *      • Sequencer 50 % gate releases notes via ENV_RELEASE at mid-step (bypassed
+ *        while seq ARP is on — arp gate controls note length).
  *      • Drums are one-shot with a linear-decay envelope to zero (no off edge).
  *      • NVS save handshake: master muted, ~22 ms drain, then Core 1 parks
  *        before the flash write — no save glitch (audio.cpp settings_save_task).
+ *
+ *   C2. STUCK-NOTE PREVENTION  [v6.0.01]
+ *      • stringActiveMask (globals.h): atomic hold snapshot written by laser Core 1
+ *        via stringActiveSet(); read once per buffer by harp_synth_fill_buf on Core 0.
+ *      • harpReconcileStuckNotesLocked() (harp.cpp): aligns SOLO stack + POLY8
+ *        voice owners with the physical-hold mask; force-releases unheld strings;
+ *        re-arms held strings whose voice died; arp-safe (no direct re-arm while arp
+ *        owns HARP_SOLO_VOICE / seq arp owns voice 7).
+ *      • Laser: asymmetric release hysteresis + beamStuckReleaseMs fail-safe;
+ *        mode/scale change → g_beamClearReq; panic/CC120/123 → harpAllNotesOff +
+ *        counter reset (laser.cpp, midi.cpp).
+ *      • allNotesOff() clears stringActiveMask; harpAllNotesOff() clears solo stack,
+ *        voice owners, and arp latch.
  *
  *   D. POLYPHONY (confirmed)
  *      8 harp + 8 sequencer + 8 drum = 24 simultaneous voices.  The sequencer
@@ -533,6 +565,10 @@
  *      aux send (harp+seq+drum) to shared delay+reverb (3-s tail gate) →
  *      sum = 0.333·(dry h+s+d) + 0.6·aux_wet → MasterFX (DJ filter, EQ shelves,
  *      tube, mid/side soft-knee limiter) → master vol.
+ *      [v6.0.01] Master EQ shelves/peaking use FX_DB40_TO_A (10^(dB/40)); aux
+ *      ring continues until s_auxRingBuf==0 even when sends are zero (tail drain).
+ *      Tail-only path skips insert/drum-bus work when all engines idle but aux
+ *      is still ringing.  !fx.initialized zeroes the output buffer.
  *      The 0.333 dry scale keeps three full-scale sources at unity headroom;
  *      a SINGLE transparent soft-knee limiter in MasterFX is the only master
  *      stage (the former tanh applySoftLimiter was removed — it coloured even
@@ -544,6 +580,8 @@
  *      • Per-engine headroom is now soft (engine_soft_clip), and the master
  *        limiter acts on the SUM, forming a transparent two-stage safety so the
  *        int16 output never wraps even with 24 voices + FX.
+ *      • [v6.0.01] Harp/seq poly headroom: active voice count scales sum before
+ *        engine_soft_clip (harp: Q15 √N lookup; seq: same in gb_seq_fill_buf).
  *      • Insert-FX preset .name strings in effect.h are internal descriptors;
  *        the user-facing names live in display.h kInsertFxNames[] and are
  *        mirrored verbatim by OctopusApp — index→DSP mapping is identical on
@@ -634,6 +672,18 @@
  *      RULE OF THUMB: averaging across strings = expression poison; per-string
  *      buckets = threshold only; the digital latch = the only trigger source;
  *      fog reject reads its OWN copy and gates, never feeds back.
+ *
+ *   I. ARPEGGIATOR ENGINE  (arp.h — shared by seq + harp adapters)
+ *      struct Engine holds:
+ *        notes[]      — sorted ascending (Up/Down/UpDn/Rnd/Oct patterns)
+ *        pitch_rows[] — grid row per sorted notes[i]  [v6.0.01 — must stay paired]
+ *        raw[]/rows[] — latch order (As-Played pattern only)
+ *      Seq adapter: groovebox.cpp s_seqArp, voice arp::SEQ_VOICE (7), latched per
+ *      sequencer step from grid rows 0–7; seqArpTick() on master_tick_counter.
+ *      Harp adapter: harp.cpp s_harpArp, voice HARP_SOLO_VOICE (0), latched from
+ *      held-beam stack (POLY8/SOLO); harpArpIntegrate() scaled by seqBpm in fill_buf.
+ *      Patterns: UP, DOWN, UP_DOWN, DOWN_UP, RANDOM, AS_PLAYED, UP_OCT, DOWN_OCT.
+ *      DnUp ping-pong: high→low→high without repeating endpoints (cycle 2n−2).
  *
  * ═══════════════════════════════════════════════════════════════════════════
  * 9. KNOWN LIMITATIONS & FUTURE WORK

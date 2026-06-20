@@ -232,26 +232,16 @@ static inline void IRAM_ATTR fire_tuned_drum(int ch, float velocity) {
  * [FIX-OV] Per-voice max contribution ≈ 2047 after >>15/>>15/>>19 chain;
  *           8 voices × 2047 × 3/4 ≈ 12 k — safe in int32_t.                */
 static inline bool IRAM_ATTR drum_fill_buf(int16_t* out_buf, size_t frames) {
-  /* [MUTE-GATE] Drums muted → skip synthesis and free voices (the env ager that
-   * frees them runs in the loop below).  FX already applies gain 0 to a muted
-   * engine, so rendering is pure waste; freeing avoids an un-aged voice pile-up
-   * on unmute.  Drums are one-shots, so unmute simply starts firing fresh. */
-  if (mixDrumsMute.load(std::memory_order_relaxed)) {
-    for (int ch = 0; ch < 8; ++ch)
-      drums[ch].active.store(false, std::memory_order_relaxed);
-    memset(out_buf, 0, frames * sizeof(int16_t));
-    return false;
-  }
+  /* [MUTE-GATE][CLICK-FIX] Do not hard-disarm voices — let one-shot envelopes
+   * finish so the FX bus sees a continuous decay (gain 0 while muted). */
 
-  /* [PERF] Idle early-out — bail to silence when no drum voice is active so an
-   * idle kit costs ~0 instead of clipping 512 zero-mix samples every buffer. */
   bool any_active = false;
   for (int ch = 0; ch < 8; ++ch) {
     if (drums[ch].active.load(std::memory_order_relaxed)) { any_active = true; break; }
   }
   if (!any_active) {
     memset(out_buf, 0, frames * sizeof(int16_t));
-    return false;                         // [3a]
+    return false;
   }
 
   /* [gbox OPT-2] One acquire load per voice per buffer instead of 4096; the

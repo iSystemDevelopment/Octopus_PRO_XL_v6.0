@@ -85,7 +85,7 @@ void setup() {
   delay(100);
 
   Serial.println(F("\n╔════════════════════════════════════════╗"));
-  Serial.println(F("║  OCTOPUS PRO XL v6.0.00 — BOOT KERNEL  ║"));
+  Serial.printf("║  OCTOPUS PRO XL v%s — BOOT KERNEL  ║\n", SYSTEM_FW_VERSION);
   Serial.println(F("╚════════════════════════════════════════╝\n"));
 
   /* ── REBOOT DIAGNOSTIC ───────────────────────────────────────────────────────
@@ -161,7 +161,7 @@ void setup() {
     display.setTextSize(1);
     display.setTextColor(SH110X_WHITE);
     display.setCursor(6, 20);
-    display.println(F("OCTOPUS PRO XL v6.00"));
+    display.printf("OCTOPUS PRO XL v%s", SYSTEM_FW_VERSION);
     display.setCursor(6, 36);
     display.println(F("   INITIALIZING..."));
     display.display();
@@ -252,7 +252,7 @@ void setup() {
     if (xSemaphoreTake(i2cMutex, pdMS_TO_TICKS(20)) == pdTRUE) {
       display.clearDisplay();
       display.setCursor(6, 20);
-      display.println(F("OCTOPUS PRO XL v6.0.00"));
+      display.printf("OCTOPUS PRO XL v%s", SYSTEM_FW_VERSION);
       display.setCursor(6, 36);
       display.println(F("     READY TO PLAY"));
       display.display();

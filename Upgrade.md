@@ -3,6 +3,19 @@
 Single source of truth for the next round of work. We **plan & polish here first**,
 then implement clean — no scattered visions. Edit freely; mark items as you decide.
 
+## v6.0.01 maintenance pass (2026-06-20) ✅
+
+Robustness / audio-quality fixes shipped without SETTINGS_VERSION or SysEx changes.
+
+| Area | Files | Summary |
+|------|-------|---------|
+| **FX** | `effect.cpp`, `effect.h` | EQ shelf gain law; aux tail drain; init guard; tail-only CPU path; denormals |
+| **Clicks** | `harp.cpp`, `groovebox.cpp`, `groovebox.h`, `globals.h` | Mute→release; seq retrigger policy; SOLO legato; poly headroom; `fast_noise` LCG |
+| **Stuck notes** | `harp.cpp`, `laser.cpp`, `globals.h`, `midi.cpp` | `stringActiveMask`; reconcile per buffer; hysteresis; panic/CC120/123 cleanup |
+| **ARP patterns** | `arp.h` | `pitch_rows[]` + sorted notes; DnUp fix; AsIs latch rows |
+| **OctopusApp** | `OctopusApp.html` | v6.0.01 help; playhead LEN=1 wrap fix; LEN echo re-sync |
+| **Docs** | `code_info.h`, `CHANGELOG.md`, `README.md` | Manifest + release notes updated → **6.0.01** |
+
 ## Ground rules / context already in place
 - **Display page-diff flush** (`displayFlushDiff` in `display.cpp`) is live: the
   renderer draws whole frames into RAM, only changed 128-byte pages hit I2C.
@@ -14,7 +27,7 @@ then implement clean — no scattered visions. Edit freely; mark items as you de
 ## Product documentation & headers (v6.0.00) ✅
 
 - `octopus_web.html` — full v6.0 product page (USB-only, ARP, fog reject, transport model, 190 SysEx cmds).
-- `code_info.h` — manifest updated (build 2026-06-20, seq/harp ARP, drum pitch, app notes).
+- `code_info.h` — manifest updated (build 2026-06-20, **6.0.01** maintenance: FX/click/stuck/arp).
 - All firmware `.h/.cpp/.ino` — standard proprietary header block (DIODAC ELECTRONICS).
 - `OctopusApp.html` / `octopus_web.html` — HTML proprietary notice comments.
 
@@ -1130,8 +1143,10 @@ Reported after the clean compile + flash (90% load, no glitches, smooth telemetr
    in `patches.h` (App + encoder paths). ✅ **TB_DRV App default** set to 0.
 3. **SOLO mode ping-pong (2nd-last instead of latest).** ✅ Already fixed — no
    change needed (release hysteresis + solo stack in harp.cpp/laser.cpp).
-4. **App playhead holds on 1 step.** ✅ **advancePlayhead** refetch after page
-   turn (`OctopusApp.html`).
+4. **App playhead holds on 1 step / wrap glitch.** ✅ **advancePlayhead** refetch after page
+   turn; **v6.0.01** fixes `loopWrap` falsely firing when `LEN=1` (same step 0 every
+   beat → transition snap flash). Pattern wrap now only when `prev === lastIdx && s===0`
+   with `lastIdx > 0`. Skip redundant paints when step unchanged.
 5. **SAVE/RESET crash + nothing persisted.** ✅ **NvsWorker 16 KB**, per-row
    `patterns_save_h`, `settings_persist_blocking()` for all sync saves, 256 KB NVS
    partition, scoped RESET/SAVE menu wired through NvsWorker handshake.
