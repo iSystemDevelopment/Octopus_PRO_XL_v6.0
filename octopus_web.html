@@ -170,26 +170,10 @@
             border-color: rgba(6, 182, 212, 0.35);
             box-shadow: 0 0 48px rgba(6, 182, 212, 0.14);
         }
-        .img-frame-app {
-            border-color: rgba(34, 197, 94, 0.28);
-            box-shadow: 0 0 48px rgba(34, 197, 94, 0.1);
-        }
         .img-frame-logo {
             border-color: rgba(168, 85, 247, 0.35);
             box-shadow: 0 0 40px rgba(168, 85, 247, 0.18);
             background: radial-gradient(circle at 30% 20%, rgba(168, 85, 247, 0.12), #050508 65%);
-        }
-        .media-bento {
-            display: grid;
-            gap: 1rem;
-            grid-template-columns: 1fr;
-        }
-        @media (min-width: 768px) {
-            .media-bento {
-                grid-template-columns: 1.35fr 0.65fr;
-                grid-template-rows: auto auto;
-            }
-            .media-bento .span-main { grid-row: span 2; min-height: 340px; }
         }
         .media-caption {
             font-family: 'JetBrains Mono', monospace;
@@ -289,18 +273,6 @@
             <a href="https://octopus.isystem.app" class="text-[#22c55e] hover:underline" target="_blank" rel="noopener">octopus.isystem.app</a>.
         </p>
 
-        <!-- Product imagery -->
-        <div class="w-full max-w-6xl mx-auto mb-8 media-bento px-2">
-            <figure class="img-frame img-frame-laser span-main min-h-[240px] md:min-h-[360px]">
-                <img src="laser.jpg" alt="Octopus PRO XL — 8-beam reflective laser harp in performance" loading="lazy">
-            </figure>
-            <figure class="img-frame img-frame-logo aspect-square max-w-[220px] mx-auto md:mx-0 md:max-w-none">
-                <img src="logo.jpg" alt="Octopus PRO XL logo" class="img-circle" loading="lazy">
-            </figure>
-            <figure class="img-frame img-frame-app min-h-[140px]">
-                <img src="octopus-app-hero.jpg" alt="OctopusApp web console preview" loading="lazy">
-            </figure>
-        </div>
         <p class="text-xs text-gray-600 mono max-w-2xl mx-auto mb-8 px-4">
             ILDA-style galvo scan engine · note-reactive RGB · zero-install OctopusApp at
             <a href="https://octopus.isystem.app" class="text-[#22c55e] hover:underline" target="_blank" rel="noopener">octopus.isystem.app</a>
