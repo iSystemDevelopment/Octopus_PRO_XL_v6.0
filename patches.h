@@ -587,10 +587,12 @@ static inline uint16_t encodeSeqParam(int idx) {
 static inline void syncLivePatchFromAtomics() {
   /* [PATCH-PERF] Snapshot atomics outside patchMux; the lock only copies the
    * derived v14 arrays (~96 B) so audio/encoder writers aren't blocked for 32+
-   * atomic loads. */
-  uint16_t hp[PARAMS_PER_PRESET];
-  uint16_t sp[PARAMS_PER_PRESET];
-  uint16_t dp[32];
+   * atomic loads.
+   * [FIX-SPARE] Zero-initialise all arrays so P_SPARE1/P_SPARE2 (indices 14-15)
+   * don't carry stack garbage into livePatch — they have no corresponding atomic. */
+  uint16_t hp[PARAMS_PER_PRESET] = {};
+  uint16_t sp[PARAMS_PER_PRESET] = {};
+  uint16_t dp[32] = {};
 
   hp[(int)SynthParam::P_WAVEFORM] = (uint16_t)(std::min((float)24u, std::max(0.f, harpWaveform.load(std::memory_order_relaxed))));
   hp[(int)SynthParam::P_ATTACK] = norm_to_v14(std::min(1.f, std::max(0.f, harpAttack.load(std::memory_order_relaxed))));
@@ -1277,7 +1279,9 @@ static inline void applyMasterParam(uint8_t cmd, uint16_t v14, Origin o) {
     }
     case CMD_LSR_DRUMFLASH: laserDrumFlash.store(n); break;
     case CMD_DB_ENABLED: dbeamEnabled.store(v14 > 0u); break;
-    case CMD_DB_CURVE: currentDbeamCurve.store((DBEAMCurve)(v14 & 0xFFu)); break;
+    /* [FIX-CURVE] Clamp to valid DBEAMCurve range (0-4). Old code stored
+     * v14 & 0xFF which allowed invalid enum values 5-255 to corrupt the state. */
+    case CMD_DB_CURVE: currentDbeamCurve.store((DBEAMCurve)(v14 % 5u)); break;
     case CMD_DB_OFFSET: dbeamHWCfg.offsetAdc = (int)v14; break;
     case CMD_DB_RANGE: dbeamHWCfg.rangeAdc = (int)v14; break;
     default: return; /* not ours → caller (RX switch) handles it, no echo */
@@ -1306,15 +1310,16 @@ static inline void applyFxSend(uint8_t cmd, uint16_t v14, Origin o) {
 /* Drum insert-A live tweak (CMD 190–192) — independent of D.REV/D.DLY aux atomics. */
 static inline void applyDrumInsertParam(uint8_t cmd, uint16_t v14, Origin o) {
   const float n = (float)v14 / 16383.0f;
+  bool owned = false;   /* [FIX-ECHO] only echo if cmd was actually handled */
   portENTER_CRITICAL(&patchMux);
   switch (cmd) {
-    case CMD_D_FX_WET: fx.drumInsert.fx.fx_mix = n; break;
-    case CMD_D_FX_P1:  fx.drumInsert.fx.p1 = n * 30.f; break;
-    case CMD_D_FX_P2:  fx.drumInsert.fx.p2 = n * 250.f; break;
+    case CMD_D_FX_WET: fx.drumInsert.fx.fx_mix = n;         owned = true; break;
+    case CMD_D_FX_P1:  fx.drumInsert.fx.p1 = n * 30.f;     owned = true; break;
+    case CMD_D_FX_P2:  fx.drumInsert.fx.p2 = n * 250.f;    owned = true; break;
     default: break;
   }
   portEXIT_CRITICAL(&patchMux);
-  echoIfNotApp(cmd, v14, o);
+  if (owned) echoIfNotApp(cmd, v14, o);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -1678,15 +1683,19 @@ static inline void echoDbeamExprState() {
  * SECTION 10F — APP CONNECTIVITY + TRANSPORT ARBITRATION + SONG MODE  [v5.3.1]
  * ═══════════════════════════════════════════════════════════════════════════ */
 
-/* isAppConnected — true if the app sent a sysex heartbeat within 3 seconds.
+/* isAppConnected — true if the app sent a sysex heartbeat within 4.5 seconds.
  * Used by display_refresh_task to switch to the "APP CONNECTED" page, and
- * by midi.cpp when sending non-transport echoes.                            */
+ * by midi.cpp when sending non-transport echoes.
+ * [FIX-HEARTBEAT] Window changed from 3000ms → 4500ms to match pollSyncHeartbeat().
+ * Old value (3000ms) caused a 1.5-second window where the OLED still showed
+ * "APP CONNECTED" but txSysex() was already returning early — hardware encoder
+ * turns during that gap were silently lost with no App knob update.            */
 static inline bool isAppConnected() {
   const uint32_t last = lastWebSysexMs.load(std::memory_order_relaxed);
   /* last==0 = no app sysex ever received → never "connected" at boot.
-   * (Without this guard the first 3 s after power-on read as connected because
-   *  millis()-0 < 3000.) */
-  return (last != 0u) && ((millis() - last) < 3000u);
+   * (Without this guard the first 4.5 s after power-on read as connected because
+   *  millis()-0 < 4500.) */
+  return (last != 0u) && ((millis() - last) < 4500u);
 }
 
 /* [v6.0] transport_available() was removed — the hardware ALWAYS owns transport
@@ -1708,9 +1717,15 @@ static inline void echoSongState() {
     const uint16_t v14 = (uint16_t)(((uint16_t)(i & 0xFu) << 10) | ((uint16_t)(st.bank & 0xFu) << 6) | ((uint16_t)(st.chain & 0x3u) << 4) | ((uint16_t)(st.repeats & 0xFu)));
     txSysex(CMD_SONG_STEP, v14);
   }
-  /* Current play position */
-  const uint16_t pos = (uint16_t)(((uint16_t)songCurrentStep.load(std::memory_order_relaxed) << 8) | ((uint16_t)songCurrentRepeat.load(std::memory_order_relaxed)));
-  txSysex(CMD_SONG_POS, pos >> 1u); /* fit in v14: shift >>1 (scale 0-127) */
+  /* [FIX-SONG-POS] Use same CMD_SONG_POS encoding as the ring (groovebox.cpp):
+   *   v14 = (step & 0xF) << 4
+   * Old echoSongState used (step<<8|repeat)>>1 which puts step in bits 7-11,
+   * while the App decoder reads (v14>>4)&0xF (bits 4-7) and the ring sets bit
+   * pattern step<<4.  Old encoding: step=1 → v14=128, App reads (128>>4)&0xF=8.
+   * New encoding: step=1 → v14=16, App reads (16>>4)&0xF=1.  Repeat is ignored
+   * by the App so it is not included.                                           */
+  txSysex(CMD_SONG_POS,
+          (uint16_t)((songCurrentStep.load(std::memory_order_relaxed) & 0xFu) << 4));
 }
 
 /* applySongStep — decode CMD_SONG_STEP v14 and update hwSongData.          */

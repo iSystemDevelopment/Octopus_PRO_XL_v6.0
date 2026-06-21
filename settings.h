@@ -119,6 +119,7 @@
 #include "effect.h"
 #include "patches.h" /* syncLivePatchFromAtomics(), applyHarpParam… */
 #include "fog.h"      /* [FOG] fogRejectEnabled / fogRejectMargin / FOG_MARGIN_MAX */
+#include "esp_task_wdt.h" /* esp_task_wdt_reset() — called between NVS blob writes */
 
 /* [RESUME] Defined in groovebox.cpp; forward-declared here so the working-image
  * sync can persist/restore the SEQ view page without pulling in groovebox.h.  */
@@ -370,10 +371,10 @@ struct MixSettings {
  * ═══════════════════════════════════════════════════════════════════════════ */
 /* ── Song sequencer programs ─────────────────────────────────────────────── */
 struct SongSettings {
-  SongSlot slots[16]; /* all 16 song programs          */
-  bool modeActive;    /* song vs pattern mode          */
-  uint8_t activeSlot; /* 0-15                          */
-  uint8_t _pad[2];
+  SongSlot slots[16];        /* all 16 song programs            */
+  bool modeActive   = false; /* song vs pattern mode            */
+  uint8_t activeSlot = 0;    /* 0-15                            */
+  uint8_t _pad[2]   = {0,0}; /* explicit zero — never garbage   */
 };
 
 /* Standard CRC-32 (0xEDB88320 reflected, init/final 0xFFFFFFFF).  Proven
@@ -446,9 +447,7 @@ static inline float clamp01(float v) {
 static inline float clampf(float v, float lo, float hi) {
   return std::min(hi, std::max(lo, v));
 }
-static inline uint8_t clamp8(int v, int lo, int hi) {
-  return (uint8_t)std::min(hi, std::max(lo, v));
-}
+/* clamp8() was removed — it was never called anywhere in the codebase. */
 
 
 
@@ -1548,45 +1547,60 @@ static inline bool settings_save_scoped(ResetScope scope) {
     return false;
   }
 
+  /* [FIX-TWDT] The hardware task watchdog (TWDT) was the root cause of the
+   * save crash.  Writing 7 blobs (~37 KB) to NVS flash with wear leveling
+   * takes 3–10 seconds; the default TWDT timeout is 5 seconds.  The NvsBlk
+   * task adds itself via esp_task_wdt_add() in audio.cpp and feeds the
+   * watchdog during pre-write steps, but NOT inside the actual NVS calls.
+   * esp_task_wdt_reset() is now called after each blob write so the watchdog
+   * can never expire during a normal (non-stuck) save sequence.              */
+#define WDT_RESET_SAVE() esp_task_wdt_reset()
+
   esp_err_t err = ESP_OK;
   switch (scope) {
     case ResetScope::FULL:
       settings_sync_from_ssot();
       g_settings.crc32 = g_settings.calculate_crc();
       err = nvs_set_blob(h, "settings", &g_settings, sizeof(AllSettings));
-      if (err != ESP_OK) break;
+      if (err != ESP_OK) break; WDT_RESET_SAVE();
       err = patterns_save_h(h);
-      if (err != ESP_OK) break;
+      if (err != ESP_OK) break; WDT_RESET_SAVE();
       err = banks_save_h(h);
-      if (err != ESP_OK) break;
+      if (err != ESP_OK) break; WDT_RESET_SAVE();
       err = usrnames_save_h(h);
-      if (err != ESP_OK) break;
+      if (err != ESP_OK) break; WDT_RESET_SAVE();
       err = usrpat_save_h(h);
-      if (err != ESP_OK) break;
+      if (err != ESP_OK) break; WDT_RESET_SAVE();
       err = usrpatnames_save_h(h);
-      if (err != ESP_OK) break;
+      if (err != ESP_OK) break; WDT_RESET_SAVE();
       err = motion_save_h(h);
+      WDT_RESET_SAVE();
       break;
     case ResetScope::SETTINGS:
       settings_sync_from_ssot();
       g_settings.crc32 = g_settings.calculate_crc();
       err = nvs_set_blob(h, "settings", &g_settings, sizeof(AllSettings));
+      WDT_RESET_SAVE();
       break;
     case ResetScope::BANKS_PATTERNS:
       err = patterns_save_h(h);
-      if (err != ESP_OK) break;
+      if (err != ESP_OK) break; WDT_RESET_SAVE();
       err = banks_save_h(h);
-      if (err != ESP_OK) break;
+      if (err != ESP_OK) break; WDT_RESET_SAVE();
       err = usrnames_save_h(h);
-      if (err != ESP_OK) break;
+      if (err != ESP_OK) break; WDT_RESET_SAVE();
       err = usrpat_save_h(h);
-      if (err != ESP_OK) break;
+      if (err != ESP_OK) break; WDT_RESET_SAVE();
       err = usrpatnames_save_h(h);
+      WDT_RESET_SAVE();
       break;
     case ResetScope::MOTION:
       err = motion_save_h(h);
+      WDT_RESET_SAVE();
       break;
   }
+
+#undef WDT_RESET_SAVE
 
   if (err == ESP_OK) err = nvs_commit(h);
 
@@ -1669,16 +1683,25 @@ static inline bool settings_load() {
     return true;
   }
   if (err != ESP_OK) return false;
-  uint8_t blob[sizeof(AllSettings)];
-  size_t sz = sizeof(blob);
+
+  /* [FIX-STACK] sizeof(AllSettings) ≈ 1840 bytes — allocating it on the
+   * Arduino task stack (8 KB total) left only ~4 KB headroom when combined
+   * with nvs_get_blob's own stack usage, making stack overflow possible on
+   * deep call chains.  Heap-allocate instead; freed before any sync path. */
+  uint8_t* blob = (uint8_t*)heap_caps_malloc(sizeof(AllSettings), MALLOC_CAP_INTERNAL);
+  if (!blob) { nvs_close(h); return false; }
+  size_t sz = sizeof(AllSettings);
   err = nvs_get_blob(h, "settings", blob, &sz);
   nvs_close(h);
-  if (err != ESP_OK) return false;
+  if (err != ESP_OK) { heap_caps_free(blob); return false; }
 
+  bool valid = false;
   if (sz == sizeof(AllSettings)) {
     memcpy(&g_settings, blob, sz);
-    if (g_settings.verify()) return true;
+    valid = g_settings.verify();
   }
+  heap_caps_free(blob);
+  if (valid) return true;
 
   /* Corrupt or unknown/older version — reset and reseed [S1].  (v6.0 dropped the
    * D-BEAM cut/mod CC# fields, so the old byte-offset migration was retired —
@@ -1713,10 +1736,8 @@ static inline bool loadSettings() {
   return ok;
 }
 
-/** Reset all atomics to factory values.  Does NOT write to NVS.            */
-static inline void resetToFactoryDefaults() {
-  setupToFactoryDefaults();
-}
+/* resetToFactoryDefaults() removed — was a dead wrapper that only called
+ * setupToFactoryDefaults(). Call setupToFactoryDefaults() directly.         */
 
 /** Blocking full-session save on the 16 KB NvsBlk worker. Prefer requestScopedSave()
  *  at runtime (NvsWorker handshake); use this only when a synchronous commit is required. */
@@ -1750,13 +1771,17 @@ static inline bool settings_load_scoped(ResetScope scope) {
     case ResetScope::SETTINGS: {
       nvs_handle_t h;
       if (nvs_open(NVS_NAMESPACE, NVS_READONLY, &h) != ESP_OK) return false;
-      uint8_t blob[sizeof(AllSettings)];
-      size_t  sz  = sizeof(blob);
+      /* [FIX-STACK] Same heap-alloc fix as settings_load: avoid two AllSettings
+       * objects (~3680 bytes) on the nvs_load_task stack simultaneously.       */
+      uint8_t* blob = (uint8_t*)heap_caps_malloc(sizeof(AllSettings), MALLOC_CAP_INTERNAL);
+      if (!blob) { nvs_close(h); return false; }
+      size_t sz = sizeof(AllSettings);
       esp_err_t e = nvs_get_blob(h, "settings", blob, &sz);
       nvs_close(h);
-      if (e != ESP_OK || sz != sizeof(AllSettings)) return false;
+      if (e != ESP_OK || sz != sizeof(AllSettings)) { heap_caps_free(blob); return false; }
       AllSettings tmp;
       memcpy(&tmp, blob, sz);
+      heap_caps_free(blob);
       if (!tmp.verify()) return false;
       g_settings = tmp;
       settings_sync_to_ssot();                /* → atomics → syncLivePatchFromAtomics */

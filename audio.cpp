@@ -9,7 +9,8 @@
  * audio.cpp — v6.0.00
  * ═════════════════════════════════════════════════════════════════════════════ */
 #include "audio.h"
-#include "esp_log.h"
+/* esp_log.h removed — ESP_LOGI debug calls were leftover agent instrumentation
+ * that blocked the NvsWorker task during saves via Serial.flush(). */
 
 /* Ensure laser symbols available even if include order varies */
 #include "laser.h"
@@ -269,10 +270,15 @@ void IRAM_ATTR audio_synthesis_task(void* pvParameters) {
     }
 
     /* ── 10. I2S DMA write ───────────────────────────────────────────────── */
+    /* [FIX-I2S-TIMEOUT] Timeout reduced 100 ms → 50 ms.  Old value was 8×
+     * the buffer period; if the DMA stalls, Core 0 would block for 100 ms
+     * starving dbeam_adc(19), OledRender(14), ControlPoll(10) and IDLE0.
+     * 50 ms is still 4× the buffer period (ample for any realistic DMA lag)
+     * while limiting the stall window to half of the old worst case.          */
     const int64_t wrStart = esp_timer_get_time();
     const esp_err_t r = i2s_channel_write(tx_handle, audio_raw_outH,
                                            DMA_BUFFER_STEREO_BYTES,
-                                           &bytes_written, pdMS_TO_TICKS(100));
+                                           &bytes_written, pdMS_TO_TICKS(50));
     /* i2s_channel_write blocks (relinquishing Core 0) only while the DMA ring is
      * full — the normal < 100 % steady state.  A return in well under a frame
      * means the ring was draining (at/over budget) and the core was NOT yielded. */
@@ -280,6 +286,17 @@ void IRAM_ATTR audio_synthesis_task(void* pvParameters) {
     if (r != ESP_OK && tx_handle) {
       i2s_channel_disable(tx_handle);
       vTaskDelay(pdMS_TO_TICKS(10));
+      i2s_channel_enable(tx_handle);
+      yielded = true;
+    }
+    /* [FIX-PARTIAL-WRITE] ESP_OK does not guarantee a full write; if the DMA
+     * ring accepted fewer than the requested bytes the output frame is shorter
+     * than the engine produced, causing a progressive audio de-sync that
+     * manifests as periodic clicks or pitch drift.  Treat partial writes the
+     * same as a driver error: disable/re-enable to resync the ring.           */
+    if (r == ESP_OK && bytes_written < DMA_BUFFER_STEREO_BYTES && tx_handle) {
+      i2s_channel_disable(tx_handle);
+      vTaskDelay(pdMS_TO_TICKS(5));
       i2s_channel_enable(tx_handle);
       yielded = true;
     }
@@ -554,16 +571,8 @@ void settings_save_task(void* pvParameters) {
     esp_task_wdt_reset();
     const ResetScope scope =
         (ResetScope)(g_persistScope.load(std::memory_order_relaxed) & 3u);
-    ESP_LOGI("SaveDbg",
-             "{\"sessionId\":\"5527b1\",\"hypothesisId\":\"H5\",\"location\":\"audio.cpp:save_task\","
-             "\"message\":\"nvs_write_start\",\"data\":{\"scope\":%u,\"parked\":%d}}",
-             (unsigned)(uint8_t)scope, parked ? 1 : 0);
     const bool ok = settings_save_scoped(scope);
     esp_task_wdt_reset();
-    ESP_LOGI("SaveDbg",
-             "{\"sessionId\":\"5527b1\",\"hypothesisId\":\"H5\",\"location\":\"audio.cpp:save_task\","
-             "\"message\":\"nvs_write_done\",\"data\":{\"ok\":%d}}",
-             ok ? 1 : 0);
     g_persistScope.store((uint8_t)ResetScope::FULL, std::memory_order_relaxed);
     g_saveLastOk.store(ok, std::memory_order_release);
     if (!ok) {
@@ -577,11 +586,7 @@ void settings_save_task(void* pvParameters) {
       displayDirty.store(true, std::memory_order_relaxed);
     }
 
-    /* #region agent log */
-    Serial.printf("{\"sessionId\":\"5527b1\",\"hypothesisId\":\"H7\",\"location\":\"audio.cpp:save_task\",\"message\":\"post_write_begin\",\"data\":{\"core\":%d}}\n", (int)xPortGetCoreID()); Serial.flush();
-    /* #endregion */
-
-    /* ── Step 4: clear flags and restore volume ───────────────────────── */
+    /* ── Step 4: clear flags ─────────────────────────────────────────── */
     std::atomic_thread_fence(std::memory_order_release);
     g_loopParked.store(false, std::memory_order_release);
     g_saveArmed .store(false, std::memory_order_release);
@@ -592,22 +597,17 @@ void settings_save_task(void* pvParameters) {
     g_beamRecover.store(true, std::memory_order_release);
     std::atomic_thread_fence(std::memory_order_release);
 
-    masterVol.store(savedVol, std::memory_order_relaxed);
+    /* [FIX-VOL-DOUBLE] masterVol is already restored at the SAVE-FIX6 point
+     * above (before the NVS sync) and must NOT be forced back to savedVol here:
+     * on no-reboot save paths (requestBanksOnlySave) the MIDI/CC task can
+     * legitimately change the volume during the write, and this late restore
+     * would silently undo the user's change.                                 */
     g_saveRequest.store(false, std::memory_order_release);
-    Serial.println(F("[BEAM] save complete → beam-recover requested"));
 
     /* [SAVE-FIX7] Release the I2C bus — OLED tasks may render again. */
     if (haveI2c) xSemaphoreGive(i2cMutex);
 
-    /* #region agent log */
-    Serial.printf("{\"sessionId\":\"5527b1\",\"hypothesisId\":\"H7\",\"location\":\"audio.cpp:save_task\",\"message\":\"flags_cleared_vol_restored\"}\n"); Serial.flush();
-    /* #endregion */
-
     if (g_saveDoneSem) xSemaphoreGive(g_saveDoneSem);
-
-    /* #region agent log */
-    Serial.printf("{\"sessionId\":\"5527b1\",\"hypothesisId\":\"H7\",\"location\":\"audio.cpp:save_task\",\"message\":\"done_sem_given\",\"data\":{\"restart\":%d}}\n", g_restartAfterSave.load(std::memory_order_acquire) ? 1 : 0); Serial.flush();
-    /* #endregion */
 
     /* Echo confirmation to App only after a successful commit (BEFORE any
      * restart so the App still receives the ACK). */
@@ -646,6 +646,12 @@ bool init_audio_system() {
   if (!audio_raw_harpH || !audio_raw_seqH || !audio_raw_drumH || !audio_raw_outH) {
     Serial.printf("[Audio] DRAM alloc failed (need %u bytes)\n",
       (unsigned)(3u * DMA_BUFFER_MONO_BYTES + DMA_BUFFER_STEREO_BYTES));
+    /* Free any successful allocations so the heap isn't silently leaked if
+     * the system continues (e.g. diagnostic mode with audio disabled).       */
+    heap_caps_free(audio_raw_harpH); audio_raw_harpH = nullptr;
+    heap_caps_free(audio_raw_seqH);  audio_raw_seqH  = nullptr;
+    heap_caps_free(audio_raw_drumH); audio_raw_drumH = nullptr;
+    heap_caps_free(audio_raw_outH);  audio_raw_outH  = nullptr;
     return false;
   }
   memset(audio_raw_harpH, 0, DMA_BUFFER_MONO_BYTES);
