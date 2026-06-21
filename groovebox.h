@@ -437,6 +437,9 @@ void seq_start();
 void seq_stop();
 void seq_pause();
 void seq_toggle();
+/* [RND-RESTART] Reset step counter to 0 while keeping playback running.
+ * Called by CMD_SEQ_RESTART (App → firmware) after pattern randomisation. */
+void IRAM_ATTR seq_restart_from_step_zero();
 void setSequencerBpm(int32_t bpm);
 void initSequencer();
 void song_rewind_rt();   /* [SONG-FIX] reset song chain to step 0 + load its bank */

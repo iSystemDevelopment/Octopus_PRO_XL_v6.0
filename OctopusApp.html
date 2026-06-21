@@ -80,8 +80,15 @@
             height: 38px;
             flex-shrink: 0;
             gap: 4px;
-            overflow: hidden
+            /* [FIX-HEADER] Horizontal scroll so DBEAM and any overflow items are always
+             * reachable on narrow viewports. No visible scrollbar but swipeable on touch. */
+            overflow-x: auto;
+            overflow-y: hidden;
+            scrollbar-width: none;        /* Firefox */
+            -webkit-overflow-scrolling: touch;
+            touch-action: pan-x;         /* horizontal swipe on mobile */
         }
+        header::-webkit-scrollbar { display: none } /* Chrome/Safari */
 
         .brand-mark {
             font-family: 'Orbitron', sans-serif;
@@ -111,7 +118,10 @@
             gap: 3px;
             white-space: nowrap;
             height: 22px;
-            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07), 0 1px 2px rgba(0, 0, 0, 0.85)
+            flex-shrink: 0;
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07), 0 1px 2px rgba(0, 0, 0, 0.85);
+            /* [TOUCH] Remove iOS tap highlight flash on header buttons */
+            -webkit-tap-highlight-color: transparent
         }
 
         .btn:hover {
@@ -727,7 +737,11 @@
             position: relative;
             flex-shrink: 0;
             background: radial-gradient(circle at 50% 36%, #1c1c26 0%, #0a0a10 62%, #040406 100%);
-            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.9), inset 0 1px 1px rgba(255, 255, 255, 0.05), inset 0 -2px 3px rgba(0, 0, 0, 0.85)
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.9), inset 0 1px 1px rgba(255, 255, 255, 0.05), inset 0 -2px 3px rgba(0, 0, 0, 0.85);
+            /* [TOUCH] Prevent page scroll while dragging a knob on touchscreen */
+            touch-action: none;
+            /* [TOUCH] Remove iOS grey tap flash */
+            -webkit-tap-highlight-color: transparent
         }
 
         .knob-hitbox::before {
@@ -1109,7 +1123,7 @@
         <button class="btn" style="color:var(--cyan);border-color:var(--cyan)" onclick="app.openLoadModal()" title="Load session / song / factory pattern"><i class="fa-solid fa-folder-open"></i>LOAD</button>
         <button class="btn" style="color:var(--purple);border-color:var(--purple)" onclick="app.openSlotsModal()" title="User sound + pattern slots (save / load / rename)"><i class="fa-solid fa-box-archive"></i>SLOTS</button>
         <button class="btn" style="color:var(--red);border-color:var(--red)" onclick="app.openResetModal()" title="Scoped reset / soft reset (mirrors hardware RESET menu)"><i class="fa-solid fa-rotate-left"></i>RESET</button>
-        <select class="display-box" id="masterFxPreset" onchange="app.txSysex(CMD.M_FX_IDX,this.value)" style="width:160px" title="Master FX preset"></select>
+        <select class="display-box" id="masterFxPreset" onchange="app.txSysexSoon(CMD.M_FX_IDX,this.value)" style="width:160px" title="Master FX preset"></select>
 
         <div class="header-sep"></div>
         <!-- Pattern tools -->
@@ -1305,11 +1319,11 @@
                             <option value="6">LFO → Full Matrix</option>
                             <option value="7">LFO → Tremolo</option>
                         </select>
-                        <select class="display-box" id="harpPatch" onchange="app.txSysex(CMD.H_PATCH,this.value)" style="width:210px"></select>
+                        <select class="display-box" id="harpPatch" onchange="app.txSysexSoon(CMD.H_PATCH,this.value)" style="width:210px"></select>
                         <select class="display-box" id="harpWave" onchange="app.setHarpWave(this.value)" style="width:140px"></select>
                         <select class="display-box" id="harpScale" onchange="app.setGlobalScale(this.value)" style="width:100px"></select>
-                        <select class="display-box" id="harpFxA" title="Harp FX insert" onchange="app.txSysex(CMD.H_FX_IDX,this.value)" style="width:90px"></select>
-                        <select class="display-box" id="harpFxB" title="Harp Dynamics insert" onchange="app.txSysex(CMD.H_FX_IDX_B,this.value)" style="width:90px"></select>
+                        <select class="display-box" id="harpFxA" title="Harp FX insert" onchange="app.txSysexSoon(CMD.H_FX_IDX,this.value)" style="width:90px"></select>
+                        <select class="display-box" id="harpFxB" title="Harp Dynamics insert" onchange="app.txSysexSoon(CMD.H_FX_IDX_B,this.value)" style="width:90px"></select>
                     </div>
                 </div>
                 <div id="harp-knobs" class="panel-container"></div>
@@ -1332,11 +1346,11 @@
                             <option value="6">LFO → Full Matrix</option>
                             <option value="7">LFO → Tremolo</option>
                         </select>
-                        <select class="display-box" style="color:var(--pink);width:210px" id="seqPatch" onchange="app.txSysex(CMD.S_PATCH,this.value)"></select>
+                        <select class="display-box" style="color:var(--pink);width:210px" id="seqPatch" onchange="app.txSysexSoon(CMD.S_PATCH,this.value)"></select>
                         <select class="display-box" style="color:var(--pink);width:140px" id="seqWave" onchange="app.setSeqWave(this.value)"></select>
                         <select class="display-box" style="color:var(--pink);width:100px" id="seqScale" onchange="app.setGlobalScale(this.value)"></select>
-                        <select class="display-box" style="color:var(--pink);width:90px" id="seqFxA" onchange="app.txSysex(CMD.S_FX_IDX,this.value)"></select>
-                        <select class="display-box" style="color:var(--pink);width:90px" id="seqFxB" onchange="app.txSysex(CMD.S_FX_IDX_B,this.value)"></select>
+                        <select class="display-box" style="color:var(--pink);width:90px" id="seqFxA" onchange="app.txSysexSoon(CMD.S_FX_IDX,this.value)"></select>
+                        <select class="display-box" style="color:var(--pink);width:90px" id="seqFxB" onchange="app.txSysexSoon(CMD.S_FX_IDX_B,this.value)"></select>
                     </div>
                 </div>
                 <div id="seq-knobs" class="panel-container"></div>
@@ -1360,8 +1374,8 @@
                     <span class="dw-sep"></span>
                     <label class="dw-fld">KIT<select class="display-box" style="width:90px;color:var(--orange)" id="drumKit" onchange="app.setDrumKit(this.value)"></select></label>
                     <span class="dw-sep"></span>
-                    <label class="dw-fld">FX A<select class="display-box" style="width:100px;color:var(--orange)" id="drumFxA" title="Drum insert FX-A preset" onchange="app.txSysex(CMD.D_FX_IDX,this.value)"></select></label>
-                    <label class="dw-fld">FX B<select class="display-box" style="width:100px;color:var(--orange)" id="drumFxB" title="Drum dynamics FX-B preset" onchange="app.txSysex(CMD.D_FX_IDX_B,this.value)"></select></label>
+                    <label class="dw-fld">FX A<select class="display-box" style="width:100px;color:var(--orange)" id="drumFxA" title="Drum insert FX-A preset" onchange="app.txSysexSoon(CMD.D_FX_IDX,this.value)"></select></label>
+                    <label class="dw-fld">FX B<select class="display-box" style="width:100px;color:var(--orange)" id="drumFxB" title="Drum dynamics FX-B preset" onchange="app.txSysexSoon(CMD.D_FX_IDX_B,this.value)"></select></label>
                 </div>
                 <div id="drum-knobs" class="drum-grid"></div>
             </div>
@@ -1763,7 +1777,10 @@
             HARP_ARP_GATE: 189,      // v14 0–3 gate duty index
             D_FX_WET: 190,           // drum insert-A wet/dry (fx_mix)
             D_FX_P1: 191,            // drum insert-A rate/time (p1)
-            D_FX_P2: 192             // drum insert-A depth (p2)
+            D_FX_P2: 192,            // drum insert-A depth (p2)
+            // [RND-RESTART] App→firmware: restart step counter from 0 while playing.
+            // Sent after RND-H / RND-D so the new random pattern plays from beat 1.
+            SEQ_RESTART: 193
         };
         const ARP_PAT_NAMES = ['Up', 'Down', 'UpDn', 'DnUp', 'Rnd', 'AsIs', 'Up+1', 'Dn-1'];
         const ARP_RATE_NAMES = ['1/1', '1/2', '1/4', '1/8', '1/8T', '1/16', '1/16T', '1/32'];
@@ -3120,6 +3137,7 @@
             _pllAnchorTime: -1,  // performance.now() at that STEP_SYNC
             _dispatch: null,          // [FIX-DISPATCH] built lazily by _buildDispatch()
             _songEditorDirty: false,  // [FIX-SONG] deferred buildSongEditor to rAF
+            _debounceTimers: null,    // [THROTTLE] per-cmd timers for txSysexSoon
             _sxRxBuf: null, // reassemble split inbound SysEx (some USB stacks fragment frames)
             _lastDeviceRxMs: 0,   // last 0x7C echo from firmware (link verify)
             _linkGraceUntil: 0,   // ms — allow boot/sync before declaring dead link
@@ -3643,6 +3661,17 @@
                     return;
                 }
                 this.monSysex('→', cmd, v); // [MON-FIX] trace outbound frame
+            },
+            // [THROTTLE] Debounced txSysex — one timer per CMD.  The final value
+            // always wins; intermediate values during rapid select-scroll are dropped.
+            // Use for heavy-load selects (patch/FX/wave) where every intermediate
+            // value triggers a synth preset load on the device.  Default 60 ms is
+            // fast enough to feel instant to a human but prevents machine-gun spam
+            // when mouse-wheeling through a dropdown list.
+            txSysexSoon(cmd, val, ms = 60) {
+                if (!this._debounceTimers) this._debounceTimers = {};
+                clearTimeout(this._debounceTimers[cmd]);
+                this._debounceTimers[cmd] = setTimeout(() => this.txSysex(cmd, val), ms);
             },
             /* [WS4] One cmd may map to multiple knob widgets (e.g. AUX on drum row +
              * master console).  Update every registered node for a clean 1:1 echo. */
@@ -4471,8 +4500,13 @@
                         this.txSysex(CMD.GRID_TOG, (r << 7) | c);
                     }
                 this.repaintGrid();
+                // [RND-RESTART] Restart the sequencer from step 1 so the new random
+                // pattern is heard from the beginning immediately — only while playing
+                // (when stopped, seq_start() always resets the counter anyway).
+                if (this.isPlaying) this.txSysex(CMD.SEQ_RESTART, 0);
                 this.log((kind === 'drum' ? 'Drums' : 'Notes') + ' randomized @ ' +
-                    dens + '% (all pages, bank ' + 'ABCD' [this.bankIdx] + ')');
+                    dens + '% (all pages, bank ' + 'ABCD' [this.bankIdx] + ')' +
+                    (this.isPlaying ? ' — restarting from step 1' : ''));
             },
             clearGrid() {
                 // 1:1 mirror of hardware SEQ SETUP → Clear: active grid + P-locks +
@@ -4850,15 +4884,26 @@
                             sv = 0,
                             lastTxMs = 0,
                             pendingRaw = null;
-                        hitbox.onmousedown = e => {
+                        // [TOUCH] PointerEvent API — handles mouse, touch, and stylus
+                        // in one unified path. setPointerCapture keeps events flowing
+                        // to this element even when the finger/cursor leaves it, so we
+                        // no longer need global window mousemove/mouseup listeners
+                        // (the old approach added 2 window listeners per knob = 100+
+                        // global handlers firing on every mouse move).
+                        hitbox.onpointerdown = e => {
+                            e.preventDefault();
+                            hitbox.setPointerCapture(e.pointerId);
                             dragging = true;
                             sy = e.clientY;
                             sv = parseFloat(hitbox.style.getPropertyValue('--val')) || 0;
-                            document.body.style.cursor = 'ns-resize';
+                            if (e.pointerType === 'mouse') document.body.style.cursor = 'ns-resize';
                         };
-                        window.addEventListener('mousemove', e => {
+                        hitbox.addEventListener('pointermove', e => {
                             if (!dragging) return;
-                            const nv = Math.max(0, Math.min(1, sv + (sy - e.clientY) / 150));
+                            // Touch sensitivity: finger drag is 1.5× slower than mouse
+                            // so small touches don't fly past the target value.
+                            const sensitivity = e.pointerType === 'touch' ? 220 : 150;
+                            const nv = Math.max(0, Math.min(1, sv + (sy - e.clientY) / sensitivity));
                             const raw = applyKnob(rawFromNorm(nv), false);
                             const now = performance.now();
                             if (now - lastTxMs >= 16) {
@@ -4869,7 +4914,7 @@
                                 pendingRaw = raw;
                             }
                         });
-                        window.addEventListener('mouseup', () => {
+                        hitbox.addEventListener('pointerup', () => {
                             if (!dragging) return;
                             dragging = false;
                             document.body.style.cursor = 'default';
@@ -4877,6 +4922,12 @@
                                 this.txSysex(k.cmd, pendingRaw);
                                 pendingRaw = null;
                             }
+                        });
+                        hitbox.addEventListener('pointercancel', () => {
+                            // Flush pending value on gesture cancel (e.g. incoming call)
+                            if (pendingRaw !== null) { this.txSysex(k.cmd, pendingRaw); pendingRaw = null; }
+                            dragging = false;
+                            document.body.style.cursor = 'default';
                         });
                         // Mouse-wheel: discrete ARP knobs step one index; others nudge continuously.
                         let wheelTxMs = 0,

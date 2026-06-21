@@ -255,6 +255,10 @@ static constexpr uint8_t CMD_HARP_ARP_GATE = 189; /* v14 0–3 gate duty index  
 static constexpr uint8_t CMD_D_FX_WET = 190; /* v14 0–16383 → fx_mix 0..1               */
 static constexpr uint8_t CMD_D_FX_P1  = 191; /* v14 0–16383 → p1 0..30 (rate/depth)     */
 static constexpr uint8_t CMD_D_FX_P2  = 192; /* v14 0–16383 → p2 0..250 (depth/swing)   */
-static constexpr uint8_t CMD_COUNT = 193; /* total command count              */
+/* [RND-RESTART] App→device: reset step counter to 0 without stopping playback.
+ * Sent by App after RND-H / RND-D randomisation so the new pattern plays from
+ * beat 1 immediately.  Firmware-side: no-op when stopped.                    */
+static constexpr uint8_t CMD_SEQ_RESTART = 193;
+static constexpr uint8_t CMD_COUNT = 194; /* total command count              */
 
 #endif /* SYSEX_H */

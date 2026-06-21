@@ -1394,11 +1394,21 @@ void drawAppConnectedPage() {
     (char)('A' + std::min(3, (int)seqActiveBank.load() & 15)),
     seqRecording.load(std::memory_order_relaxed) ? "  *REC" : "");
 
-  /* Line 2 — context: live voices / song position / idle pattern + length */
+  /* Line 2 — mute state (when any muted) + context (voices/song/pattern/len).
+   * [MUTE-SPLASH] App mute buttons toggle mixHarpMute/mixSeqMute/mixDrumsMute.
+   * Show which engines are muted directly on the connected splash so the
+   * performer can see audio routing status at a glance without reading the App. */
   display.setCursor(0, 25);
+  const bool mH = mixHarpMute.load(std::memory_order_relaxed);
+  const bool mS = mixSeqMute.load(std::memory_order_relaxed);
+  const bool mD = mixDrumsMute.load(std::memory_order_relaxed);
   const int nVoices = seq_active_voice_count();
   const int slen    = (int)seqLength.load(std::memory_order_relaxed);  /* [IDM-OPT2] cache once */
-  if (songModeActive.load(std::memory_order_relaxed)) {
+  if (mH || mS || mD) {
+    /* At least one engine muted — show which, then Len for quick reference. */
+    display.printf("MUTE:%s%s%s  Len %-2d",
+      mH ? "H" : "", mS ? "S" : "", mD ? "D" : "", slen);
+  } else if (songModeActive.load(std::memory_order_relaxed)) {
     display.printf("SONG %d   step %d",
       (int)activeSongSlot.load() + 1,
       (int)songCurrentStep.load() + 1);

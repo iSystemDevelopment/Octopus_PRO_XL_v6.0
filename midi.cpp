@@ -818,6 +818,11 @@ void handleSysexCommand(uint8_t cmd, uint16_t v14) {
       /* [SOFT-RESET] CLEAR extended: all settings + sounds + nav → initial. */
       if (v14 == 16383u) break;
       seqSoftResetWorkingImage(); break;
+    case CMD_SEQ_RESTART:
+      /* [RND-RESTART] App sends this after RND-H/RND-D to restart playback
+       * from step 0 so the new random pattern is heard from the beginning.
+       * No-op when stopped (seq_start() always resets counter on play). */
+      seq_restart_from_step_zero(); break;
     case CMD_USR_SOUND_SAVE:
       /* [USER-SLOTS] App save: live patch → user slot + persist (no reboot). */
       if (v14 == 16383u) break;

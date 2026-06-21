@@ -305,11 +305,15 @@ void IRAM_ATTR seq_apply_motion(uint8_t cmd, uint16_t v14) {
 inline int seqUI_gridBank() {
   return std::min(3, (int)seqActiveBank.load(std::memory_order_relaxed));
 }
-/* SSOT push — set bank (A-D = 0-3), keep chain pinned at 0. */
+/* SSOT push — set bank (A-D = 0-3), keep chain pinned at 0.
+ * [FIX-BANK-ECHO] Routes through applySeqBank() so txSysex(CMD_BANK) fires on
+ * every hardware bank switch (OLED cursor wrap, bank A-D buttons).  Previously
+ * stored seqActiveBank directly, so the App never saw hardware bank changes
+ * until the next reconnect.  applySeqBank also syncs per-pattern transpose.  */
 void seqUI_setBank(int bank) {
-  seqActiveBank.store((uint8_t)(((bank % 4) + 4) % 4), std::memory_order_release);
-  seqActiveChain.store((uint8_t)SEQ_UI_CHAIN, std::memory_order_release);
-  displayDirty.store(true, std::memory_order_release);
+  const uint8_t nb = (uint8_t)(((bank % 4) + 4) % 4);
+  applySeqBank(nb);                             /* sets atomic + echo + transpose */
+  seqActiveChain.store((uint8_t)SEQ_UI_CHAIN, std::memory_order_release); /* pin 0 */
 }
 /* Step grid toggle — flips one cell of the active [bank][0] slot. */
 void IRAM_ATTR toggleHardwareGridStep(uint8_t trackRow, uint8_t stepColumn) {
@@ -784,6 +788,14 @@ void seq_toggle() {
   seqPlaying.load(std::memory_order_relaxed) ? seq_stop() : seq_start();
 }
 
+void IRAM_ATTR seq_restart_from_step_zero() {
+  /* No-op when stopped — the next seq_start() always resets the counter. */
+  if (!seqPlaying.load(std::memory_order_relaxed)) return;
+  master_tick_counter.store(0u, std::memory_order_release);
+  std::atomic_thread_fence(std::memory_order_release);
+  seq_ext_push(CMD_STEP_SYNC, 0u); /* snap App playhead to step 0 instantly */
+}
+
 void setSequencerBpm(int32_t bpm) {
   bpm = std::min<int32_t>(240, std::max<int32_t>(40, bpm));
   seqBpm.store(bpm, std::memory_order_relaxed);
@@ -1160,10 +1172,15 @@ bool saveActivePatternToUserSlot(uint8_t uidx) {
   portEXIT_CRITICAL(&patchMux);
 
   displayDirty.store(true, std::memory_order_relaxed);
-  const bool ok = settings_persist_blocking(ResetScope::BANKS_PATTERNS);
-  if (ok && isAppConnected())
+  /* [FIX-L2b] Same fix as saveLiveToUserSlot: replace blocking persist with
+   * async NvsWorker so this function does not freeze the MIDI RX task
+   * (8 KB stack) for up to 20 s while NVS writes.  Copy is already safe in
+   * RAM under patchMux above; persistence happens asynchronously.
+   * Echo the slot index immediately so the App marks it occupied.          */
+  requestBanksOnlySave();
+  if (isAppConnected())
     txSysex(CMD_USR_PAT_SAVE, (uint16_t)uidx);
-  return ok;
+  return true;
 }
 
 /* Recall a user pattern slot into the ACTIVE bank/chain (non-destructive to
