@@ -1056,6 +1056,7 @@ static inline void echoFullSeqState() {
   txSysex(CMD_BPM, (uint16_t)seqBpm.load(std::memory_order_relaxed));
   txSysex(CMD_TRIG_MODE, playingNow ? 16383u : 0u);
   txSysex(CMD_TRANSPORT, playingNow ? 1u : 0u);
+  /* Read seqRecording atomically — snapshot only, no seq_set_recording() echo. */
   txSysex(CMD_TRANSPORT, seqRecording.load(std::memory_order_relaxed) ? 3u : 4u);
   if (playingNow)
     txSysex(CMD_STEP_SYNC, (uint16_t)(seqCurrentStep.load(std::memory_order_relaxed) & 63u));

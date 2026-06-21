@@ -875,6 +875,7 @@ inline constexpr float DRUM_KIT_NOISE[(int)DrumKitId::COUNT][8] = {
  * SECTION 11 — SEQUENCER TRANSPORT & PATTERN STATE
  * ═══════════════════════════════════════════════════════════════════════════ */
 inline std::atomic<bool> seqPlaying{ false };
+/* Read anywhere; write only via seq_set_recording() or seq_stop() disarm (groovebox). */
 inline std::atomic<bool> seqRecording{ false };
 inline std::atomic<bool> isMotionPlayback{ false };
 inline std::atomic<int32_t> seqBpm{ 120 };       /* 40–240 BPM           */

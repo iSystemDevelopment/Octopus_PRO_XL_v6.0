@@ -661,11 +661,7 @@ void handleSysexCommand(uint8_t cmd, uint16_t v14) {
     /* ── Sequencer transport ─────────────────────────────────────────────── */
     case CMD_TRIG_MODE:
       if (v14 > 0u) seq_start(); else seq_stop();
-      /* [FIX-TRIG] Removed duplicate txSysex(CMD_TRIG_MODE) here.  seq_start() /
-       * seq_stop() already push CMD_TRIG_MODE + CMD_TRANSPORT through the seq_ext
-       * ring (SeqSysexOut task).  The extra direct txSysex raced the ring drain and
-       * sent two CMD_TRIG_MODE echoes in quick succession, causing the App to see
-       * the transport state flicker on fast stop→start sequences.               */
+      /* seq_start/stop push TRIG_MODE + TRANSPORT via seq_ext ring — no echo here. */
       break;
     case CMD_BPM:
       setSequencerBpm((int32_t)v14);   /* echoes CMD_BPM inside setSequencerBpm */
@@ -821,34 +817,18 @@ void handleSysexCommand(uint8_t cmd, uint16_t v14) {
       txSysex(CMD_SONG_STEPS_N, (uint16_t)n); break;
     }
     case CMD_TRANSPORT:
-      /* [v6.0] Transport is hardware-owned; the App's buttons are read-only
-       * reflectors and no longer send this.  Kept for backward/external compat.
-       * Route through the real transport API (same path as the hardware buttons)
-       * so tick reset / song rewind / note release / STEP_SYNC priming all run.
-       *
-       * [FIX-TRANSPORT-1] Changed switch from (v14 & 3u) to v14 directly.
-       * Old code: v14=4 (record OFF) mapped to case 0 → seq_stop() was called
-       * silently every time the supervisor sent "record OFF" to the App!  The
-       * & 3u mask was a copy-paste from a 2-bit field that never should have
-       * been here — transport v14 values are discrete 0/1/2/3/4, not bit-packed.
-       *
-       * [FIX-TRANSPORT-2] case 3 changed from TOGGLE to SET.  Old code toggled
-       * seqRecording on every v14=3, so two rapid v14=3 messages cancelled each
-       * other.  Now 3 = force ON, 4 = force OFF (idempotent set, not toggle).   */
+      /* CMD_TRANSPORT v14 is a discrete opcode (not bit-packed):
+       *   0 = stop, 1 = start, 2 = pause, 3 = record ON, 4 = record OFF.
+       * Play/pause/stop route through seq_* transport (tick reset, note release,
+       * STEP_SYNC priming).  Record routes through seq_set_recording() so the App
+       * echo uses the same seq_ext ring as hardware buttons (no direct txSysex).
+       * Kept for backward compat — v6 App transport UI is read-only / hardware-owned. */
       switch (v14) {
-        case 0: seq_stop();  break;
-        case 1: seq_start(); break;
-        case 2: seq_pause(); break;
-        case 3:
-          seqRecording.store(true, std::memory_order_relaxed);
-          seq_ext_push(CMD_TRANSPORT, 3u); /* echo via ring — keeps order with STEP_SYNC */
-          displayDirty.store(true, std::memory_order_relaxed);
-          break;
-        case 4:
-          seqRecording.store(false, std::memory_order_relaxed);
-          seq_ext_push(CMD_TRANSPORT, 4u);
-          displayDirty.store(true, std::memory_order_relaxed);
-          break;
+        case 0: seq_stop();             break;
+        case 1: seq_start();            break;
+        case 2: seq_pause();            break;
+        case 3: seq_set_recording(true);  break;
+        case 4: seq_set_recording(false); break;
       }
       break;
     case CMD_TRANSPORT_AVAIL:

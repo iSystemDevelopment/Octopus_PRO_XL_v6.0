@@ -182,12 +182,16 @@ static void seqArpTick(uint32_t tick, bool laser_show) {
 }
 
 /* ── 2. Lock-free SPSC out-ring  [TIMING-LOCK / D] ────────────────────────────
- * [USB-ONLY] Producer: sequencer_render_block() (audio task, prio 24) pushes
- *           tiny SysEx position echoes (STEP_SYNC / SONG_POS) only — non-blocking.
- *           Consumer: sequencer_background_task() emits them as USB SysEx to the
- *           OctopusApp (takes midiMutex, fine on a low-prio task).  A dropped
- *           event under flood is harmless — these are idempotent positional
- *           echoes.  External channel-voice MIDI OUT was removed with the DIN bus. */
+ * TU-private — only groovebox.cpp may push (via seq_start/stop/pause,
+ * seq_set_recording, step engine, song chain, motion playback).
+ *
+ * Producers: audio task (STEP_SYNC), transport/record APIs, song advance.
+ * Consumer:  sequencer_background_task (SeqSysexOut) → txSysex under midiMutex.
+ *
+ * Why a ring: ControlPoll and MidiUsbRx must not call txSysex directly — they
+ * can lose the 5 ms midiMutex timeout while SeqSysexOut drains STEP_SYNC bursts.
+ * Non-blocking push here; a dropped event under flood is harmless (supervisor +
+ * idempotent transport echoes heal drift).                                     */
 struct SeqExtEvt {
   uint8_t  cmd;   /* sysex command */
   uint16_t v14;   /* sysex value   */
@@ -751,13 +755,7 @@ void seq_start() {
   std::atomic_thread_fence(std::memory_order_release);
   song_rewind_rt();   /* [SONG-FIX] preload the song's first pattern before play */
   seqPlaying.store(true, std::memory_order_release);
-  /* [FIX-TRANSPORT] Push transport echoes through the seq_ext ring instead of
-   * calling txSysex() directly.  seq_start() runs on ControlPoll (priority 5)
-   * while SeqSysexOut (priority 18) is simultaneously draining STEP_SYNCs via
-   * txSysex — both compete for midiMutex.  Under USB backpressure the 1 ms lock
-   * timeout (even raised to 5 ms) can still miss if the burst is long.  Using
-   * the ring serialises ALL outbound TX through SeqSysexOut, which already holds
-   * the lock legitimately, so no contention with ControlPoll.                  */
+  /* Transport echoes via seq_ext ring — see §2 out-ring comment.               */
   seq_ext_push(CMD_TRIG_MODE, 16383u);
   seq_ext_push(CMD_TRANSPORT, 1u);   /* mirror play state to App transport buttons */
   seq_ext_push(CMD_STEP_SYNC, 0u);   /* prime playhead at step 0 before first audio block */
@@ -766,26 +764,41 @@ void seq_start() {
 
 void seq_stop() {
   seqPlaying.store(false, std::memory_order_release);
-  seqRecording.store(false, std::memory_order_relaxed); /* stop disarms record */
+  /* Disarm record inline — not seq_set_recording(): stop must push play-off (0)
+   * before record-off (4) in one ordered ring burst (see echoes below).        */
+  seqRecording.store(false, std::memory_order_relaxed);
   std::atomic_thread_fence(std::memory_order_release);
   s_seqArp.reset();
   for (int i = 0; i < SEQ_POLYPHONY; ++i) release_seq_note(i);
   allNotesOff();
-  seq_ext_push(CMD_TRIG_MODE, 0u);   /* [FIX-TRANSPORT] via ring — see seq_start comment */
+  seq_ext_push(CMD_TRIG_MODE, 0u);
   seq_ext_push(CMD_TRANSPORT, 0u);  /* play off  */
-  seq_ext_push(CMD_TRANSPORT, 4u);  /* record off (explicit state, decoupled from play) */
+  seq_ext_push(CMD_TRANSPORT, 4u);  /* record off — after play off, decoupled   */
   displayDirty.store(true, std::memory_order_relaxed);
 }
 
 void seq_pause() {
   seqPlaying.store(false, std::memory_order_release);
   std::atomic_thread_fence(std::memory_order_release);
-  seq_ext_push(CMD_TRANSPORT, 2u); /* [FIX-TRANSPORT] via ring */
+  seq_ext_push(CMD_TRANSPORT, 2u);
   displayDirty.store(true, std::memory_order_relaxed);
 }
 
 void seq_toggle() {
   seqPlaying.load(std::memory_order_relaxed) ? seq_stop() : seq_start();
+}
+
+/* Record arm/disarm — canonical mutation path (hardware + App SysEx).
+ * Never pair seqRecording.store() with direct txSysex(); use these instead.  */
+void seq_set_recording(bool on) {
+  if (seqRecording.load(std::memory_order_relaxed) == on) return;
+  seqRecording.store(on, std::memory_order_relaxed);
+  seq_ext_push(CMD_TRANSPORT, on ? 3u : 4u);
+  displayDirty.store(true, std::memory_order_relaxed);
+}
+
+void seq_toggle_recording() {
+  seq_set_recording(!seqRecording.load(std::memory_order_relaxed));
 }
 
 void IRAM_ATTR seq_restart_from_step_zero() {
@@ -1051,6 +1064,7 @@ void sequencer_background_task(void* pvParameters) {
       if ((uint32_t)(now - s_lastBpmChangeMs.load(std::memory_order_relaxed)) >= 1500u)
         txSysex(CMD_BPM, (uint16_t)seqBpm.load(std::memory_order_relaxed));
       txSysex(CMD_TRANSPORT, seqPlaying.load(std::memory_order_relaxed) ? 1u : 0u);
+      /* Record snapshot — supervisor reads atomic; live changes use seq_set_recording. */
       txSysex(CMD_TRANSPORT, seqRecording.load(std::memory_order_relaxed) ? 3u : 4u);
       /* [v6.0] Live CPU-load telemetry for the App header (raw 0–100 %). */
       txSysex(CMD_CPU_LOAD, (uint16_t)g_audio_load_pct.load(std::memory_order_relaxed));

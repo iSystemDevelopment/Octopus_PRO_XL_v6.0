@@ -59,9 +59,8 @@
  * ═════════════════════════════════════════════════════════════════════════════ */
 #include "interface.h"
 #include <cmath>
-#include "groovebox.h"       /* [GB-MERGE] seq_start/stop/toggle, setSequencerBpm,
-                             *     seqUI_move/toggleStep, loadFactorySynthPattern/
-                             *     DrumPattern, NUM_*_PATS (was sequencer.h+patterns.h) */
+#include "groovebox.h"       /* seq_start/stop/toggle, seq_toggle_recording,
+                             *     setSequencerBpm, seqUI_*, loadFactory*Pattern */
 #include "display.h"         /* display obj, handleTelemetryPageEncoder  */
 #include "dbeam.h"           /* applyDbeamRouteHW                       */
 #include "fog.h"             /* [FOG] fogRejectEnabled / fogRejectMargin */
@@ -862,12 +861,8 @@ void updateHardwareInterface() {
       seq_toggle();                             /* echoes CMD_TRANSPORT itself */
       dirty = true;
     }
-    if (evOC == BtnEvent::LONG) {               /* OC long   → record-arm toggle */
-      const bool rec = !seqRecording.load(std::memory_order_relaxed);
-      seqRecording.store(rec, std::memory_order_relaxed);
-      txSysex(CMD_TRANSPORT, rec ? 3u : 4u);    /* explicit record state echo */
-      dirty = true;
-    }
+    if (evOC == BtnEvent::LONG)                 /* OC long → record toggle (App-connected SEQ UI) */
+      seq_toggle_recording();
     if (dirty) displayDirty.store(true, std::memory_order_relaxed);
     return;
   }
@@ -1214,10 +1209,10 @@ void updateHardwareInterface() {
   }
   /* Short: SEQ = record toggle; HARP = cycle play mode */
   if (evOC == BtnEvent::SINGLE) {
-    displayDirty.store(true);
     if (activeDashboard.load() == DashboardMode::SEQUENCER)
-      seqRecording.store(!seqRecording.load());
+      seq_toggle_recording();                   /* echo + displayDirty via groovebox API */
     else {
+      displayDirty.store(true);
       int pm = (int)currentPlayMode.load() + 1;
       if (pm > 2) pm = 0;
       harpSetPlayMode((PlayMode)pm);              /* flush notes + dirty display */
