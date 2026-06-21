@@ -91,8 +91,16 @@ extern MidiParserState g_usb_parse;
 /* ── Per-command TX/RX dedup tables — defined in midi.cpp (file scope) ─── */
 
 /* ── Mutex helpers ───────────────────────────────────────────────────────── */
+/* [FIX-LOCK] Timeout raised 1 ms → 5 ms.
+ * Root cause of "can't restart play after stop": seq_start()/seq_stop() call
+ * txSysex() from ControlPoll (priority 5) while SeqSysexOut (priority 18) is
+ * draining STEP_SYNC — holding midiMutex ~0.5 ms per send.  Under Chrome USB
+ * backpressure this can stretch to 3-4 ms.  The 1 ms timeout caused transport
+ * echoes to be silently dropped; the supervisor self-heals at 600 ms which felt
+ * like "play button frozen".  5 ms is still safe: audio task never calls
+ * txSysex directly (uses seq_ext ring), so no audio-task stall risk.          */
 static inline bool IRAM_ATTR midiLock() {
-  return (midiMutex && xSemaphoreTake(midiMutex, pdMS_TO_TICKS(1)) == pdTRUE);
+  return (midiMutex && xSemaphoreTake(midiMutex, pdMS_TO_TICKS(5)) == pdTRUE);
 }
 static inline void IRAM_ATTR midiUnlock() {
   if (midiMutex) xSemaphoreGive(midiMutex);

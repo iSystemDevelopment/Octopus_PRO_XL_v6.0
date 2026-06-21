@@ -747,8 +747,15 @@ void seq_start() {
   std::atomic_thread_fence(std::memory_order_release);
   song_rewind_rt();   /* [SONG-FIX] preload the song's first pattern before play */
   seqPlaying.store(true, std::memory_order_release);
-  txSysex(CMD_TRIG_MODE, 16383);
-  txSysex(CMD_TRANSPORT, 1u);        /* mirror play state to App transport buttons */
+  /* [FIX-TRANSPORT] Push transport echoes through the seq_ext ring instead of
+   * calling txSysex() directly.  seq_start() runs on ControlPoll (priority 5)
+   * while SeqSysexOut (priority 18) is simultaneously draining STEP_SYNCs via
+   * txSysex — both compete for midiMutex.  Under USB backpressure the 1 ms lock
+   * timeout (even raised to 5 ms) can still miss if the burst is long.  Using
+   * the ring serialises ALL outbound TX through SeqSysexOut, which already holds
+   * the lock legitimately, so no contention with ControlPoll.                  */
+  seq_ext_push(CMD_TRIG_MODE, 16383u);
+  seq_ext_push(CMD_TRANSPORT, 1u);   /* mirror play state to App transport buttons */
   seq_ext_push(CMD_STEP_SYNC, 0u);   /* prime playhead at step 0 before first audio block */
   displayDirty.store(true, std::memory_order_relaxed);
 }
@@ -760,16 +767,16 @@ void seq_stop() {
   s_seqArp.reset();
   for (int i = 0; i < SEQ_POLYPHONY; ++i) release_seq_note(i);
   allNotesOff();
-  txSysex(CMD_TRIG_MODE, 0);
-  txSysex(CMD_TRANSPORT, 0u);  /* play off  */
-  txSysex(CMD_TRANSPORT, 4u);  /* record off (explicit state, decoupled from play) */
+  seq_ext_push(CMD_TRIG_MODE, 0u);   /* [FIX-TRANSPORT] via ring — see seq_start comment */
+  seq_ext_push(CMD_TRANSPORT, 0u);  /* play off  */
+  seq_ext_push(CMD_TRANSPORT, 4u);  /* record off (explicit state, decoupled from play) */
   displayDirty.store(true, std::memory_order_relaxed);
 }
 
 void seq_pause() {
   seqPlaying.store(false, std::memory_order_release);
   std::atomic_thread_fence(std::memory_order_release);
-  txSysex(CMD_TRANSPORT, 2u);
+  seq_ext_push(CMD_TRANSPORT, 2u); /* [FIX-TRANSPORT] via ring */
   displayDirty.store(true, std::memory_order_relaxed);
 }
 

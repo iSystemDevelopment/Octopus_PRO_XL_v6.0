@@ -3118,6 +3118,8 @@
             // [v6.0.01 PLL] phase-locked local tick clock — hardware anchors, App interpolates
             _pllAnchorStep: -1,  // hardware step received on last STEP_SYNC
             _pllAnchorTime: -1,  // performance.now() at that STEP_SYNC
+            _dispatch: null,          // [FIX-DISPATCH] built lazily by _buildDispatch()
+            _songEditorDirty: false,  // [FIX-SONG] deferred buildSongEditor to rAF
             _sxRxBuf: null, // reassemble split inbound SysEx (some USB stacks fragment frames)
             _lastDeviceRxMs: 0,   // last 0x7C echo from firmware (link verify)
             _linkGraceUntil: 0,   // ms — allow boot/sync before declaring dead link
@@ -3676,326 +3678,181 @@
             },
 
             // ── Apply incoming sysex state ────────────────────────────────────────────
-            applyIncoming(cmd, v14) {
-                this._suppressTx = true;
-                try {
-                    if (cmd === CMD.BPM) {
+            // [FIX-DISPATCH] Replaced 74-branch if-chain with a dispatch table.
+            // Old code: O(N) comparisons per message → 140-msg sendFullStateSync burst
+            // evaluated ~10,000 comparisons, blocking the main thread for 100-500 ms.
+            // New code: one object-property lookup per message → ~74× faster per msg.
+            // [FIX-SONG] buildSongEditor() was called per SONG_SLOT/STEP/STEPS_N echo
+            // (up to 18× per sync burst) causing hundreds of ms of DOM rebuild each
+            // time. Now deferred to the next rAF via _songEditorDirty flag.
+            _buildDispatch() {
+                // Arrow functions capture `this` = app object at build time.
+                // Each entry handles exactly the same logic as the old if-branch.
+                return {
+                    [CMD.BPM]: v14 => {
                         const b = Math.min(240, Math.max(40, v14));
-                        /* Ignore duplicate supervisor echoes — same BPM re-sent every
-                         * 600 ms caused visible glitches in the readout + playhead glide. */
-                        if (b !== this.bpm) {
-                            document.getElementById('seqBpm').value = b;
-                            this.bpm = b;
-                        }
-                    }
-                    if (cmd === CMD.BANK) {
-                        const idx = v14 & 3;
-                        this.setBank(idx, false);
-                    } // raw bank index 0-3
-                    if (cmd === CMD.SEQ_CHAIN) {
-                        this.chainIdx = 0;
-                    } // chain forced 0 in this UI
-                    if (cmd === CMD.M_FX_IDX) document.getElementById('masterFxPreset').value = v14;
-                    // [P3] reflect MIDI routing channel echoes back into the dropdowns
-                    if (cmd === CMD.WIRE_HARP_CH) this._setWireCh('wireHarpCh', v14);
-                    if (cmd === CMD.WIRE_SEQ_CH) this._setWireCh('wireSeqCh', v14);
-                    if (cmd === CMD.WIRE_DRUM_CH) this._setWireCh('wireDrumCh', v14);
-                    if (cmd === CMD.PB_RANGE) {
-                        const e = document.getElementById('pbRange'); if (e) e.value = String(v14);
-                    }
-                    if (cmd === CMD.PB_ENABLE) {
-                        const e = document.getElementById('pbEnable'); if (e) e.value = v14 > 0 ? '16383' : '0';
-                    }
-                    // [D7] Reflect hardware-side waveform + FX-slot changes in the App selects
-                    // [GAP-4] LFO route dropdowns — these are select controls, not knobs;
-                    // the knobStates map does not cover them so they need explicit handlers.
-                    // [WS4] Accept legacy firmware echoes on 86/87 as well as 11/27.
-                    if (cmd === CMD.HLFO_RT || cmd === CMD.HLFO_RT_ALT) {
-                        const e = document.getElementById('hlfoRoute');
-                        if (e) e.value = String(v14 & 7);
-                    }
-                    if (cmd === CMD.SLFO_RT || cmd === CMD.SLFO_RT_ALT) {
-                        const e = document.getElementById('slfoRoute');
-                        if (e) e.value = String(v14 & 7);
-                    }
-                    // [v6.0] Harp play mode echo → reflect POLY/STR/SOLO buttons
-                    if (cmd === CMD.PLAY_MODE) this.setPlayMode(v14 & 3, false);
-                    if (cmd === CMD.SEQ_ARP_EN) this._setArpToggle(CMD.SEQ_ARP_EN, v14 > 0);
-                    if (cmd === CMD.SEQ_ARP_PAT) this._setKnob(CMD.SEQ_ARP_PAT, v14);
-                    if (cmd === CMD.SEQ_ARP_RATE) this._setKnob(CMD.SEQ_ARP_RATE, v14);
-                    if (cmd === CMD.SEQ_ARP_GATE) this._setKnob(CMD.SEQ_ARP_GATE, v14);
-                    if (cmd === CMD.HARP_ARP_EN) this._setArpToggle(CMD.HARP_ARP_EN, v14 > 0);
-                    if (cmd === CMD.HARP_ARP_PAT) this._setKnob(CMD.HARP_ARP_PAT, v14);
-                    if (cmd === CMD.HARP_ARP_RATE) this._setKnob(CMD.HARP_ARP_RATE, v14);
-                    if (cmd === CMD.HARP_ARP_GATE) this._setKnob(CMD.HARP_ARP_GATE, v14);
-                    if (cmd === CMD.H_WAVE) {
-                        const e = document.getElementById('harpWave'); if (e) e.value = v14;
-                        this._setKnob(CMD.H_WAVE, v14);
-                    }
-                    if (cmd === CMD.S_WAVE) {
-                        const e = document.getElementById('seqWave'); if (e) e.value = v14;
-                        this._setKnob(CMD.S_WAVE, v14);
-                    }
-                    if (cmd === CMD.H_FX_IDX) document.getElementById('harpFxA').value = v14;
-                    if (cmd === CMD.H_FX_IDX_B) document.getElementById('harpFxB').value = v14;
-                    if (cmd === CMD.S_FX_IDX) document.getElementById('seqFxA').value = v14;
-                    if (cmd === CMD.S_FX_IDX_B) document.getElementById('seqFxB').value = v14;
-                    if (cmd === CMD.D_FX_IDX) {
-                        const e = document.getElementById('drumFxA'); if (e) e.value = String(v14 & 15);
-                    }
-                    if (cmd === CMD.D_FX_IDX_B) {
-                        const e = document.getElementById('drumFxB'); if (e) e.value = String(v14 & 15);
-                    }
-                    // D-BEAM expression echoes (echoDbeamExprState in patches.h)
-                    if (cmd === CMD.DB_ENABLED) {
-                        this.isDbeam = (v14 > 0);
-                        this._reflectDbeamEnable();
-                    }
-                    if (cmd === CMD.DB_ROUTE) {
-                        const e = document.getElementById('dbMode');
-                        if (e) e.value = String(v14 & 3);
-                    }
-                    if (cmd === CMD.DB_TARGET) {
-                        const e = document.getElementById('dbTarget');
-                        if (e) e.value = String(v14 & 1);
-                    }
-                    if (cmd === CMD.DB_CURVE) {
-                        const e = document.getElementById('dbCurve');
-                        if (e) e.value = String(v14 % 5);
-                    }
-                    if (cmd === CMD.DB_OFFSET) {
-                        const e = document.getElementById('dbOffset');
-                        if (e) e.value = String(v14);
-                    }
-                    if (cmd === CMD.DB_RANGE) {
-                        const e = document.getElementById('dbRange');
-                        if (e) e.value = String(v14);
-                    }
-                    // Drum body wave echo: v14 = (ch<<5)|wave_idx
-                    if (cmd === CMD.DRUM_WAVE) {
-                        const ch = (v14 >> 5) & 7,
-                            wi = v14 & 31,
-                            e = document.getElementById('dwave' + ch);
-                        if (e) e.value = String(wi);
-                    }
-                    if (cmd === CMD.DRUM_KIT) this._reflectDrumKit(v14 & 3);
-                    // Pattern load confirmation — firmware echoes LOAD_PAT_S/D after hardware load.
-                    if (cmd === CMD.LOAD_PAT_S) {
-                        const e = document.getElementById('synthPat');
-                        if (e && v14 < SYNTH_PATTERNS.length) e.value = String(v14);
-                    }
-                    if (cmd === CMD.LOAD_PAT_D) {
-                        const e = document.getElementById('drumPat');
-                        if (e && v14 < DRUM_PATTERNS.length) e.value = String(v14);
-                    }
-                    if (cmd === CMD.SESSION_SAVE) {
-                        if (v14 === 16383) {
-                            // [FIX-C2] ACK arrives right before the 700 ms reboot.
-                            // Start reconnect prep NOW — both hardware-triggered and
-                            // App-triggered saves reboot; the App must not stay ONLINE
-                            // while the device is restarting.
-                            this.log('NVS save complete — device rebooting…');
-                            this._prepareForDeviceReboot();
-                        } else if (v14 === 0) {
-                            // [FIX-H1] NACK — firmware dropped the save (already busy).
-                            this.log('SAVE skipped — a save is already in progress. Try again.');
-                        }
-                    }
-                    // [FIX-M1] LOAD ACK/NACK — firmware sends 16383 on success, 0 on fail.
-                    if (cmd === CMD.SESSION_LOAD) {
-                        this.log(v14 === 16383
-                            ? 'Session loaded — state synced.'
-                            : 'LOAD failed: nothing saved for that scope.');
-                    }
-                    if (cmd === CMD.USR_SOUND_SAVE) {
-                        const eng = (v14 >> 13) & 1;
-                        const slot = v14 & 63;
+                        if (b !== this.bpm) { document.getElementById('seqBpm').value = b; this.bpm = b; }
+                    },
+                    [CMD.BANK]: v14 => { this.setBank(v14 & 3, false); },
+                    [CMD.SEQ_CHAIN]: () => { this.chainIdx = 0; },
+                    [CMD.M_FX_IDX]: v14 => { document.getElementById('masterFxPreset').value = v14; },
+                    [CMD.WIRE_HARP_CH]: v14 => { this._setWireCh('wireHarpCh', v14); },
+                    [CMD.WIRE_SEQ_CH]:  v14 => { this._setWireCh('wireSeqCh',  v14); },
+                    [CMD.WIRE_DRUM_CH]: v14 => { this._setWireCh('wireDrumCh', v14); },
+                    [CMD.PB_RANGE]:  v14 => { const e = document.getElementById('pbRange');  if (e) e.value = String(v14); },
+                    [CMD.PB_ENABLE]: v14 => { const e = document.getElementById('pbEnable'); if (e) e.value = v14 > 0 ? '16383' : '0'; },
+                    // [GAP-4] LFO routes are selects, not knobs; duplicate for both alias CMDs.
+                    [CMD.HLFO_RT]:     v14 => { const e = document.getElementById('hlfoRoute'); if (e) e.value = String(v14 & 7); },
+                    [CMD.HLFO_RT_ALT]: v14 => { const e = document.getElementById('hlfoRoute'); if (e) e.value = String(v14 & 7); },
+                    [CMD.SLFO_RT]:     v14 => { const e = document.getElementById('slfoRoute'); if (e) e.value = String(v14 & 7); },
+                    [CMD.SLFO_RT_ALT]: v14 => { const e = document.getElementById('slfoRoute'); if (e) e.value = String(v14 & 7); },
+                    [CMD.PLAY_MODE]:      v14 => { this.setPlayMode(v14 & 3, false); },
+                    [CMD.SEQ_ARP_EN]:     v14 => { this._setArpToggle(CMD.SEQ_ARP_EN,  v14 > 0); },
+                    [CMD.SEQ_ARP_PAT]:    v14 => { this._setKnob(CMD.SEQ_ARP_PAT,  v14); },
+                    [CMD.SEQ_ARP_RATE]:   v14 => { this._setKnob(CMD.SEQ_ARP_RATE, v14); },
+                    [CMD.SEQ_ARP_GATE]:   v14 => { this._setKnob(CMD.SEQ_ARP_GATE, v14); },
+                    [CMD.HARP_ARP_EN]:    v14 => { this._setArpToggle(CMD.HARP_ARP_EN,  v14 > 0); },
+                    [CMD.HARP_ARP_PAT]:   v14 => { this._setKnob(CMD.HARP_ARP_PAT,  v14); },
+                    [CMD.HARP_ARP_RATE]:  v14 => { this._setKnob(CMD.HARP_ARP_RATE, v14); },
+                    [CMD.HARP_ARP_GATE]:  v14 => { this._setKnob(CMD.HARP_ARP_GATE, v14); },
+                    [CMD.H_WAVE]: v14 => { const e = document.getElementById('harpWave'); if (e) e.value = v14; this._setKnob(CMD.H_WAVE, v14); },
+                    [CMD.S_WAVE]: v14 => { const e = document.getElementById('seqWave');  if (e) e.value = v14; this._setKnob(CMD.S_WAVE, v14); },
+                    [CMD.H_FX_IDX]:   v14 => { document.getElementById('harpFxA').value = v14; },
+                    [CMD.H_FX_IDX_B]: v14 => { document.getElementById('harpFxB').value = v14; },
+                    [CMD.S_FX_IDX]:   v14 => { document.getElementById('seqFxA').value  = v14; },
+                    [CMD.S_FX_IDX_B]: v14 => { document.getElementById('seqFxB').value  = v14; },
+                    [CMD.D_FX_IDX]:   v14 => { const e = document.getElementById('drumFxA'); if (e) e.value = String(v14 & 15); },
+                    [CMD.D_FX_IDX_B]: v14 => { const e = document.getElementById('drumFxB'); if (e) e.value = String(v14 & 15); },
+                    [CMD.DB_ENABLED]: v14 => { this.isDbeam = (v14 > 0); this._reflectDbeamEnable(); },
+                    [CMD.DB_ROUTE]:   v14 => { const e = document.getElementById('dbMode');   if (e) e.value = String(v14 & 3); },
+                    [CMD.DB_TARGET]:  v14 => { const e = document.getElementById('dbTarget'); if (e) e.value = String(v14 & 1); },
+                    [CMD.DB_CURVE]:   v14 => { const e = document.getElementById('dbCurve');  if (e) e.value = String(v14 % 5); },
+                    [CMD.DB_OFFSET]:  v14 => { const e = document.getElementById('dbOffset'); if (e) e.value = String(v14); },
+                    [CMD.DB_RANGE]:   v14 => { const e = document.getElementById('dbRange');  if (e) e.value = String(v14); },
+                    [CMD.DRUM_WAVE]:  v14 => { const ch = (v14 >> 5) & 7, wi = v14 & 31, e = document.getElementById('dwave' + ch); if (e) e.value = String(wi); },
+                    [CMD.DRUM_KIT]:   v14 => { this._reflectDrumKit(v14 & 3); },
+                    [CMD.LOAD_PAT_S]: v14 => { const e = document.getElementById('synthPat'); if (e && v14 < SYNTH_PATTERNS.length) e.value = String(v14); },
+                    [CMD.LOAD_PAT_D]: v14 => { const e = document.getElementById('drumPat');  if (e && v14 < DRUM_PATTERNS.length)  e.value = String(v14); },
+                    [CMD.SESSION_SAVE]: v14 => {
+                        if (v14 === 16383) { this.log('NVS save complete — device rebooting…'); this._prepareForDeviceReboot(); }
+                        else if (v14 === 0) { this.log('SAVE skipped — a save is already in progress. Try again.'); }
+                    },
+                    [CMD.SESSION_LOAD]: v14 => {
+                        this.log(v14 === 16383 ? 'Session loaded — state synced.' : 'LOAD failed: nothing saved for that scope.');
+                    },
+                    [CMD.USR_SOUND_SAVE]: v14 => {
+                        const eng = (v14 >> 13) & 1, slot = v14 & 63;
+                        this.userSoundSaved[eng][slot] = true; this._persistSlotMeta();
+                        if (document.getElementById('slotsModal')?.style.display === 'flex') this.renderSlotsVault();
+                    },
+                    [CMD.USR_PAT_SAVE]: v14 => {
+                        this.userPatSaved[v14 & 63] = true; this._persistSlotMeta();
+                        if (document.getElementById('slotsModal')?.style.display === 'flex') this.renderSlotsVault();
+                    },
+                    [CMD.USR_SOUND_LOAD]: v14 => {
+                        const eng = (v14 >> 13) & 1, slot = v14 & 63;
                         this.userSoundSaved[eng][slot] = true;
-                        this._persistSlotMeta();
-                        if (document.getElementById('slotsModal')?.style.display === 'flex')
-                            this.renderSlotsVault();
-                    }
-                    if (cmd === CMD.USR_PAT_SAVE) {
+                        if (document.getElementById('slotsModal')?.style.display === 'flex') this.renderSlotsVault();
+                    },
+                    [CMD.USR_PAT_LOAD]: v14 => {
                         this.userPatSaved[v14 & 63] = true;
-                        this._persistSlotMeta();
-                        if (document.getElementById('slotsModal')?.style.display === 'flex')
-                            this.renderSlotsVault();
-                    }
-                    if (cmd === CMD.USR_SOUND_LOAD) {
-                        const eng = (v14 >> 13) & 1;
-                        const slot = v14 & 63;
-                        this.userSoundSaved[eng][slot] = true;
-                        if (document.getElementById('slotsModal')?.style.display === 'flex')
-                            this.renderSlotsVault();
-                    }
-                    if (cmd === CMD.USR_PAT_LOAD) {
-                        const slot = v14 & 63;
-                        this.userPatSaved[slot] = true;
-                        if (document.getElementById('slotsModal')?.style.display === 'flex')
-                            this.renderSlotsVault();
-                    }
-                    if (cmd === CMD.H_PATCH) document.getElementById('harpPatch').value = v14;
-                    if (cmd === CMD.S_PATCH) document.getElementById('seqPatch').value = v14;
-                    if (cmd === CMD.H_SCALE) {
-                        document.getElementById('harpScale').value = v14;
-                        document.getElementById('seqScale').value = v14;
-                    }
-                    if (cmd === CMD.H_DLY_MIX) document.getElementById('wireHarpDly').innerText = Math.round(v14 / 16383 * 100) + '%';
-                    if (cmd === CMD.H_REV_MIX) document.getElementById('wireHarpRev').innerText = Math.round(v14 / 16383 * 100) + '%';
-                    if (cmd === CMD.S_DLY_MIX) document.getElementById('wireSeqDly').innerText = Math.round(v14 / 16383 * 100) + '%';
-                    if (cmd === CMD.S_REV_MIX) document.getElementById('wireSeqRev').innerText = Math.round(v14 / 16383 * 100) + '%';
-                    if (cmd === CMD.D_DLY) {
-                        const e = document.getElementById('wireDrumDly');
-                        if (e) e.innerText = Math.round(v14 / 16383 * 100) + '%';
-                    }
-                    if (cmd === CMD.D_REV) {
-                        const e = document.getElementById('wireDrumRev');
-                        if (e) e.innerText = Math.round(v14 / 16383 * 100) + '%';
-                    }
-                    if (cmd === CMD.HW_S_LEN) {
+                        if (document.getElementById('slotsModal')?.style.display === 'flex') this.renderSlotsVault();
+                    },
+                    [CMD.H_PATCH]: v14 => { document.getElementById('harpPatch').value = v14; },
+                    [CMD.S_PATCH]: v14 => { document.getElementById('seqPatch').value  = v14; },
+                    [CMD.H_SCALE]: v14 => { document.getElementById('harpScale').value = v14; document.getElementById('seqScale').value = v14; },
+                    [CMD.H_DLY_MIX]: v14 => { document.getElementById('wireHarpDly').innerText = Math.round(v14 / 16383 * 100) + '%'; },
+                    [CMD.H_REV_MIX]: v14 => { document.getElementById('wireHarpRev').innerText = Math.round(v14 / 16383 * 100) + '%'; },
+                    [CMD.S_DLY_MIX]: v14 => { document.getElementById('wireSeqDly').innerText  = Math.round(v14 / 16383 * 100) + '%'; },
+                    [CMD.S_REV_MIX]: v14 => { document.getElementById('wireSeqRev').innerText  = Math.round(v14 / 16383 * 100) + '%'; },
+                    [CMD.D_DLY]: v14 => { const e = document.getElementById('wireDrumDly'); if (e) e.innerText = Math.round(v14 / 16383 * 100) + '%'; },
+                    [CMD.D_REV]: v14 => { const e = document.getElementById('wireDrumRev'); if (e) e.innerText = Math.round(v14 / 16383 * 100) + '%'; },
+                    [CMD.HW_S_LEN]: v14 => {
                         this.seqLen = Math.max(1, Math.min(64, v14 | 0));
                         document.getElementById('seqLen').value = String(this.seqLen);
                         this._updatePageButtons();
-                        if (this.isPlaying) {
-                            this._phForceRemeasure = true;
-                            this._phPendingStep = Math.min(this.visStep | 0, this.seqLen - 1);
-                        }
-                    }
-                    if (cmd === CMD.TRANSPOSE) {
-                        // Wire: v14 = semitone + 12 (0..24). Reject full-scale knob values.
-                        const t = (v14 <= 24)
-                            ? Math.max(-12, Math.min(12, v14 - 12))
-                            : Math.max(-12, Math.min(12, Math.round((v14 / 16383) * 24 - 12)));
+                        if (this.isPlaying) { this._phForceRemeasure = true; this._phPendingStep = Math.min(this.visStep | 0, this.seqLen - 1); }
+                    },
+                    [CMD.TRANSPOSE]: v14 => {
+                        const t = (v14 <= 24) ? Math.max(-12, Math.min(12, v14 - 12)) : Math.max(-12, Math.min(12, Math.round((v14 / 16383) * 24 - 12)));
                         const a = document.getElementById('seqTrn'); if (a) a.value = t;
                         const b = document.getElementById('seqEngTrn'); if (b) b.value = t;
-                    }
-                    // Octave echoes: v14 = oct + 4 (harp cmd 90, seq cmd 91), range 0..8.
-                    if (cmd === CMD.HW_H_OCT) {
-                        const o = (v14 <= 8) ? (v14 - 4) : Math.max(-4, Math.min(4, Math.round((v14 / 16383) * 8 - 4)));
-                        const el = document.getElementById('harpOct'); if (el) el.value = o;
-                    }
-                    if (cmd === CMD.HW_S_OCT) {
-                        const o = (v14 <= 8) ? (v14 - 4) : Math.max(-4, Math.min(4, Math.round((v14 / 16383) * 8 - 4)));
-                        const el = document.getElementById('seqOct'); if (el) el.value = o;
-                    }
-                    if (cmd === CMD.H_PITCH) {
-                        this._setKnob(CMD.H_PITCH, v14);
-                    }
-                    // [v6.0 TRANSPORT-AUTHORITY] The ESP hardware is the SOLE owner of
-                    // transport (play/stop/record/BPM).  The App's transport buttons are
-                    // read-only reflectors, updated ONLY from these echoes + the sync
-                    // supervisor — so a dropped event self-heals within ~600 ms.
-                    // [SYNC-FIX] ONE source of truth: _setTransport() drives play+stop+rec
-                    // together every update so the trio can never disagree (the old code
-                    // never lit btnStop and double-drove play from TRIG_MODE + TRANSPORT).
-                    //   TRANSPORT 0/2 = stop/pause   1 = play   3/4 = record ON / OFF
-                    //   TRIG_MODE     = legacy play echo (routes into the same setter)
-                    if (cmd === CMD.TRIG_MODE) {
-                        this._setTransport(v14 > 0, this.isRecording);
-                    }
-                    if (cmd === CMD.TRANSPORT) {
-                        if (v14 === 3 || v14 === 4) {
-                            this._setTransport(this.isPlaying, v14 === 3);
-                        } else {
-                            this._setTransport(v14 === 1, this.isRecording);
-                        }
-                    }
-                    if (cmd === CMD.LSR_SHOW) {
+                    },
+                    [CMD.HW_H_OCT]: v14 => { const o = (v14 <= 8) ? (v14 - 4) : Math.max(-4, Math.min(4, Math.round((v14 / 16383) * 8 - 4))); const el = document.getElementById('harpOct'); if (el) el.value = o; },
+                    [CMD.HW_S_OCT]: v14 => { const o = (v14 <= 8) ? (v14 - 4) : Math.max(-4, Math.min(4, Math.round((v14 / 16383) * 8 - 4))); const el = document.getElementById('seqOct');  if (el) el.value = o; },
+                    [CMD.H_PITCH]: v14 => { this._setKnob(CMD.H_PITCH, v14); },
+                    // Transport — hardware is SOLE owner; these are read-only reflectors.
+                    // TRANSPORT 0/2=stop 1=play 3/4=rec-on/off  TRIG_MODE=legacy play echo.
+                    [CMD.TRIG_MODE]:  v14 => { this._setTransport(v14 > 0, this.isRecording); },
+                    [CMD.TRANSPORT]:  v14 => {
+                        if (v14 === 3 || v14 === 4) this._setTransport(this.isPlaying, v14 === 3);
+                        else                         this._setTransport(v14 === 1, this.isRecording);
+                    },
+                    [CMD.LSR_SHOW]: v14 => {
                         this.isLaserShow = (v14 > 0);
                         document.getElementById('btnLaserShow').innerText = 'LASER SHOW: ' + (this.isLaserShow ? 'ON' : 'OFF');
                         document.getElementById('btnLaserShow').classList.toggle('active-green', this.isLaserShow);
-                    }
-                    if (cmd === CMD.MIDI_HUE) {
+                    },
+                    [CMD.MIDI_HUE]: v14 => {
                         this.isMidiHue = (v14 > 0);
                         document.getElementById('btnMidiHue').innerText = 'MIDI→HUE: ' + (this.isMidiHue ? 'ON' : 'OFF');
                         document.getElementById('btnMidiHue').classList.toggle('active-green', this.isMidiHue);
-                    }
-                    if (cmd === CMD.H_MUTE) {
-                        this.muteH = (v14 > 0);
-                        document.getElementById('btnMuteH').classList.toggle('active-red', this.muteH);
-                    }
-                    if (cmd === CMD.S_MUTE) {
-                        this.muteS = (v14 > 0);
-                        document.getElementById('btnMuteS').classList.toggle('active-red', this.muteS);
-                    }
-                    if (cmd === CMD.D_MUTE) {
-                        this.muteD = (v14 > 0);
-                        document.getElementById('btnMuteD').classList.toggle('active-red', this.muteD);
-                    }
-                    if (cmd === CMD.SONG_MODE) {
-                        this.isSongMode = (v14 >= 8192);
-                        this._updateChainBtn();
-                        if (this.isSongMode) this._setSongView(true, false);
-                        else this._setSongView(false, false);
-                    }
-                    if (cmd === CMD.SONG_SLOT) {
+                    },
+                    [CMD.H_MUTE]: v14 => { this.muteH = (v14 > 0); document.getElementById('btnMuteH').classList.toggle('active-red', this.muteH); },
+                    [CMD.S_MUTE]: v14 => { this.muteS = (v14 > 0); document.getElementById('btnMuteS').classList.toggle('active-red', this.muteS); },
+                    [CMD.D_MUTE]: v14 => { this.muteD = (v14 > 0); document.getElementById('btnMuteD').classList.toggle('active-red', this.muteD); },
+                    [CMD.SONG_MODE]: v14 => {
+                        this.isSongMode = (v14 >= 8192); this._updateChainBtn();
+                        if (this.isSongMode) this._setSongView(true, false); else this._setSongView(false, false);
+                    },
+                    // [FIX-SONG] SONG_SLOT/STEP/STEPS_N used to call buildSongEditor()
+                    // immediately — during a sendFullStateSync burst that sends 16 SONG_STEP
+                    // echoes + SLOT + STEPS_N = 18 full DOM rebuilds ≈ 200-500 ms main-thread
+                    // stall (App appears totally frozen). Now deferred to next rAF tick.
+                    [CMD.SONG_SLOT]: v14 => {
                         this.songSlotIdx = v14 & 15;
                         document.getElementById('songSlotSelect').value = this.songSlotIdx;
                         document.getElementById('songSlotEdit').value = this.songSlotIdx;
-                        this.buildSongEditor();
-                    }
-                    if (cmd === CMD.SONG_STEP) {
-                        const stepIdx = (v14 >> 10) & 0xF,
-                            bank = (v14 >> 6) & 0xF,
-                            chain = (v14 >> 4) & 0x3,
-                            rpt = v14 & 0xF;
+                        this._songEditorDirty = true;
+                    },
+                    [CMD.SONG_STEP]: v14 => {
+                        const stepIdx = (v14 >> 10) & 0xF, bank = (v14 >> 6) & 0xF, chain = (v14 >> 4) & 0x3, rpt = v14 & 0xF;
                         const sl = this.songData[this.songSlotIdx];
-                        if (sl && stepIdx < 16) {
-                            sl.steps[stepIdx] = {
-                                bank,
-                                chain,
-                                repeats: rpt
-                            };
-                            this.buildSongEditor();
-                        }
-                    }
-                    if (cmd === CMD.SONG_STEPS_N) {
+                        if (sl && stepIdx < 16) { sl.steps[stepIdx] = { bank, chain, repeats: rpt }; this._songEditorDirty = true; }
+                    },
+                    [CMD.SONG_STEPS_N]: v14 => {
                         const sl = this.songData[this.songSlotIdx];
-                        if (sl) {
-                            sl.numSteps = v14;
-                            document.getElementById('songNumSteps').value = v14;
-                            this.buildSongEditor();
-                        }
-                    }
-                    if (cmd === CMD.SONG_POS) {
-                        this.songPlayStep = (v14 >> 4) & 0xF;
-                        this._highlightSongStep();
-                    }
-                    if (cmd === CMD.STEP_SYNC) {
+                        if (sl) { sl.numSteps = v14; document.getElementById('songNumSteps').value = v14; this._songEditorDirty = true; }
+                    },
+                    [CMD.SONG_POS]: v14 => { this.songPlayStep = (v14 >> 4) & 0xF; this._highlightSongStep(); },
+                    [CMD.STEP_SYNC]: v14 => {
                         const s = v14 | 0;
                         this.visStep = s;
                         if (this.isPlaying) {
-                            // [v6.0.01 PLL] Re-anchor the local tick clock on every hardware step.
-                            // _pllPositionTick() interpolates position between anchors in rAF.
-                            this._pllAnchorStep = s;
-                            this._pllAnchorTime = performance.now();
-                            this._phPendingStep = s; // page-follow + LED still driven by events
+                            this._pllAnchorStep = s; this._pllAnchorTime = performance.now();
+                            this._phPendingStep = s;
                         }
-                    }
-                    if (cmd === CMD.CPU_LOAD) {
-                        // [v6.0] Live audio-core load (raw 0-100 %); colour-shift warns near clip.
+                    },
+                    [CMD.CPU_LOAD]: v14 => {
                         const pct = Math.max(0, Math.min(100, v14));
-                        const v = document.getElementById('cpuLoadVal');
-                        const box = document.getElementById('cpuLoad');
+                        const v = document.getElementById('cpuLoadVal'), box = document.getElementById('cpuLoad');
                         if (v) v.innerText = pct + '%';
-                        if (box) {
-                            box.classList.toggle('warn', pct >= 75 && pct < 90);
-                            box.classList.toggle('crit', pct >= 90);
-                        }
-                    }
-                    // [G2] Absolute half-row grid state from firmware (full-sync dump +
-                    // live hardware-edit echo).  Update the model + DOM WITHOUT echoing
-                    // GRID_TOG back, so there is no feedback loop.
-                    if (cmd === CMD.GRID_ROW_LO || cmd === CMD.GRID_ROW_HI) {
-                        const bank = (v14 >> 12) & 3,
-                            row = (v14 >> 8) & 15,
-                            page = (v14 >> 4) & 3,
-                            byte = v14 & 0xFF;
-                        this._applyGridRowHalf(bank, row, byte, cmd === CMD.GRID_ROW_HI, page);
-                    }
-                    // knob update — [WS4] may refresh multiple widgets per cmd
+                        if (box) { box.classList.toggle('warn', pct >= 75 && pct < 90); box.classList.toggle('crit', pct >= 90); }
+                    },
+                    // [G2] Grid rows: separate entries for lo/hi so each is a direct lookup.
+                    [CMD.GRID_ROW_LO]: v14 => { this._applyGridRowHalf((v14 >> 12) & 3, (v14 >> 8) & 15, v14 & 0xFF, false, (v14 >> 4) & 3); },
+                    [CMD.GRID_ROW_HI]: v14 => { this._applyGridRowHalf((v14 >> 12) & 3, (v14 >> 8) & 15, v14 & 0xFF, true,  (v14 >> 4) & 3); },
+                };
+            },
+            applyIncoming(cmd, v14) {
+                this._suppressTx = true;
+                try {
+                    if (!this._dispatch) this._dispatch = this._buildDispatch();
+                    const fn = this._dispatch[cmd];
+                    if (fn) fn(v14);
+                    // Catch-all: knob widget update — still fires even if a specific handler
+                    // already ran above (e.g. H_WAVE sets the select AND updates the knob arc).
                     if (this.knobStates[cmd]) this._setKnob(cmd, v14);
-                    // grid toggle echo (grid state kept locally)
                 } catch (e) {}
                 this._suppressTx = false;
             },
@@ -5253,6 +5110,13 @@
 
             // ── VU meter ──────────────────────────────────────────────────────────────
             animateVU(ts) {
+                // [FIX-SONG] Deferred song editor rebuild — coalesces up to 18 calls from
+                // a sendFullStateSync burst (SONG_SLOT + 16×SONG_STEP + SONG_STEPS_N) into
+                // a single rAF-scheduled DOM rebuild, preventing 200-500 ms main thread stall.
+                if (this._songEditorDirty) {
+                    this._songEditorDirty = false;
+                    this.buildSongEditor();
+                }
                 if (this.isPlaying) {
                     if (this._phPendingStep >= 0) {
                         const step = this._phPendingStep;
