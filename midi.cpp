@@ -36,6 +36,8 @@
  *
  *  [R7] P-lock automation extended to cover three new automatable extended CMDs:
  *       CMD_AUX_DLY_FB, CMD_AUX_REV_DMP, CMD_DRUM_WAVE.
+ *  [PLOCK] captureMotionParam on apply* + handleSysexCommand; PARAM_TABLE gate;
+ *       64-step lanes (MOTION_STEPS_PER_LANE); RX throttle off while recording.
  *
  *  [R8] sendFullStateSync calls echoFullSeqState() at the end — closes 12
  *       previously missing echoes (BPM, chain, length, transpose, octaves,
@@ -90,6 +92,28 @@ static uint32_t s_last_rx_ms[256]  = {};
 static uint16_t s_last_rx_val[256] = {};
 static uint32_t s_last_tx_ms[256]  = {};
 static uint16_t s_last_tx_val[256] = {};
+
+/* [LINK-HEAL] Yield every N outbound frames during sendFullStateSync so
+ * MidiUsbRx / SeqSysexOut are not mutex-starved for hundreds of ms.          */
+static bool     s_txSyncYield      = false;
+static uint8_t  s_txSyncYieldCount = 0;
+static TaskHandle_t hFullSyncTask  = nullptr;
+static std::atomic<bool> s_fspEchoSong{ false };
+static std::atomic<bool> s_fspSendAck{ false };
+
+void requestFullStateSync(bool echoSongAfter, bool sendSyncAck) {
+  s_fspEchoSong.store(echoSongAfter, std::memory_order_relaxed);
+  s_fspSendAck.store(sendSyncAck, std::memory_order_relaxed);
+  if (hFullSyncTask)
+    xTaskNotifyGive(hFullSyncTask);
+}
+
+static inline void txSyncYieldTick() {
+  if (s_txSyncYield && ++s_txSyncYieldCount >= 8u) {
+    s_txSyncYieldCount = 0u;
+    vTaskDelay(pdMS_TO_TICKS(1));
+  }
+}
 
 /* ── USB MIDI parser state ──────────────────────────────────────────────────
  * [USB-ONLY] DIN UART MIDI was removed (v6.0): the only MIDI transport is now
@@ -177,6 +201,8 @@ void txSysex(uint8_t cmd, uint16_t v14bit) {
 
   s_last_tx_ms[cmd]  = now;
   s_last_tx_val[cmd] = v14bit;
+
+  txSyncYieldTick();
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -209,6 +235,7 @@ void txGridRow(uint8_t bank, uint8_t row, uint8_t page, uint8_t lo, uint8_t hi) 
   };
   midiEmitRaw(f, 10);
   midiUnlock();
+  txSyncYieldTick();
 }
 
 void txPatchBlob(uint8_t engine) {
@@ -234,6 +261,7 @@ void txPatchBlob(uint8_t engine) {
   f[n++] = 0xF7u;
   midiEmitRaw(f, n);
   midiUnlock();
+  txSyncYieldTick();
 }
 
 /* [USER-SLOTS] Echo a user sound-slot or user-pattern name to the App (sub 0x03/0x04).
@@ -553,9 +581,12 @@ void handleSysexCommand(uint8_t cmd, uint16_t v14) {
   const bool noDedup = (cmd == CMD_GRID_TOG ||
                         cmd == CMD_PING      ||
                         cmd == CMD_APP_SYNC_REQ);
+  const bool plockRec = seqRecording.load(std::memory_order_relaxed);
   if (!noDedup) {
     if (s_last_rx_val[cmd] == v14 && (now - s_last_rx_ms[cmd] < 50u)) return;
-    if (cmd < 90u || (cmd >= 112u && cmd <= 120u)) {
+    /* [PLOCK-REC] Skip 5 ms RX throttle while recording — fast App knob drags
+     * must not be dropped or automation lanes stay sparse / empty.            */
+    if (!plockRec && (cmd < 90u || (cmd >= 112u && cmd <= 120u))) {
       if (now - s_last_rx_ms[cmd] < 5u) return;
     }
   }
@@ -564,19 +595,15 @@ void handleSysexCommand(uint8_t cmd, uint16_t v14) {
 
   /* ── Synth/drum parameter blocks ─────────────────────────────────────── */
   if (cmd < 16u) {
-    /* [R1] applyHarpParam writes both harpLivePatch[idx] AND the atomic    */
     applyHarpParam((int)cmd, v14);
-    recordMotionParam(cmd, v14);
     return;
   }
   if (cmd < 32u) {
     applySeqParam((int)(cmd - 16u), v14);
-    recordMotionParam(cmd, v14);
     return;
   }
   if (cmd < 64u) {
     applyDrumParam((int)(cmd - 32u), v14);
-    recordMotionParam(cmd, v14);
     return;
   }
 
@@ -739,7 +766,8 @@ void handleSysexCommand(uint8_t cmd, uint16_t v14) {
       portENTER_CRITICAL(&motionMux);
       for (int l = 0; l < 4; ++l) {
         hwMotionData[bank][chain][l].targetCmd = 255u;
-        for (int s = 0; s < 16; ++s) hwMotionData[bank][chain][l].steps[s] = 0xFFFFu;
+        for (int s = 0; s < (int)MOTION_STEPS_PER_LANE; ++s)
+          hwMotionData[bank][chain][l].steps[s] = 0xFFFFu;
       }
       portEXIT_CRITICAL(&motionMux);
       break;
@@ -758,7 +786,7 @@ void handleSysexCommand(uint8_t cmd, uint16_t v14) {
     }
 
     /* ── System ──────────────────────────────────────────────────────────── */
-    case CMD_FETCH:     sendFullStateSync(); break;
+    case CMD_FETCH:     requestFullStateSync(false, false); break;
     case CMD_HARD_SAVE: requestSessionSave(); break;
     case CMD_PING:      txSysex(CMD_PING, 1u); break;
 
@@ -837,8 +865,9 @@ void handleSysexCommand(uint8_t cmd, uint16_t v14) {
        * older App builds that still send it on connect.                        */
       break;
     case CMD_APP_SYNC_REQ:
-      sendFullStateSync(); echoSongState();
-      txSysex(CMD_APP_SYNC_REQ, 16383u); break;
+      if (v14 == 16383u) break; /* ACK echo — ignore */
+      requestFullStateSync(true, true);
+      break;
     case CMD_SESSION_SAVE:
       if (v14 == 16383u) break; /* ACK echo — ignore */
       if (v14 == 0u)     break; /* NACK echo — ignore */
@@ -932,25 +961,9 @@ void handleSysexCommand(uint8_t cmd, uint16_t v14) {
     default: break;
   }
 
-  /* ── P-lock recording ─────────────────────────────────────────────────── */
-  /* Original range: cmd 64–96 (master/FX params, excludes transport).
-   * Skip discrete layout/transport scalars — they use compact wire encodings
-   * (transpose+12, oct+4, length 1–64) and corrupt badly if a continuous
-   * 0..16383 knob value lands on them during playback.                        */
-  if (cmd >= 64u && cmd < CMD_BPM) {
-    switch (cmd) {
-    case CMD_HW_H_OCT: case CMD_HW_S_OCT: case CMD_HW_S_LEN:
-    case CMD_TRANSPOSE: case CMD_HW_MARGIN: case CMD_HW_GATE: case CMD_HW_WHITE:
-      break;
-    default:
-      recordMotionParam(cmd, v14);
-      break;
-    }
-  }
-  /* [R7] New automatable extended params */
-  if (cmd == CMD_AUX_DLY_FB || cmd == CMD_AUX_REV_DMP || cmd == CMD_DRUM_WAVE) {
-    recordMotionParam(cmd, v14);
-  }
+  /* P-lock capture — PARAM_TABLE.automatable gate; apply* also captures for
+   * early-return cmd blocks; this catches FX indices, wire cmds, etc.       */
+  captureMotionParam(cmd, v14);
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -1112,6 +1125,10 @@ void parseMidiByte(uint8_t b, MidiParserState& ps) {
  *      and complete D-BEAM expression routing state.
  * ─────────────────────────────────────────────────────────────────────────────*/
 void sendFullStateSync() {
+  const bool prevYield = s_txSyncYield;
+  s_txSyncYield        = true;
+  s_txSyncYieldCount   = 0;
+
   /* Force every echo through: a full sync must transmit the complete state even
    * for parameters whose value has not changed since the last echo.  Reset the
    * TX value-dedup cache to an impossible 14-bit value (0xFFFF) so no txSysex
@@ -1215,6 +1232,20 @@ void sendFullStateSync() {
    * param knob — giving the App a 1:1 mirror of hwSeqData on connect.          */
   echoFullSeqState();
   txUserLibraryNames(); /* [USER-SLOTS] sparse custom names + pat occupancy */
+
+  s_txSyncYield = prevYield;
+}
+
+static void full_sync_task(void* pv) {
+  (void)pv;
+  for (;;) {
+    ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+    sendFullStateSync();
+    if (s_fspEchoSong.exchange(false, std::memory_order_acq_rel))
+      echoSongState();
+    if (s_fspSendAck.exchange(false, std::memory_order_acq_rel))
+      txSysex(CMD_APP_SYNC_REQ, 16383u);
+  }
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -1238,6 +1269,10 @@ void wireRecordInputNote(uint8_t channel, uint8_t note, uint8_t /*vel*/) {
 bool init_midi_hardware() {
   /* [MIDI-OPT5/6] Dedup tables are static zero-init; no memset needed on boot. */
   harpVoiceOwnerInit();
+  if (!hFullSyncTask) {
+    xTaskCreatePinnedToCore(full_sync_task, "FullSyncOut", 8192, nullptr, 8,
+                            &hFullSyncTask, 1);
+  }
   return true;
 }
 

@@ -212,7 +212,7 @@ static const ParamEntry PARAM_TABLE[] = {
   /* ── GROUP 4: TRANSPORT (cmd 97–127) ──────────────────────────────────── */
   { CMD_BPM,       PGroup::TRANSPORT, "BPM",            120,  false, true  },
   { CMD_BANK,      PGroup::TRANSPORT, "Seq Bank",        0,    false, true  },
-  { CMD_TRANSPOSE, PGroup::TRANSPORT, "Transpose",       12,   true,  true  }, /* -12..+12, 0=12 */
+  { CMD_TRANSPOSE, PGroup::TRANSPORT, "Transpose",       12,   false, true  }, /* discrete v14 — not P-lockable */
   { CMD_HW_S_LEN,  PGroup::TRANSPORT, "Seq Length",      16,   false, true  },
   { CMD_TRIG_MODE, PGroup::TRANSPORT, "Play/Stop",       0,    false, false },
   { CMD_GRID_TOG,  PGroup::TRANSPORT, "Grid Toggle",     0,    false, false },
@@ -299,6 +299,29 @@ static inline const ParamEntry* findParamEntry(uint8_t cmd) {
   for (int i = 0; i < PARAM_TABLE_COUNT; ++i)
     if (PARAM_TABLE[i].cmd == cmd) return &PARAM_TABLE[i];
   return nullptr;
+}
+
+/* shouldRecordMotionCmd — PARAM_TABLE.automatable gate + discrete-encoding blocklist.
+ * Discrete layout cmds use compact wire values; storing full-scale v14 corrupts
+ * playback validation in seq_apply_motion().                                  */
+static inline bool shouldRecordMotionCmd(uint8_t cmd) {
+  switch (cmd) {
+  case CMD_HW_H_OCT:  case CMD_HW_S_OCT:  case CMD_HW_S_LEN:
+  case CMD_TRANSPOSE: case CMD_HW_MARGIN: case CMD_HW_GATE: case CMD_HW_WHITE:
+  case CMD_BPM:       case CMD_BANK:      case CMD_TRIG_MODE:
+  case CMD_GRID_TOG:  case CMD_CLR_PLOCKS: case CMD_STEP_SYNC:
+  case CMD_FETCH:     case CMD_HARD_SAVE: case CMD_PING:
+  case CMD_APP_SYNC_REQ:
+    return false;
+  default: break;
+  }
+  const ParamEntry* e = findParamEntry(cmd);
+  return e && e->automatable;
+}
+
+/* captureMotionParam — canonical P-lock capture hook (apply* + handleSysexCommand). */
+static inline void captureMotionParam(uint8_t cmd, uint16_t v14) {
+  if (shouldRecordMotionCmd(cmd)) recordMotionParam(cmd, v14);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -449,6 +472,7 @@ static inline void applyHarpParam(int idx, uint16_t v14) {
     default: break; /* P_SPARE1/P_SPARE2 — no atomic to update */
   }
   portEXIT_CRITICAL(&patchMux);
+  captureMotionParam((uint8_t)(CMD_H_WAVE + idx), v14);
 }
 
 /* ── applySeqParam — write one SEQ synth parameter ───────────────────────── */
@@ -507,6 +531,7 @@ static inline void applySeqParam(int idx, uint16_t v14) {
     default: break;
   }
   portEXIT_CRITICAL(&patchMux);
+  captureMotionParam((uint8_t)(CMD_S_WAVE + idx), v14);
 }
 
 /* ── applyDrumParam — write one DRUM parameter (idx = drum_ch*4 + param) ─── */
@@ -525,6 +550,7 @@ static inline void applyDrumParam(int idx, uint16_t v14) {
     case 3: drumNoiseMix[ch].store(fv, std::memory_order_relaxed); break;
   }
   portEXIT_CRITICAL(&patchMux);
+  captureMotionParam((uint8_t)(32 + idx), v14);
 }
 
 /* ── encodeHarpParam — get current v14 value for any harp param (for echo) ── */
@@ -1194,8 +1220,9 @@ static inline void applyAuxParam(uint8_t cmd, uint16_t v14) {
       masterAuxRevSize.store(std::min(0.95f, f), std::memory_order_relaxed);
       txSysex(cmd, v14);
       break;
-    default: break;
+    default: return;
   }
+  captureMotionParam(cmd, v14);
 }
 
 /* Encode aux params back to v14 for echo / sendFullStateSync */
@@ -1287,6 +1314,7 @@ static inline void applyMasterParam(uint8_t cmd, uint16_t v14, Origin o) {
     case CMD_DB_RANGE: dbeamHWCfg.rangeAdc = (int)v14; break;
     default: return; /* not ours → caller (RX switch) handles it, no echo */
   }
+  captureMotionParam(cmd, v14);
   echoIfNotApp(cmd, v14, o);
 }
 
@@ -1305,7 +1333,10 @@ static inline void applyFxSend(uint8_t cmd, uint16_t v14, Origin o) {
     default: owned = false; break;
   }
   portEXIT_CRITICAL(&patchMux);
-  if (owned) echoIfNotApp(cmd, v14, o);
+  if (owned) {
+    captureMotionParam(cmd, v14);
+    echoIfNotApp(cmd, v14, o);
+  }
 }
 
 /* Drum insert-A live tweak (CMD 190–192) — independent of D.REV/D.DLY aux atomics. */
@@ -1546,7 +1577,9 @@ static inline void applyDrumWave(uint8_t ch, uint8_t wave_idx) {
   if (ch == 2u || ch == 3u || ch == 4u) return;
   drumWaveIdx[ch].store(wave_idx, std::memory_order_relaxed);
   /* v14 = (ch << 5) | wave_idx — pack both into one sysex */
-  txSysex(CMD_DRUM_WAVE, (uint16_t)((ch << 5u) | wave_idx));
+  const uint16_t v14 = (uint16_t)((ch << 5u) | wave_idx);
+  captureMotionParam(CMD_DRUM_WAVE, v14);
+  txSysex(CMD_DRUM_WAVE, v14);
 }
 
 /* applyDrumKit — select a drum kit: store the kit id (drives kick/hat character

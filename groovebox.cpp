@@ -181,31 +181,69 @@ static void seqArpTick(uint32_t tick, bool laser_show) {
   }
 }
 
-/* ── 2. Lock-free SPSC out-ring  [TIMING-LOCK / D] ────────────────────────────
- * TU-private — only groovebox.cpp may push (via seq_start/stop/pause,
- * seq_set_recording, step engine, song chain, motion playback).
+/* ── 2. Dual-tier outbound queue  [TIMING-LOCK / LINK-HEAL] ─────────────────
+ * CRITICAL (BPM / TRANSPORT play+rec / STEP_SYNC): coalesced atomic slots —
+ * latest value wins, never dropped.  Drained before the bulk ring every loop.
  *
- * Producers: audio task (STEP_SYNC), transport/record APIs, song advance.
- * Consumer:  sequencer_background_task (SeqSysexOut) → txSysex under midiMutex.
- *
- * Why a ring: ControlPoll and MidiUsbRx must not call txSysex directly — they
- * can lose the 5 ms midiMutex timeout while SeqSysexOut drains STEP_SYNC bursts.
- * Non-blocking push here; a dropped event under flood is harmless (supervisor +
- * idempotent transport echoes heal drift).                                     */
+ * BULK ring: motion echoes, BANK, SONG_POS, TRIG_MODE, etc.  Non-blocking;
+ * overflow increments g_seq_ext_drops (telemetry via CMD_CPU_LOAD).  Consumer:
+ * sequencer_background_task (SeqSysexOut) → txSysex under midiMutex.         */
 struct SeqExtEvt {
-  uint8_t  cmd;   /* sysex command */
-  uint16_t v14;   /* sysex value   */
+  uint8_t  cmd;
+  uint16_t v14;
 };
 
-constexpr size_t SEQ_EXT_QUEUE_SIZE = 128u; /* power of two */
+constexpr size_t SEQ_EXT_QUEUE_SIZE = 128u;
 SeqExtEvt             seq_ext_queue[SEQ_EXT_QUEUE_SIZE];
 std::atomic<uint16_t> seq_ext_head{ 0 };
 std::atomic<uint16_t> seq_ext_tail{ 0 };
 
+std::atomic<bool>     seq_hi_bpm_pending{ false };
+std::atomic<uint16_t> seq_hi_bpm_val{ 120 };
+std::atomic<bool>     seq_hi_transport_play_pending{ false };
+std::atomic<uint16_t> seq_hi_transport_play_val{ 0 };
+std::atomic<bool>     seq_hi_transport_rec_pending{ false };
+std::atomic<uint16_t> seq_hi_transport_rec_val{ 4 };
+std::atomic<bool>     seq_hi_step_pending{ false };
+std::atomic<uint16_t> seq_hi_step_val{ 0 };
+
+static inline bool seq_ext_is_critical(uint8_t cmd) {
+  return cmd == CMD_BPM || cmd == CMD_STEP_SYNC || cmd == CMD_TRANSPORT;
+}
+
+inline void IRAM_ATTR seq_ext_push_critical(uint8_t cmd, uint16_t v14) {
+  if (cmd == CMD_BPM) {
+    seq_hi_bpm_val.store(v14, std::memory_order_relaxed);
+    seq_hi_bpm_pending.store(true, std::memory_order_release);
+    return;
+  }
+  if (cmd == CMD_STEP_SYNC) {
+    seq_hi_step_val.store(v14, std::memory_order_relaxed);
+    seq_hi_step_pending.store(true, std::memory_order_release);
+    return;
+  }
+  if (cmd == CMD_TRANSPORT) {
+    if (v14 == 3u || v14 == 4u) {
+      seq_hi_transport_rec_val.store(v14, std::memory_order_relaxed);
+      seq_hi_transport_rec_pending.store(true, std::memory_order_release);
+    } else {
+      seq_hi_transport_play_val.store(v14, std::memory_order_relaxed);
+      seq_hi_transport_play_pending.store(true, std::memory_order_release);
+    }
+  }
+}
+
 inline void IRAM_ATTR seq_ext_push(uint8_t cmd, uint16_t v14) {
+  if (seq_ext_is_critical(cmd)) {
+    seq_ext_push_critical(cmd, v14);
+    return;
+  }
   const uint16_t h  = seq_ext_head.load(std::memory_order_relaxed);
   const uint16_t nh = (uint16_t)((h + 1u) & (SEQ_EXT_QUEUE_SIZE - 1u));
-  if (nh == seq_ext_tail.load(std::memory_order_acquire)) return; /* full → drop */
+  if (nh == seq_ext_tail.load(std::memory_order_acquire)) {
+    g_seq_ext_drops.fetch_add(1u, std::memory_order_relaxed);
+    return;
+  }
   seq_ext_queue[h] = SeqExtEvt{ cmd, v14 };
   seq_ext_head.store(nh, std::memory_order_release);
 }
@@ -217,6 +255,24 @@ inline bool IRAM_ATTR seq_ext_pop(SeqExtEvt& out) {
   seq_ext_tail.store((uint16_t)((t + 1u) & (SEQ_EXT_QUEUE_SIZE - 1u)),
                      std::memory_order_release);
   return true;
+}
+
+static void seq_ext_drain_hi_slot(std::atomic<bool>& pending, uint8_t cmd,
+                                  std::atomic<uint16_t>& val) {
+  while (pending.load(std::memory_order_acquire)) {
+    const uint16_t v = val.load(std::memory_order_relaxed);
+    pending.store(false, std::memory_order_release);
+    txSysex(cmd, v);
+  }
+}
+
+static void seq_ext_drain_critical() {
+  seq_ext_drain_hi_slot(seq_hi_bpm_pending, CMD_BPM, seq_hi_bpm_val);
+  seq_ext_drain_hi_slot(seq_hi_transport_play_pending, CMD_TRANSPORT,
+                        seq_hi_transport_play_val);
+  seq_ext_drain_hi_slot(seq_hi_transport_rec_pending, CMD_TRANSPORT,
+                        seq_hi_transport_rec_val);
+  seq_ext_drain_hi_slot(seq_hi_step_pending, CMD_STEP_SYNC, seq_hi_step_val);
 }
 
 /* ── 3. Step-position helper ──────────────────────────────────────────────── */
@@ -812,8 +868,8 @@ void IRAM_ATTR seq_restart_from_step_zero() {
 void setSequencerBpm(int32_t bpm) {
   bpm = std::min<int32_t>(240, std::max<int32_t>(40, bpm));
   seqBpm.store(bpm, std::memory_order_relaxed);
-  s_lastBpmChangeMs.store(millis(), std::memory_order_relaxed); /* [BPM-RACE] mark live change */
-  txSysex(CMD_BPM, (uint16_t)bpm);   /* echo to App (hardware encoder + any RX) */
+  s_lastBpmChangeMs.store(millis(), std::memory_order_relaxed);
+  seq_ext_push(CMD_BPM, (uint16_t)bpm); /* coalesced hi slot → SeqSysexOut */
 }
 
 void initSequencer() {
@@ -900,7 +956,7 @@ void IRAM_ATTR sequencer_render_block(uint32_t frames) {
     const uint8_t bank     = seqActiveBank.load(std::memory_order_relaxed) & 15u;
     const uint8_t chain    = seqActiveChain.load(std::memory_order_relaxed) & 3u;
     const uint8_t gridStep = (uint8_t)(step & 63u);   /* [GRID-64] full 0..63 mask  */
-    const uint8_t motStep  = (uint8_t)(step & 15u);   /* P-lock lanes still 16 deep */
+    const uint8_t motStep  = (uint8_t)(step & (MOTION_STEPS_PER_LANE - 1u));
     const uint8_t vel      = (gridStep % 4u == 0u) ? SEQ_VEL_ACCENT : SEQ_VEL_NORMAL;
 
     uint64_t rowSnap[16];
@@ -1035,39 +1091,35 @@ void sequencer_background_task(void* pvParameters) {
 
   uint32_t lastSupervisorMs = 0u;
   for (;;) {
-    SeqExtEvt e;
-    while (seq_ext_pop(e)) {
-      txSysex(e.cmd, e.v14);   /* [USB-ONLY] position echoes (STEP_SYNC / SONG_POS) */
+    /* Critical coalesced slots first — never starved by bulk ring flood. */
+    seq_ext_drain_critical();
+
+    /* Bulk ring: bounded per iteration so hi slots + supervisor get CPU. */
+    {
+      unsigned budget = 12u;
+      SeqExtEvt e;
+      while (budget && seq_ext_pop(e)) {
+        txSysex(e.cmd, e.v14);
+        --budget;
+      }
     }
 
     /* ── [v6.0 SYNC-SUPERVISOR] ──────────────────────────────────────────────
-     * The hardware owns transport; the App only reflects it.  Live echoes (from
-     * seq_start/stop, setSequencerBpm, the record toggle) are EVENTS — if one is
-     * dropped the App's read-only display + playhead would silently drift with no
-     * recovery.  This is the slow safety net: while the App is connected we
-     * re-assert the device-owned transport STATE (BPM + play + record).
-     * It is NOT the clock — the per-step STEP_SYNC stream (pushed above while
-     * playing) still drives the playhead; this only guarantees convergence.
-     *
-     * Period is 600 ms — deliberately ABOVE txSysex's 500 ms identical-value
-     * dedup window, otherwise an UNCHANGED re-assert (the exact case we need to
-     * heal a dropped echo) would itself be deduped and never reach the App.
-     * State CHANGES still propagate instantly via the live echoes (different
-     * value ⇒ not deduped).  Cheap (3 short frames), off the audio core, silent
-     * when no App is connected.                                                */
+     * Re-assert transport STATE every 600 ms (above txSysex 500 ms dedup window).
+     * Uses coalesced hi slots so re-asserts cannot be dropped by ring overflow. */
     const uint32_t now = millis();
     if ((uint32_t)(now - lastSupervisorMs) >= 600u && isAppConnected()) {
       lastSupervisorMs = now;
-      /* [BPM-RACE] Skip the unchanged BPM re-assert while the knob is actively
-       * moving (≤1.5 s since last change) so a stale supervisor value can't race
-       * the live echoes; live changes still propagate via setSequencerBpm. */
-      if ((uint32_t)(now - s_lastBpmChangeMs.load(std::memory_order_relaxed)) >= 1500u)
-        txSysex(CMD_BPM, (uint16_t)seqBpm.load(std::memory_order_relaxed));
-      txSysex(CMD_TRANSPORT, seqPlaying.load(std::memory_order_relaxed) ? 1u : 0u);
-      /* Record snapshot — supervisor reads atomic; live changes use seq_set_recording. */
-      txSysex(CMD_TRANSPORT, seqRecording.load(std::memory_order_relaxed) ? 3u : 4u);
-      /* [v6.0] Live CPU-load telemetry for the App header (raw 0–100 %). */
-      txSysex(CMD_CPU_LOAD, (uint16_t)g_audio_load_pct.load(std::memory_order_relaxed));
+      seq_ext_push(CMD_BPM, (uint16_t)seqBpm.load(std::memory_order_relaxed));
+      seq_ext_push(CMD_TRANSPORT, seqPlaying.load(std::memory_order_relaxed) ? 1u : 0u);
+      seq_ext_push(CMD_TRANSPORT, seqRecording.load(std::memory_order_relaxed) ? 3u : 4u);
+      if (seqPlaying.load(std::memory_order_relaxed))
+        seq_ext_push(CMD_STEP_SYNC,
+                     (uint16_t)(seqCurrentStep.load(std::memory_order_relaxed) & 63u));
+      /* bits 0–6: load %; bits 7–13: bulk ring drop count (mod 128) */
+      const uint16_t loadPct = (uint16_t)g_audio_load_pct.load(std::memory_order_relaxed);
+      const uint16_t drops   = (uint16_t)(g_seq_ext_drops.load(std::memory_order_relaxed) & 127u);
+      txSysex(CMD_CPU_LOAD, (uint16_t)((loadPct & 0x7Fu) | (drops << 7)));
     }
     vTaskDelay(pdMS_TO_TICKS(2));
   }
@@ -1368,7 +1420,8 @@ void seqClearActiveAndResetSounds() {
   portENTER_CRITICAL(&motionMux);
   for (int l = 0; l < 4; ++l) {
     hwMotionData[bank][chain][l].targetCmd = 255u;
-    for (int s = 0; s < 16; ++s) hwMotionData[bank][chain][l].steps[s] = 0xFFFFu;
+    for (int s = 0; s < (int)MOTION_STEPS_PER_LANE; ++s)
+      hwMotionData[bank][chain][l].steps[s] = 0xFFFFu;
   }
   portEXIT_CRITICAL(&motionMux);
 
@@ -1412,10 +1465,8 @@ void seqSoftResetWorkingImage() {
   displayDirty.store(true, std::memory_order_relaxed);
 
   /* Mirror the full RAM image to the App (no reboot — replaces piecemeal echoes). */
-  if (isAppConnected()) {
-    sendFullStateSync();
-    echoSongState();
-  }
+  if (isAppConnected())
+    requestFullStateSync(true, false);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════

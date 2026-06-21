@@ -256,6 +256,12 @@ static inline void mutateSeq(int pIdx, int16_t delta) {
     txSysex(cmd, v14);
 }
 
+/* hwKnobEchoCapture — menu encoder echo + P-lock capture (Fix 1 hardware path). */
+static inline void hwKnobEchoCapture(uint8_t cmd, uint16_t v14) {
+  txSysex(cmd, v14);
+  captureMotionParam(cmd, v14);
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
  * SECTION 5 — updateHardwareParameter
  *
@@ -351,57 +357,57 @@ void updateHardwareParameter(uint8_t l1, uint8_t l2, int16_t delta) {
     /* [IDM-OPT3] every safe_atomic_store now returns the clamped value (nv);
      * txSysex uses it directly instead of reloading the atomic. */
     case 0:  { const float nv = safe_atomic_store(masterVol,   masterVol.load(),   (float)delta*0.01f, 0.f,1.f);
-               txSysex(CMD_M_VOL,  (uint16_t)(nv*16383.f)); break; }
+               applyMasterParam(CMD_M_VOL, (uint16_t)(nv*16383.f), Origin::HW); break; }
     case 1:  { const float nv = safe_atomic_store(mixHarpVol,  mixHarpVol.load(),  (float)delta*0.01f, 0.f,1.f);
-               txSysex(CMD_H_VOL,  (uint16_t)(nv*16383.f)); break; }
+               applyMasterParam(CMD_H_VOL, (uint16_t)(nv*16383.f), Origin::HW); break; }
     case 2:  { const float nv = safe_atomic_store(mixSeqVol,   mixSeqVol.load(),   (float)delta*0.01f, 0.f,1.f);
-               txSysex(CMD_S_VOL,  (uint16_t)(nv*16383.f)); break; }
+               applyMasterParam(CMD_S_VOL, (uint16_t)(nv*16383.f), Origin::HW); break; }
     case 3:  { const float nv = safe_atomic_store(mixDrumsVol, mixDrumsVol.load(), (float)delta*0.01f, 0.f,1.f);
-               txSysex(CMD_D_VOL,  (uint16_t)(nv*16383.f)); break; }
+               applyMasterParam(CMD_D_VOL, (uint16_t)(nv*16383.f), Origin::HW); break; }
     case 4:  { const float nv = safe_atomic_store(masterPitch, masterPitch.load(),
                                (float)delta*0.05f, MASTER_PITCH_MIN, MASTER_PITCH_MAX);
-               txSysex(CMD_PITCH, encodeMasterPitch(nv)); break; }
+               applyMasterParam(CMD_PITCH, encodeMasterPitch(nv), Origin::HW); break; }
     case 5:  { int v = wrapIndex((int)masterFxIndex.load(), (int)delta, 16);
-               masterFxIndex.store(v, std::memory_order_relaxed); /* [C7] was missing */
-               fx.loadMasterFx(v); txSysex(CMD_M_FX_IDX, (uint16_t)v);
-               txMasterFxParams(); /* [WS5] push tube/DJ/EQ knobs to App */ break; }
+               masterFxIndex.store(v, std::memory_order_relaxed);
+               fx.loadMasterFx(v); hwKnobEchoCapture(CMD_M_FX_IDX, (uint16_t)v);
+               txMasterFxParams(); break; }
     case 6:  { const float nv = safe_atomic_store(drumRevSend, drumRevSend.load(), (float)delta*0.01f, 0.f,1.f);
-               txSysex(CMD_D_REV,  (uint16_t)(nv*16383.f)); break; }
+               applyMasterParam(CMD_D_REV, (uint16_t)(nv*16383.f), Origin::HW); break; }
     case 7:  { const float nv = safe_atomic_store(drumDlySend, drumDlySend.load(), (float)delta*0.01f, 0.f,1.f);
-               txSysex(CMD_D_DLY,  (uint16_t)(nv*16383.f)); break; }
+               applyMasterParam(CMD_D_DLY, (uint16_t)(nv*16383.f), Origin::HW); break; }
     case 8:  { const float nv = safe_atomic_store(tbDrive, tbDrive.load(), (float)delta*0.01f, 0.f,1.f);
-               txSysex(CMD_TB_DRV,  (uint16_t)(nv*16383.f)); break; }
+               applyMasterParam(CMD_TB_DRV, (uint16_t)(nv*16383.f), Origin::HW); break; }
     case 9:  { const float nv = safe_atomic_store(tbTone,  tbTone.load(),  (float)delta*0.01f, 0.f,1.f);
-               txSysex(CMD_TB_TONE, (uint16_t)(nv*16383.f)); break; }
+               applyMasterParam(CMD_TB_TONE, (uint16_t)(nv*16383.f), Origin::HW); break; }
     case 10: { const float nv = safe_atomic_store(tbMix,   tbMix.load(),   (float)delta*0.01f, 0.f,1.f);
-               txSysex(CMD_TB_MIX,  (uint16_t)(nv*16383.f)); break; }
+               applyMasterParam(CMD_TB_MIX, (uint16_t)(nv*16383.f), Origin::HW); break; }
     case 11: { const float nv = safe_atomic_store(djFreq,  djFreq.load(),  (float)delta*0.01f, 0.f,1.f);
-               txSysex(CMD_DJ_FQ,   (uint16_t)(nv*16383.f)); break; }
+               applyMasterParam(CMD_DJ_FQ, (uint16_t)(nv*16383.f), Origin::HW); break; }
     case 12: { const float nv = safe_atomic_store(djRes,   djRes.load(),   (float)delta*0.01f, 0.f,1.f);
-               txSysex(CMD_DJ_RES,  (uint16_t)(nv*16383.f)); break; }
+               applyMasterParam(CMD_DJ_RES, (uint16_t)(nv*16383.f), Origin::HW); break; }
     case 13: { const float nv = safe_atomic_store(djMix,   djMix.load(),   (float)delta*0.01f, 0.f,1.f);
-               txSysex(CMD_DJ_MIX,  (uint16_t)(nv*16383.f)); break; }
+               applyMasterParam(CMD_DJ_MIX, (uint16_t)(nv*16383.f), Origin::HW); break; }
     case 14: { const float nv = safe_atomic_store(masterEqLow,  masterEqLow.load(),  (float)delta*0.5f, -12.f,12.f);
-               txSysex(CMD_EQ_L, (uint16_t)(((nv+12.f)/24.f)*16383.f)); break; }
+               applyMasterParam(CMD_EQ_L, (uint16_t)(((nv+12.f)/24.f)*16383.f), Origin::HW); break; }
     case 15: { const float nv = safe_atomic_store(masterEqHigh, masterEqHigh.load(), (float)delta*0.5f, -12.f,12.f);
-               txSysex(CMD_EQ_H, (uint16_t)(((nv+12.f)/24.f)*16383.f)); break; }
+               applyMasterParam(CMD_EQ_H, (uint16_t)(((nv+12.f)/24.f)*16383.f), Origin::HW); break; }
     case 16: { int i = wrapIndex((int)drumFxIndexA.load(), (int)delta, 16);
                drumFxIndexA.store(i, std::memory_order_relaxed);
-               loadDrumFx(i); txSysex(CMD_D_FX_IDX, (uint16_t)i);
+               loadDrumFx(i); hwKnobEchoCapture(CMD_D_FX_IDX, (uint16_t)i);
                echoDrumInsertParams(); break; }
     case 17: { int i = wrapIndex((int)drumFxIndexB.load(), (int)delta, 16);
                drumFxIndexB.store(i, std::memory_order_relaxed);
-               loadDrumFxB(i); txSysex(CMD_D_FX_IDX_B, (uint16_t)i); break; }
+               loadDrumFxB(i); hwKnobEchoCapture(CMD_D_FX_IDX_B, (uint16_t)i); break; }
     /* [C6] Mute toggles: encoder turn or single click applies toggle */
     case 18: applyMute(CMD_H_MUTE, !mixHarpMute .load(std::memory_order_relaxed)); break;
     case 19: applyMute(CMD_S_MUTE, !mixSeqMute  .load(std::memory_order_relaxed)); break;
     case 20: applyMute(CMD_D_MUTE, !mixDrumsMute.load(std::memory_order_relaxed)); break;
     case 21: { const float nv = safe_atomic_store(mixHarpPan, mixHarpPan.load(), (float)delta * 0.02f, -1.f, 1.f);
-               txSysex(CMD_H_PAN, (uint16_t)((nv + 1.f) * 0.5f * 16383.f)); break; }
+               applyMasterParam(CMD_H_PAN, (uint16_t)((nv + 1.f) * 0.5f * 16383.f), Origin::HW); break; }
     case 22: { const float nv = safe_atomic_store(mixSeqPan, mixSeqPan.load(), (float)delta * 0.02f, -1.f, 1.f);
-               txSysex(CMD_S_PAN, (uint16_t)((nv + 1.f) * 0.5f * 16383.f)); break; }
+               applyMasterParam(CMD_S_PAN, (uint16_t)((nv + 1.f) * 0.5f * 16383.f), Origin::HW); break; }
     case 23: { const float nv = safe_atomic_store(mixDrumsPan, mixDrumsPan.load(), (float)delta * 0.02f, -1.f, 1.f);
-               txSysex(CMD_D_PAN, (uint16_t)((nv + 1.f) * 0.5f * 16383.f)); break; }
+               applyMasterParam(CMD_D_PAN, (uint16_t)((nv + 1.f) * 0.5f * 16383.f), Origin::HW); break; }
     }
     break;
 
@@ -415,23 +421,21 @@ void updateHardwareParameter(uint8_t l1, uint8_t l2, int16_t delta) {
       mutateHarp((int)l2, delta); break;
     case 14: { int i = wrapIndex((int)harpFxIndex.load(),  (int)delta, 16);
                harpFxIndex.store(i, std::memory_order_relaxed);
-               loadHarpFx(i);  txSysex(CMD_H_FX_IDX,   (uint16_t)i);
-               txInsertFxSends(0u); /* [WS5] send knobs follow */ break; }
+               loadHarpFx(i);  hwKnobEchoCapture(CMD_H_FX_IDX, (uint16_t)i);
+               txInsertFxSends(0u); break; }
     case 15: { int i = wrapIndex((int)harpFxIndexB.load(), (int)delta, 16);
                harpFxIndexB.store(i, std::memory_order_relaxed);
-               loadHarpFxB(i); txSysex(CMD_H_FX_IDX_B, (uint16_t)i); break; }
+               loadHarpFxB(i); hwKnobEchoCapture(CMD_H_FX_IDX_B, (uint16_t)i); break; }
     case 16: { portENTER_CRITICAL(&patchMux);
                float v = std::min(1.f, std::max(0.f, fx.harpInsert.dly_send + delta*0.02f));
                fx.harpInsert.dly_send = v;
                portEXIT_CRITICAL(&patchMux);
-               if (checkWireAuthority(CMD_H_DLY_MIX, true))
-                 txSysex(CMD_H_DLY_MIX, (uint16_t)(v*16383.f)); break; }
+               applyFxSend(CMD_H_DLY_MIX, (uint16_t)(v*16383.f), Origin::HW); break; }
     case 17: { portENTER_CRITICAL(&patchMux);
                float v = std::min(1.f, std::max(0.f, fx.harpInsert.rev_send + delta*0.02f));
                fx.harpInsert.rev_send = v;
                portEXIT_CRITICAL(&patchMux);
-               if (checkWireAuthority(CMD_H_REV_MIX, true))
-                 txSysex(CMD_H_REV_MIX, (uint16_t)(v*16383.f)); break; }
+               applyFxSend(CMD_H_REV_MIX, (uint16_t)(v*16383.f), Origin::HW); break; }
     case 18: { /* [WS5b] sound-bank preset recall (same 128-name bank as the
                * HARP dashboard browse).  Immediate recall — menu pace is slow
                * enough that the deferred-commit path is unnecessary here.      */
@@ -558,41 +562,41 @@ void updateHardwareParameter(uint8_t l1, uint8_t l2, int16_t delta) {
     case 4: { portENTER_CRITICAL(&patchMux);
                float v = std::min(1.f, std::max(0.f, fx.harpInsert.dly_send + delta*0.02f));
                fx.harpInsert.dly_send = v; portEXIT_CRITICAL(&patchMux);
-               txSysex(CMD_H_DLY_MIX, (uint16_t)(v*16383.f)); break; }
+               applyFxSend(CMD_H_DLY_MIX, (uint16_t)(v*16383.f), Origin::HW); break; }
     case 5: { portENTER_CRITICAL(&patchMux);
                float v = std::min(1.f, std::max(0.f, fx.harpInsert.rev_send + delta*0.02f));
                fx.harpInsert.rev_send = v; portEXIT_CRITICAL(&patchMux);
-               txSysex(CMD_H_REV_MIX, (uint16_t)(v*16383.f)); break; }
+               applyFxSend(CMD_H_REV_MIX, (uint16_t)(v*16383.f), Origin::HW); break; }
     case 6: { portENTER_CRITICAL(&patchMux);
                float v = std::min(1.f, std::max(0.f, fx.seqInsert.dly_send + delta*0.02f));
                fx.seqInsert.dly_send = v; portEXIT_CRITICAL(&patchMux);
-               txSysex(CMD_S_DLY_MIX, (uint16_t)(v*16383.f)); break; }
+               applyFxSend(CMD_S_DLY_MIX, (uint16_t)(v*16383.f), Origin::HW); break; }
     case 7: { portENTER_CRITICAL(&patchMux);
                float v = std::min(1.f, std::max(0.f, fx.seqInsert.rev_send + delta*0.02f));
                fx.seqInsert.rev_send = v; portEXIT_CRITICAL(&patchMux);
-               txSysex(CMD_S_REV_MIX, (uint16_t)(v*16383.f)); break; }
+               applyFxSend(CMD_S_REV_MIX, (uint16_t)(v*16383.f), Origin::HW); break; }
     /* FX slot indices */
     case 8:  { int i = wrapIndex((int)harpFxIndex.load(),  (int)delta,16);
                harpFxIndex.store(i, std::memory_order_relaxed);
-               loadHarpFx(i);  txSysex(CMD_H_FX_IDX,   (uint16_t)i);
-               txInsertFxSends(0u); /* [WS5] */ break; }
+               loadHarpFx(i);  hwKnobEchoCapture(CMD_H_FX_IDX, (uint16_t)i);
+               txInsertFxSends(0u); break; }
     case 9:  { int i = wrapIndex((int)harpFxIndexB.load(), (int)delta,16);
                harpFxIndexB.store(i, std::memory_order_relaxed);
-               loadHarpFxB(i); txSysex(CMD_H_FX_IDX_B, (uint16_t)i); break; }
+               loadHarpFxB(i); hwKnobEchoCapture(CMD_H_FX_IDX_B, (uint16_t)i); break; }
     case 10: { int i = wrapIndex((int)seqFxIndex.load(),   (int)delta,16);
                seqFxIndex.store(i, std::memory_order_relaxed);
-               loadSeqFx(i);   txSysex(CMD_S_FX_IDX,   (uint16_t)i);
-               txInsertFxSends(1u); /* [WS5] */ break; }
+               loadSeqFx(i);   hwKnobEchoCapture(CMD_S_FX_IDX, (uint16_t)i);
+               txInsertFxSends(1u); break; }
     case 11: { int i = wrapIndex((int)seqFxIndexB.load(),  (int)delta,16);
                seqFxIndexB.store(i, std::memory_order_relaxed);
-               loadSeqFxB(i);  txSysex(CMD_S_FX_IDX_B, (uint16_t)i); break; }
+               loadSeqFxB(i);  hwKnobEchoCapture(CMD_S_FX_IDX_B, (uint16_t)i); break; }
     case 12: { int i = wrapIndex((int)drumFxIndexA.load(), (int)delta,16);
                drumFxIndexA.store(i, std::memory_order_relaxed);
-               loadDrumFx(i); txSysex(CMD_D_FX_IDX, (uint16_t)i);
+               loadDrumFx(i); hwKnobEchoCapture(CMD_D_FX_IDX, (uint16_t)i);
                echoDrumInsertParams(); break; }
     case 13: { int i = wrapIndex((int)drumFxIndexB.load(), (int)delta,16);
                drumFxIndexB.store(i, std::memory_order_relaxed);
-               loadDrumFxB(i); txSysex(CMD_D_FX_IDX_B, (uint16_t)i); break; }
+               loadDrumFxB(i); hwKnobEchoCapture(CMD_D_FX_IDX_B, (uint16_t)i); break; }
     }
     break;
 
@@ -605,19 +609,19 @@ void updateHardwareParameter(uint8_t l1, uint8_t l2, int16_t delta) {
       mutateSeq((int)l2, delta); break;
     case 14: { int i = wrapIndex((int)seqFxIndex.load(),  (int)delta,16);
                seqFxIndex.store(i, std::memory_order_relaxed);
-               loadSeqFx(i);  txSysex(CMD_S_FX_IDX,   (uint16_t)i);
-               txInsertFxSends(1u); /* [WS5] */ break; }
+               loadSeqFx(i);  hwKnobEchoCapture(CMD_S_FX_IDX, (uint16_t)i);
+               txInsertFxSends(1u); break; }
     case 15: { int i = wrapIndex((int)seqFxIndexB.load(), (int)delta,16);
                seqFxIndexB.store(i, std::memory_order_relaxed);
-               loadSeqFxB(i); txSysex(CMD_S_FX_IDX_B, (uint16_t)i); break; }
+               loadSeqFxB(i); hwKnobEchoCapture(CMD_S_FX_IDX_B, (uint16_t)i); break; }
     case 16: { portENTER_CRITICAL(&patchMux);
                float v = std::min(1.f, std::max(0.f, fx.seqInsert.dly_send + delta*0.02f));
                fx.seqInsert.dly_send = v; portEXIT_CRITICAL(&patchMux);
-               txSysex(CMD_S_DLY_MIX, (uint16_t)(v*16383.f)); break; }
+               applyFxSend(CMD_S_DLY_MIX, (uint16_t)(v*16383.f), Origin::HW); break; }
     case 17: { portENTER_CRITICAL(&patchMux);
                float v = std::min(1.f, std::max(0.f, fx.seqInsert.rev_send + delta*0.02f));
                fx.seqInsert.rev_send = v; portEXIT_CRITICAL(&patchMux);
-               txSysex(CMD_S_REV_MIX, (uint16_t)(v*16383.f)); break; }
+               applyFxSend(CMD_S_REV_MIX, (uint16_t)(v*16383.f), Origin::HW); break; }
     case 18: { /* [WS5b] SEQ MELODY sound-bank preset recall — the path the seq
                * engine was missing on hardware.  Browses the 128-name bank and
                * recalls from seqBank[] (recallSeqPatch emits the seq patch blob). */

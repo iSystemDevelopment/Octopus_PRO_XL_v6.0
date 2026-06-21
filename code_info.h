@@ -70,8 +70,9 @@
  *        24     AudioSynth        16384    I2S DMA + full DSP pipeline
  *        10     MidiUsbRx(Core1)   8192    USB MIDI parser (App SysEx + play-in)
  *        19     dbeam_adc          6144    ADC DMA + Kalman filter
- *        14     SeqSysexOut(Core1) 4096    drains seq out-ring → App SysEx echoes (STEP_SYNC/
- *                                          SONG_POS) + sync supervisor (BPM/play/rec re-assert)
+ *        14     SeqSysexOut(Core1) 4096    drains hi coalesced slots (BPM/TRANSPORT/
+ *                                          STEP_SYNC) + bulk out-ring + sync supervisor
+ *         8     FullSyncOut(Core1) 8192    chunked sendFullStateSync (yields every 8 frames)
  *        10     ControlPoll        6144    encoder + buttons @ 200 Hz + TX drain
  *         4     OledRender         8192    OLED @ 30 Hz
  *
@@ -393,13 +394,15 @@
  *     updateHardwareInterface():  SCALE single = play/stop, OC short = record-arm
  *     toggle, ENC turn = BPM, ENC long = save.  Menu/param editing is suppressed.
  *   • The ESP echoes transport state on every change (seq_start/stop/pause →
- *     CMD_TRANSPORT 0/1/2; record → CMD_TRANSPORT 3=on/4=off; BPM → CMD_BPM) and
- *     a SYNC SUPERVISOR (sequencer_background_task, every 600 ms while connected —
- *     just above the txSysex 500 ms dedup window so an unchanged re-assert isn't
- *     swallowed) re-asserts BPM + play + record so a dropped echo self-heals.  The per-step
- *     STEP_SYNC stream (emitted while playing) drives the App playhead.  The same
- *     supervisor tick also pushes CMD_CPU_LOAD (164) — live audio-core load % for
- *     the App header readout.
+ *     CMD_TRANSPORT; record → CMD_TRANSPORT 3/4; BPM → CMD_BPM) via coalesced
+ *     hi-priority outbound slots (never dropped; latest value wins).  Motion/BANK
+ *     echoes use a bulk ring; overflow increments g_seq_ext_drops (telemetry in
+ *     CMD_CPU_LOAD bits 7–13).  A SYNC SUPERVISOR (sequencer_background_task,
+ *     every 600 ms while connected) re-pushes BPM + play + record + STEP_SYNC
+ *     through the same hi slots.  sendFullStateSync runs on FullSyncOut with
+ *     vTaskDelay every 8 frames so MidiUsbRx is not mutex-starved.  The App
+ *     transport watchdog auto-sends APP_SYNC_REQ when BPM/transport/playhead
+ *     echoes stall >1.5 s while the link badge is still ONLINE.
  *   • The App's transport buttons are read-only reflectors — they send nothing.
  *   • CMD_TRANSPORT_AVAIL=154 is retired (accepted-and-ignored for old App builds).
  *
@@ -645,11 +648,14 @@
  *     fallback.  Wavetables (assets.cpp) are PROGMEM/IROM (cache-mapped).
  *   • Hardware OLED grid edits only steps 0–15; the engine supports up to 64
  *     steps (set via App / Length) — steps 16–63 are not visible on the OLED.
- *   • Motion playback: P-lock recording + playback live in
- *     sequencer_background_task.  App motion editor is future work.
+ *   • P-lock motion: 4 lanes × 64 steps per pattern slot; recording requires
+ *     record armed + transport playing.  Capture runs through apply*() and
+ *     handleSysexCommand() gated by PARAM_TABLE.automatable.  Still TODO:
+ *     per-step motion editor in OctopusApp.
  *   • NVS persistence [S10/S11]: four blobs in namespace "octopus_v5":
  *     "settings" (~2 KB), "patterns" (~8 KB), sparse "banks" (~4 KB), sparse
- *     "motion" (~4 KB).  ~8-9 NVS pages needed → 256 KB NVS partition placed
+ *     "motion" (v2 blob, up to ~17 KB — MOTION_VERSION 0x0002, 64 steps/lane;
+ *     v1 motion blobs are ignored after upgrade).  ~8-9 NVS pages needed → 256 KB
  *     AFTER the app (app factory @ 0x10000; NVS @ 0x3B0000; coredump @ 0x3F0000).
  *     The pre-app gap (0x9000..0x10000) is too small (28 KB).  Scoped SAVE/RESET
  *     (ResetScope): FULL / BANKS_PATTERNS / MOTION / SETTINGS — reset applies

@@ -76,7 +76,7 @@ flowchart LR
 | Domain | Specification |
 |--------|----------------|
 | **Harp** | 8 laser strings, 16 scales, 3 play modes (POLY8 / STRINGS / SOLO), BPM-synced arpeggiator |
-| **Sequencer** | 64 steps × 16 rows (8 melody + 8 drums), 4 banks (A–D), P-lock motion (4 lanes) |
+| **Sequencer** | 64 steps × 16 rows (8 melody + 8 drums), 4 banks (A–D), P-lock motion (4 lanes × 64 steps) |
 | **Song mode** | 16 song slots, up to 16 chain steps (bank + repeat count) |
 | **Sound library** | 128 factory presets, 64 user slots per engine (harp + seq), 64 user pattern slots |
 | **Drums** | 8 voices, 4 kit characters (TR-909, TR-808, Trap, House), global pitch |

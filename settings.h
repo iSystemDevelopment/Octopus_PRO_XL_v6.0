@@ -879,7 +879,7 @@ static constexpr uint16_t PATTERNS_VERSION_V2 = 0x0002; /* v2: 64 steps/row (uin
 static constexpr uint16_t PATTERNS_VERSION_V1 = 0x0001; /* v1: 16 steps/row (uint16)  */
 static constexpr uint16_t BANKS_VERSION    = 0x0001;
 static constexpr uint16_t USRNAMES_VERSION = 0x0001;  /* [USER-SLOTS] sparse name blob */
-static constexpr uint16_t MOTION_VERSION   = 0x0001;
+static constexpr uint16_t MOTION_VERSION   = 0x0002; /* v2: 64 steps/lane (was 16 in v1) */
 static constexpr uint16_t MAX_BANK_OVR     = 64;  /* max customised slots / bank */
 static constexpr uint16_t MAX_MOTION_LANES = 128; /* max persisted P-lock lanes  */
 
@@ -971,18 +971,16 @@ struct UserPatNamesBlob {
   NameOverride names[MAX_USER_PAT_OVR];
 };
 
-/* SPARSE P-lock motion matrix.  The App is the primary motion recorder;
+/ * SPARSE P-lock motion matrix.  The App is the primary motion recorder;
  * persisting it lets the groovebox replay recorded automation in standalone
- * mode after a power cycle.  A full hwMotionData dump is ~8.7 KB which is too
- * large alongside the other blobs in the stock 20 KB NVS partition, so only
- * ALLOCATED lanes (targetCmd != 255) are stored, up to MAX_MOTION_LANES.  Most
- * lanes are empty in practice, so real-world size is a few KB.                 */
+ * mode after a power cycle.  Each lane holds MOTION_STEPS_PER_LANE (64) steps,
+ * matching the seq grid depth.  Sparse NVS stores allocated lanes only.        */
 struct MotionLaneOverride {
   uint8_t  bank;      /* 0–15 */
   uint8_t  chain;     /* 0–3  */
   uint8_t  lane;      /* 0–3  */
   uint8_t  targetCmd; /* automation target command (!=255) */
-  uint16_t steps[16]; /* per-step values (0xFFFF = no automation on that step) */
+  uint16_t steps[MOTION_STEPS_PER_LANE]; /* per-step values (0xFFFF = empty) */
 };
 
 struct MotionBlob {
@@ -1338,7 +1336,7 @@ static inline esp_err_t motion_save_h(nvs_handle_t h) {
         bool used;
         portENTER_CRITICAL(&motionMux);
         used = (hwMotionData[bank][chain][lane].targetCmd != 255u);
-        if (used) tmp = hwMotionData[bank][chain][lane]; /* 34-byte copy under lock */
+        if (used) tmp = hwMotionData[bank][chain][lane]; /* lane copy under lock */
         portEXIT_CRITICAL(&motionMux);
         if (used) {
           b->lanes[n].bank      = (uint8_t)bank;

@@ -439,13 +439,14 @@ void seq_pause();
 void seq_toggle();
 /* Pattern record arm — sole mutation path for seqRecording (except seq_stop disarm).
  * v14 on the wire: 3 = record ON, 4 = record OFF (SET, not toggle).
- * Echoes go through the seq_ext ring → SeqSysexOut → txSysex (no midiMutex race
- * from ControlPoll / MidiUsbRx).  Idempotent: no-op if already in requested state. */
+ * Echoes go through coalesced hi slots / seq_ext ring → SeqSysexOut → txSysex
+ * (no midiMutex race from ControlPoll / MidiUsbRx).  Idempotent.              */
 void seq_set_recording(bool on);
 void seq_toggle_recording();
 /* [RND-RESTART] Reset step counter to 0 while keeping playback running.
  * Called by CMD_SEQ_RESTART (App → firmware) after pattern randomisation. */
 void IRAM_ATTR seq_restart_from_step_zero();
+/* BPM echo uses the same coalesced hi slot as transport (setSequencerBpm).   */
 void setSequencerBpm(int32_t bpm);
 void initSequencer();
 void song_rewind_rt();   /* [SONG-FIX] reset song chain to step 0 + load its bank */

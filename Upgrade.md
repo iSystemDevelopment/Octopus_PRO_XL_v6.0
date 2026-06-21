@@ -568,6 +568,37 @@ transpose silently = seq only; Master Pitch overlaps conceptually.
 
 ---
 
+## Workstream — P-lock recording fixes (Fix 1–3)  ✅ DONE
+
+### Fix 1 — Hardware encoder path records motion
+- **Bug:** `recordMotionParam()` was only reachable from `handleSysexCommand()`
+  (App SysEx). Menu encoders called `applyHarpParam` / `applySeqParam` /
+  `updateHardwareParameter` directly — sound changed but no P-locks were written.
+- **Fix:** `captureMotionParam()` hook on all canonical apply paths
+  (`applyHarpParam`, `applySeqParam`, `applyDrumParam`, `applyMasterParam`,
+  `applyFxSend`, `applyAuxParam`, `applyDrumWave`).  Hardware MASTER / AUX FX /
+  insert-send menus route through `applyMasterParam` / `applyFxSend` or
+  `hwKnobEchoCapture()` for FX-slot indices.
+
+### Fix 2 — PARAM_TABLE-gated recording + extended CMD range
+- **Bug:** Recording used hard-coded cmd ranges (0–63, 64–96, three extended CMDs).
+  Many `automatable: true` params (FX sends 110–124, FX mix/time/size, FX indices)
+  were never captured.  `PARAM_TABLE.automatable` was documentation-only.
+- **Fix:** `shouldRecordMotionCmd()` + `captureMotionParam()` in `patches.h`.
+  `handleSysexCommand()` ends with one capture call for switch-case CMDs (FX
+  indices, wire aliases).  Discrete layout CMDs (transpose, octave, length, …)
+  stay blocklisted.  **RX throttle:** 5 ms dedup is skipped while `seqRecording`
+  so fast App knob drags are not dropped mid-take.
+
+### Fix 3 — 64-step P-lock depth
+- **Bug:** `MotionLane.steps[16]` + `seqCurrentStep & 15` aliased steps 0/16/32/48
+  on patterns longer than 16.
+- **Fix:** `MOTION_STEPS_PER_LANE = 64`, `MOTION_VERSION = 0x0002`.  Playback uses
+  full `step & 63`.  **Note:** v1 motion NVS blobs no longer load (version mismatch
+  — re-record or scoped MOTION reset).  Still **4 lanes max** per bank/chain slot.
+
+---
+
 ## Workstream 3 — LOAD popup (app)  ✅ DONE
 
 ### What shipped

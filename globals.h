@@ -687,9 +687,10 @@ struct SynthGlobal {
 /* ── MotionLane: one P-lock automation lane within a bank/chain slot ───── */
 /* targetCmd = 255  → lane is empty.
  * steps[s]  = 0xFFFF → no automation for that step (pass-through).       */
+static constexpr uint8_t MOTION_STEPS_PER_LANE = 64u; /* matches seq grid depth */
 struct MotionLane {
-  uint8_t targetCmd;
-  uint16_t steps[16];
+  uint8_t  targetCmd;
+  uint16_t steps[MOTION_STEPS_PER_LANE];
 };
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -1000,6 +1001,9 @@ inline std::atomic<uint8_t> wireHarpMidiChannel{ 1 }; /* 1–16                 
 inline std::atomic<uint8_t> wireSeqMidiChannel{ 2 };
 inline std::atomic<uint8_t> wireDrumMidiChannel{ 10 }; /* GM drums standard channel */
 inline std::atomic<uint32_t> lastWebSysexMs{ 0 };      /* heartbeat watchdog        */
+/* [LINK-HEAL] Bulk seq_ext ring drops (motion/BANK/etc.) — coalesced hi slots
+ * never increment this.  Packed into CMD_CPU_LOAD bits 7–13 for App telemetry. */
+inline std::atomic<uint32_t> g_seq_ext_drops{ 0 };
 
 /* ── App connectivity ──────────────────────────────────────────────────────
  * [v6.0 TRANSPORT-OWNERSHIP] Transport (play/stop/record/BPM) is ALWAYS owned
@@ -1416,7 +1420,8 @@ inline int8_t seqPatternTranspose[16][4] = {};
 /* hwMotionData[bank][chain][lane]
  *   bank  = 0–15 (mirrors hwSeqData bank)
  *   chain = 0–3  (mirrors hwSeqData chain)
- *   lane  = 0–3  (4 simultaneous automation lanes per slot)               */
+ *   lane  = 0–3  (4 simultaneous automation lanes per slot)
+ *   steps = MOTION_STEPS_PER_LANE (64) — one automation cell per seq step     */
 inline MotionLane hwMotionData[16][4][4];
 
 /* ── Voice pools ───────────────────────────────────────────────────────── */
@@ -1563,7 +1568,7 @@ static inline void clearMotionMatrix() {
   portEXIT_CRITICAL(&motionMux);
 }
 
-/* recordMotionParam — call from handleSysexCommand for cmd < CMD_BPM only.
+/* recordMotionParam — write one P-lock cell (hardware encoder + App SysEx).
  * Guards against playback re-recording with isMotionPlayback flag.          */
 static inline void recordMotionParam(uint8_t cmd, uint16_t val) {
   if (!seqRecording.load(std::memory_order_acquire)) return;
@@ -1571,7 +1576,8 @@ static inline void recordMotionParam(uint8_t cmd, uint16_t val) {
   if (isMotionPlayback.load(std::memory_order_acquire)) return;
   const uint8_t bank = seqActiveBank.load(std::memory_order_relaxed);
   const uint8_t chain = seqActiveChain.load(std::memory_order_relaxed);
-  const uint8_t step = seqCurrentStep.load(std::memory_order_acquire) & 15u;
+  const uint8_t step = (uint8_t)(seqCurrentStep.load(std::memory_order_acquire)
+                                 & (MOTION_STEPS_PER_LANE - 1u));
   portENTER_CRITICAL(&motionMux);
   int tgt = -1, emp = -1;
   for (int l = 0; l < 4; ++l) {

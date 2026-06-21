@@ -3139,9 +3139,14 @@
             _debounceTimers: null,    // [THROTTLE] per-cmd timers for txSysexSoon
             _sxRxBuf: null, // reassemble split inbound SysEx (some USB stacks fragment frames)
             _lastDeviceRxMs: 0,   // last 0x7C echo from firmware (link verify)
+            _lastBpmRxMs: 0,      // [LINK-HEAL] transport watchdog timestamps
+            _lastTransportRxMs: 0,
+            _lastStepSyncRxMs: 0,
+            _linkDegradedUntil: 0, // cooldown after auto APP_SYNC_REQ
             _linkGraceUntil: 0,   // ms — allow boot/sync before declaring dead link
             _connOnline: false,   // true once device echo seen this session
             _linkWarned: false,   // one-shot hint when no 0x7C echo after connect
+            _ringDropWarned: false, // one-shot when bulk ring drop counter > 0
 
             // Match Octopus USB MIDI ports (Windows names vary wildly).
             _isOctopusPortName(name) {
@@ -3188,6 +3193,32 @@
                     this._connOnline = true;
                     this.updateConnBadge(true);
                     this.log('Connected — adopting live device state (transport untouched).');
+                }
+            },
+            _touchTransportRx(kind) {
+                const now = Date.now();
+                if (kind === 'bpm') this._lastBpmRxMs = now;
+                else if (kind === 'transport') this._lastTransportRxMs = now;
+                else if (kind === 'step') this._lastStepSyncRxMs = now;
+            },
+            // [LINK-HEAL] Detect partial outbound failure: PING may still work while
+            // BPM/transport/playhead echoes stall.  Auto-request full sync (no refresh).
+            _checkTransportHealth(now) {
+                if (!this._connOnline || !this.midiOut || now <= this._linkGraceUntil) return;
+                if (now < this._linkDegradedUntil) return;
+                const staleMs = 1500;
+                const bpmStale = !this._lastBpmRxMs || (now - this._lastBpmRxMs) > staleMs;
+                const trStale = !this._lastTransportRxMs || (now - this._lastTransportRxMs) > staleMs;
+                const phStale = this.isPlaying &&
+                    (!this._lastStepSyncRxMs || (now - this._lastStepSyncRxMs) > staleMs);
+                if (bpmStale || trStale || phStale) {
+                    this.log('Link degraded — requesting device resync…');
+                    this.txSysex(CMD.APP_SYNC_REQ, 0);
+                    const t = Date.now();
+                    this._lastBpmRxMs = t;
+                    this._lastTransportRxMs = t;
+                    this._lastStepSyncRxMs = t;
+                    this._linkDegradedUntil = t + 3000;
                 }
             },
             async init() {
@@ -3505,6 +3536,11 @@
                 this._connOnline = false;
                 this._linkWarned = false;
                 this._lastDeviceRxMs = 0;
+                this._lastBpmRxMs = 0;
+                this._lastTransportRxMs = 0;
+                this._lastStepSyncRxMs = 0;
+                this._linkDegradedUntil = 0;
+                this._ringDropWarned = false;
                 this._linkGraceUntil = Date.now() + 4000;
                 this.updateConnBadge('linking');
                 if (this.midiOut) await this._openMidiPort(this.midiOut);
@@ -3591,6 +3627,8 @@
                                 this._linkWarned = true;
                                 this.log('No device echo — select ★ Octopus port + CONNECT (or reflash firmware)');
                             }
+                        } else {
+                            this._checkTransportHealth(now);
                         }
                     }
                     this.txSysex(CMD.PING, 0);
@@ -3748,6 +3786,7 @@
                 // Each entry handles exactly the same logic as the old if-branch.
                 return {
                     [CMD.BPM]: v14 => {
+                        this._touchTransportRx('bpm');
                         const b = Math.min(240, Math.max(40, v14));
                         if (b !== this.bpm) { document.getElementById('seqBpm').value = b; this.bpm = b; }
                     },
@@ -3845,8 +3884,12 @@
                     [CMD.H_PITCH]: v14 => { this._setKnob(CMD.H_PITCH, v14); },
                     // Transport — hardware is SOLE owner; these are read-only reflectors.
                     // TRANSPORT 0/2=stop 1=play 3/4=rec-on/off  TRIG_MODE=legacy play echo.
-                    [CMD.TRIG_MODE]:  v14 => { this._setTransport(v14 > 0, this.isRecording); },
+                    [CMD.TRIG_MODE]:  v14 => {
+                        this._touchTransportRx('transport');
+                        this._setTransport(v14 > 0, this.isRecording);
+                    },
                     [CMD.TRANSPORT]:  v14 => {
+                        this._touchTransportRx('transport');
                         if (v14 === 3 || v14 === 4) this._setTransport(this.isPlaying, v14 === 3);
                         else                         this._setTransport(v14 === 1, this.isRecording);
                     },
@@ -3888,6 +3931,7 @@
                     },
                     [CMD.SONG_POS]: v14 => { this.songPlayStep = (v14 >> 4) & 0xF; this._highlightSongStep(); },
                     [CMD.STEP_SYNC]: v14 => {
+                        this._touchTransportRx('step');
                         const s = v14 | 0;
                         this.visStep = s;
                         if (this.isPlaying) {
@@ -3896,10 +3940,18 @@
                         }
                     },
                     [CMD.CPU_LOAD]: v14 => {
-                        const pct = Math.max(0, Math.min(100, v14));
+                        const pct = Math.max(0, Math.min(100, v14 & 0x7F));
+                        const drops = (v14 >> 7) & 0x7F;
                         const v = document.getElementById('cpuLoadVal'), box = document.getElementById('cpuLoad');
-                        if (v) v.innerText = pct + '%';
-                        if (box) { box.classList.toggle('warn', pct >= 75 && pct < 90); box.classList.toggle('crit', pct >= 90); }
+                        if (v) v.innerText = pct + '%' + (drops ? ' ⚠' : '');
+                        if (box) {
+                            box.classList.toggle('warn', pct >= 75 && pct < 90);
+                            box.classList.toggle('crit', pct >= 90 || drops > 0);
+                        }
+                        if (drops && !this._ringDropWarned) {
+                            this._ringDropWarned = true;
+                            this.log('MIDI out-ring drops: ' + drops + ' (motion echoes trimmed — transport uses priority path)');
+                        }
                     },
                     // [G2] Grid rows: separate entries for lo/hi so each is a direct lookup.
                     [CMD.GRID_ROW_LO]: v14 => { this._applyGridRowHalf((v14 >> 12) & 3, (v14 >> 8) & 15, v14 & 0xFF, false, (v14 >> 4) & 3); },
