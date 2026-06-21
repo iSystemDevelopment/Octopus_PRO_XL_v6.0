@@ -3287,11 +3287,41 @@
                 fill('loadDrumPat', DRUM_PATTERNS.map(p => p.name), 'DRUM PATTERNS');
             },
 
+            // [FIX-GRID-ENC] Lossless grid-row sender (App→device, sub 0x05).
+            // Replaces pasteGrid's use of GRID_ROW_LO/HI txSysex which had a
+            // bit-overlap bug: page bits corrupted step bits 4-5 for pages 1-3.
+            // Frame: { F0, 7D, 05, bank_row, page, lo_lo4, lo_hi4, hi_lo4, hi_hi4, F7 }
+            _txGridRow(bank, row, page, lo, hi) {
+                if (!this.midiOut) return;
+                try {
+                    this.midiOut.send([
+                        0xF0, 0x7D, 0x05,
+                        ((bank & 3) << 4) | (row & 15),
+                        page & 3,
+                        lo & 0x0F, (lo >> 4) & 0x0F,
+                        hi & 0x0F, (hi >> 4) & 0x0F,
+                        0xF7
+                    ]);
+                } catch (e) {}
+            },
+
             // Parse one complete device→App SysEx frame (manufacturer 0x7C).
             _parseDeviceSysex(data) {
                 if (!data || data.length < 7 || data[0] !== 0xF0 || data[1] !== 0x7C) return;
                 this._touchDeviceRx();
                 const sub = data[2];
+                // [FIX-GRID-ENC] New lossless grid-row format (sub 0x05).
+                // { F0, 7C, 05, bank_row, page, lo_lo4, lo_hi4, hi_lo4, hi_hi4, F7 }
+                if (sub === 0x05 && data.length >= 10) {
+                    const bankRow = data[3];
+                    const bank = (bankRow >> 4) & 3, row = bankRow & 15;
+                    const page = data[4] & 3;
+                    const lo   = (data[5] & 0xF) | ((data[6] & 0xF) << 4);
+                    const hi   = (data[7] & 0xF) | ((data[8] & 0xF) << 4);
+                    this._applyGridRowHalf(bank, row, lo, false, page);
+                    this._applyGridRowHalf(bank, row, hi, true,  page);
+                    return;
+                }
                 if (sub === 0x02) {
                     const base = (data[3] === 0) ? CMD.H_WAVE : CMD.S_WAVE;
                     const n = Math.min(16, Math.floor((data.length - 5) / 2));
@@ -4486,9 +4516,10 @@
                             if (dst[base + i])     lo |= (1 << i);
                             if (dst[base + 8 + i]) hi |= (1 << i);
                         }
-                        const addr = (bank << 12) | (r << 8) | (page << 4);
-                        this.txSysex(CMD.GRID_ROW_LO, addr | lo);
-                        this.txSysex(CMD.GRID_ROW_HI, addr | hi);
+                        // [FIX-GRID-ENC] Use lossless _txGridRow (sub 0x05) instead of
+                        // CMD.GRID_ROW_LO/HI — old format overlapped page bits with byte
+                        // bits in v14, corrupting steps 4-5 for pages 1-3.
+                        this._txGridRow(bank, r, page, lo, hi);
                     }
                 }
                 this.repaintGrid();

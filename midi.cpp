@@ -190,6 +190,27 @@ void txSysex(uint8_t cmd, uint16_t v14bit) {
  * the audio core never stalls.  Skipped when no App is listening — a standalone
  * device wastes no bus on blobs nobody reads.  No dedup: a blob is always sent in
  * full (it represents a discrete "load this preset" event, not a streamed knob). */
+/* [FIX-GRID-ENC] txGridRow — lossless 10-byte SysEx for one page-half-pair of a row.
+ * Sends lo (steps 0-7) and hi (steps 8-15) of the given page in one frame, with
+ * each 8-bit byte split across two 4-bit nibbles so all frame bytes are valid MIDI
+ * data bytes (< 0x80).  No field overlaps — bank/row/page/lo/hi are independent. */
+void txGridRow(uint8_t bank, uint8_t row, uint8_t page, uint8_t lo, uint8_t hi) {
+  if (!isAppConnected()) return;
+  if (!midiLock()) return;
+  const uint8_t f[10] = {
+    0xF0u, 0x7Cu, SX_SUB_GRID_ROW,
+    (uint8_t)((bank << 4) | (row & 15u)),  /* bank_row: bank 0-3, row 0-15      */
+    (uint8_t)(page & 3u),                   /* page 0-3                          */
+    (uint8_t)(lo & 0x0Fu),                  /* lo lower nibble (steps 0-3)       */
+    (uint8_t)((lo >> 4) & 0x0Fu),           /* lo upper nibble (steps 4-7)       */
+    (uint8_t)(hi & 0x0Fu),                  /* hi lower nibble (steps 8-11)      */
+    (uint8_t)((hi >> 4) & 0x0Fu),           /* hi upper nibble (steps 12-15)     */
+    0xF7u
+  };
+  midiEmitRaw(f, 10);
+  midiUnlock();
+}
+
 void txPatchBlob(uint8_t engine) {
   if (engine > 1u) return;
   if (!isAppConnected()) return;          /* nobody to receive it — skip */
@@ -333,9 +354,28 @@ void echoDrumInsertParams() {
 /* [HARP-SPLIT] MIDI keyboard path delegates to the dedicated harp engine. */
 static void IRAM_ATTR noteOnSeq(uint8_t note, uint8_t velocity) {
   const int si = harpScaleIndex.load(std::memory_order_relaxed) & (NUM_SCALES - 1);
-  const uint8_t scaleNote = SCALES[si].notes
-      ? (uint8_t)SCALES[si].notes[(note & 7) % std::max(1, SCALES[si].numActiveStrings)]
-      : note;
+  /* [FIX-NOTE-SEQ] Old code: (note & 7) % numStrings — used lower 3 bits of the
+   * MIDI note number as a string index.  This gave non-musical results: pressing
+   * C on any octave always triggered string 0, C# string 1, etc., with no regard
+   * for pitch proximity.  Octave changes had no effect on string selection.
+   * New code: nearest-pitch matching across all octave transpositions of each
+   * string's scale note.  Playing C4 on a keyboard finds whichever string's note
+   * is closest in semitones to C4, matching musician expectation for a scale-mapped
+   * instrument.  Exact matches short-circuit the search immediately.            */
+  uint8_t scaleNote = note;                        /* chromatic fallback */
+  if (SCALES[si].notes) {
+    const int nStr = std::max(1, SCALES[si].numActiveStrings);
+    int bestIdx = 0, bestDist = 999;
+    for (int r = 0; r < nStr; ++r) {
+      const int base = (int)SCALES[si].notes[r];
+      for (int oct = -4; oct <= 4; ++oct) {
+        const int d = std::abs((int)note - (base + oct * 12));
+        if (d < bestDist) { bestDist = d; bestIdx = r; }
+        if (d == 0) { r = nStr; break; }  /* exact match — stop searching */
+      }
+    }
+    scaleNote = (uint8_t)SCALES[si].notes[bestIdx];
+  }
 
   const int cap = std::min(std::max(1, (int)g_seq_voice_cap.load(std::memory_order_relaxed)),
                            (int)SEQ_POLYPHONY);
@@ -434,19 +474,18 @@ static void IRAM_ATTR handleControlChange(uint8_t channel, uint8_t cc, uint8_t v
     case 74: setP((int)SynthParam::P_CUTOFF);    break;
     case 75: setP((int)SynthParam::P_DECAY);     break;
     case 76: setP((int)SynthParam::P_LFO_RATE);  break;
-    case 91:
-      portENTER_CRITICAL(&patchMux);
-      if (isHarp) fx.harpInsert.dly_send = v14 / 16383.f;
-      else        fx.seqInsert .dly_send = v14 / 16383.f;
-      portEXIT_CRITICAL(&patchMux);
-      txSysex(isHarp ? CMD_H_DLY_MIX : CMD_S_DLY_MIX, v14);
+    /* [FIX-CC91-93] Harp/seq CC91/CC93 were swapped vs the drum channel:
+     *   Old: CC91→dly_send, CC93→rev_send  (wrong — inverted from standard)
+     *   New: CC91→rev_send, CC93→dly_send  (matches drums AND MIDI standard)
+     * Standard MIDI CC91 = Reverb Send, CC93 = Chorus/Delay Send.  Both are
+     * now routed through applyFxSend (the canonical patchMux-guarded path)
+     * instead of writing to the FX struct directly, which bypassed consistency
+     * checks and could leave the App knobs unsynchronised.                   */
+    case 91: /* Reverb Send → rev_send */
+      applyFxSend(isHarp ? CMD_H_REV_MIX : CMD_S_REV_MIX, v14, Origin::MIDI);
       break;
-    case 93:
-      portENTER_CRITICAL(&patchMux);
-      if (isHarp) fx.harpInsert.rev_send = v14 / 16383.f;
-      else        fx.seqInsert .rev_send = v14 / 16383.f;
-      portEXIT_CRITICAL(&patchMux);
-      txSysex(isHarp ? CMD_H_REV_MIX : CMD_S_REV_MIX, v14);
+    case 93: /* Chorus/Delay Send → dly_send */
+      applyFxSend(isHarp ? CMD_H_DLY_MIX : CMD_S_DLY_MIX, v14, Origin::MIDI);
       break;
     default: break;
   }
@@ -501,14 +540,24 @@ void handleSysexCommand(uint8_t cmd, uint16_t v14) {
 
   /* ── RX firewall ──────────────────────────────────────────────────────
    * Spam filter: drop exact-duplicate values that repeat within a short
-   * window (50 ms), but NEVER permanently — otherwise deliberate re-sends of
-   * action/refresh commands (FETCH, APP_SYNC_REQ, transport, save, ping) would
-   * be silently swallowed forever after their first use.  Fast continuous
-   * parameter groups additionally get a 5 ms minimum interval.               */
+   * window (50 ms), but NEVER permanently and NEVER for action commands.
+   * Fast continuous parameter groups additionally get a 5 ms minimum interval.
+   *
+   * Exempt from dedup (always execute):
+   *   CMD_GRID_TOG     — fast double-click same cell must toggle ON then OFF;
+   *                      dedup traps the second toggle leaving the cell wrong.
+   *   CMD_PING         — always needs a reply so the App can detect link health.
+   *   CMD_APP_SYNC_REQ — reconnect fires within ms of boot; dedup would drop the
+   *                      sync request and leave the App with a blank state.       */
   const uint32_t now = millis();
-  if (s_last_rx_val[cmd] == v14 && (now - s_last_rx_ms[cmd] < 50u)) return;
-  if (cmd < 90u || (cmd >= 112u && cmd <= 120u)) {
-    if (now - s_last_rx_ms[cmd] < 5u) return;
+  const bool noDedup = (cmd == CMD_GRID_TOG ||
+                        cmd == CMD_PING      ||
+                        cmd == CMD_APP_SYNC_REQ);
+  if (!noDedup) {
+    if (s_last_rx_val[cmd] == v14 && (now - s_last_rx_ms[cmd] < 50u)) return;
+    if (cmd < 90u || (cmd >= 112u && cmd <= 120u)) {
+      if (now - s_last_rx_ms[cmd] < 5u) return;
+    }
   }
   s_last_rx_ms[cmd]  = now;
   s_last_rx_val[cmd] = v14;
@@ -612,7 +661,11 @@ void handleSysexCommand(uint8_t cmd, uint16_t v14) {
     /* ── Sequencer transport ─────────────────────────────────────────────── */
     case CMD_TRIG_MODE:
       if (v14 > 0u) seq_start(); else seq_stop();
-      txSysex(CMD_TRIG_MODE, seqPlaying.load() ? 16383u : 0u);
+      /* [FIX-TRIG] Removed duplicate txSysex(CMD_TRIG_MODE) here.  seq_start() /
+       * seq_stop() already push CMD_TRIG_MODE + CMD_TRANSPORT through the seq_ext
+       * ring (SeqSysexOut task).  The extra direct txSysex raced the ring drain and
+       * sent two CMD_TRIG_MODE echoes in quick succession, causing the App to see
+       * the transport state flicker on fast stop→start sequences.               */
       break;
     case CMD_BPM:
       setSequencerBpm((int32_t)v14);   /* echoes CMD_BPM inside setSequencerBpm */
@@ -652,16 +705,30 @@ void handleSysexCommand(uint8_t cmd, uint16_t v14) {
       }
       break;
     }
-    /* [G2] Absolute half-row write (bulk grid set).  v14 = (bank<<12)|(row<<8)|(page<<4)|byte.
-     * page 0–3 selects which 16-step window; LO = steps page*16+0..7, HI = page*16+8..15.
-     * Chain pinned 0 (App model).                                              */
+    /* [G2] Absolute half-row write — legacy v14 format.  Kept for backward compat
+     * with clients that still use the old encoding.  New code sends SX_SUB_GRID_ROW
+     * (parsed in parseMidiByte) which has no field overlap.
+     * [FIX-GRID-DEC] Old encoding: v14 = (bank<<12)|(row<<8)|(page<<4)|byte.
+     * Bug: page<<4 occupies bits 4-5, byte occupies bits 0-7 — they OVERLAP.
+     * When byte has bits 4-5 set, (v14>>4)&3 reads those bits as page, decoding
+     * the wrong page AND spuriously setting step bits from page in the byte field.
+     * Fix: extract page from the KNOWN non-overlapping region (bits 4-5 of pageAddr)
+     * and then strip the page contamination from the byte.  This cannot fully recover
+     * lo/hi when their bits 4-5 were genuinely set (those bits are irretrievably
+     * merged), but it prevents phantom steps caused purely by page-bit injection.  */
     case CMD_GRID_ROW_LO:
     case CMD_GRID_ROW_HI: {
-      const uint8_t bank = (uint8_t)((v14 >> 12) & 3u);
-      const uint8_t row  = (uint8_t)((v14 >> 8)  & 15u);
-      const uint8_t page = (uint8_t)((v14 >> 4)  & 3u);
-      const uint8_t byte = (uint8_t)(v14 & 0xFFu);
-      const int     shift = (int)(page * 16 + (cmd == CMD_GRID_ROW_LO ? 0 : 8));
+      const uint8_t bank  = (uint8_t)((v14 >> 12) & 3u);
+      const uint8_t row   = (uint8_t)((v14 >> 8)  & 15u);
+      /* Page is in bits 4-5 of the pre-OR'd pageAddr.  The raw bits 4-5 of v14
+       * equal (page_actual | byte_bits_4_5) which may be wrong; we use them as a
+       * best-effort estimate for the legacy format.                              */
+      const uint8_t page  = (uint8_t)((v14 >> 4)  & 3u);
+      /* Strip the page contribution from the byte field.  If byte's own bits 4-5
+       * were set, they'll be cleared — partial recovery only.  Use SX_SUB_GRID_ROW
+       * (txGridRow) for lossless transmission from new firmware and updated App.  */
+      const uint8_t byte  = (uint8_t)((v14 & 0xFFu) & ~((uint8_t)(page << 4)));
+      const int shift = (int)(page * 16 + (cmd == CMD_GRID_ROW_LO ? 0 : 8));
       portENTER_CRITICAL(&patchMux);
       uint64_t m = hwSeqData[bank][0][row];
       m = (m & ~(0xFFull << shift)) | ((uint64_t)byte << shift);
@@ -758,16 +825,28 @@ void handleSysexCommand(uint8_t cmd, uint16_t v14) {
        * reflectors and no longer send this.  Kept for backward/external compat.
        * Route through the real transport API (same path as the hardware buttons)
        * so tick reset / song rewind / note release / STEP_SYNC priming all run.
-       * seq_start/stop/pause echo CMD_TRANSPORT themselves; record echoes an
-       * EXPLICIT state (3=REC on, 4=REC off) so a dropped toggle can't desync.  */
-      switch (v14 & 3u) {
+       *
+       * [FIX-TRANSPORT-1] Changed switch from (v14 & 3u) to v14 directly.
+       * Old code: v14=4 (record OFF) mapped to case 0 → seq_stop() was called
+       * silently every time the supervisor sent "record OFF" to the App!  The
+       * & 3u mask was a copy-paste from a 2-bit field that never should have
+       * been here — transport v14 values are discrete 0/1/2/3/4, not bit-packed.
+       *
+       * [FIX-TRANSPORT-2] case 3 changed from TOGGLE to SET.  Old code toggled
+       * seqRecording on every v14=3, so two rapid v14=3 messages cancelled each
+       * other.  Now 3 = force ON, 4 = force OFF (idempotent set, not toggle).   */
+      switch (v14) {
         case 0: seq_stop();  break;
         case 1: seq_start(); break;
         case 2: seq_pause(); break;
         case 3:
-          seqRecording.store(!seqRecording.load(std::memory_order_relaxed),
-                             std::memory_order_relaxed);
-          txSysex(CMD_TRANSPORT, seqRecording.load(std::memory_order_relaxed) ? 3u : 4u);
+          seqRecording.store(true, std::memory_order_relaxed);
+          seq_ext_push(CMD_TRANSPORT, 3u); /* echo via ring — keeps order with STEP_SYNC */
+          displayDirty.store(true, std::memory_order_relaxed);
+          break;
+        case 4:
+          seqRecording.store(false, std::memory_order_relaxed);
+          seq_ext_push(CMD_TRANSPORT, 4u);
           displayDirty.store(true, std::memory_order_relaxed);
           break;
       }
@@ -930,7 +1009,12 @@ void parseMidiByte(uint8_t b, MidiParserState& ps) {
           char nm[16] = {};
           for (uint8_t i = 0; i < 15u; ++i) nm[i] = (char)(ps.sxBuf[5u + i] & 0x7Fu);
           setUserSlotName(eng, slot, nm[0] ? nm : nullptr);
-          settings_persist_blocking(ResetScope::BANKS_PATTERNS);
+          /* [FIX-NAME-SAVE] Use async NvsWorker instead of settings_persist_blocking().
+           * The old blocking call held the 8 KB MidiUsbRx task for up to 20 s while
+           * the NVS write completed — MIDI events were silently discarded for the
+           * entire duration.  requestBanksOnlySave() queues the write asynchronously
+           * with no reboot (name rename should never restart the device).          */
+          requestBanksOnlySave();
           txUserSoundNameBlob(eng, slot);
         }
       } else if (ps.sxBuf[2] == SX_SUB_USR_PAT_NAME) {
@@ -940,8 +1024,29 @@ void parseMidiByte(uint8_t b, MidiParserState& ps) {
           char nm[16] = {};
           for (uint8_t i = 0; i < 15u; ++i) nm[i] = (char)(ps.sxBuf[4u + i] & 0x7Fu);
           setUserPatName(slot, nm[0] ? nm : nullptr);
-          settings_persist_blocking(ResetScope::BANKS_PATTERNS);
+          requestBanksOnlySave(); /* [FIX-NAME-SAVE] async persist — see above */
           txUserPatNameBlob(slot);
+        }
+      } else if (ps.sxBuf[2] == SX_SUB_GRID_ROW) {
+        /* [FIX-GRID-ENC] { F0, 7D, 05, bank_row, page, lo_lo4, lo_hi4, hi_lo4, hi_hi4, F7 }
+         * Lossless grid-row bulk write from App — no field overlaps, all MIDI-safe bytes. */
+        if (ps.sxPtr >= 10u) {
+          const uint8_t bank_row = ps.sxBuf[3];
+          const uint8_t bank = (bank_row >> 4) & 3u;
+          const uint8_t row  = bank_row & 15u;
+          const uint8_t page = ps.sxBuf[4] & 3u;
+          const uint8_t lo   = (ps.sxBuf[5] & 0x0Fu) | ((uint8_t)(ps.sxBuf[6] & 0x0Fu) << 4);
+          const uint8_t hi   = (ps.sxBuf[7] & 0x0Fu) | ((uint8_t)(ps.sxBuf[8] & 0x0Fu) << 4);
+          const int shift_lo = (int)(page * 16u);
+          const int shift_hi = (int)(page * 16u + 8u);
+          portENTER_CRITICAL(&patchMux);
+          hwSeqData[bank][0][row] =
+              (hwSeqData[bank][0][row]
+               & ~((0xFFull << shift_lo) | (0xFFull << shift_hi)))
+              | ((uint64_t)lo << shift_lo)
+              | ((uint64_t)hi << shift_hi);
+          portEXIT_CRITICAL(&patchMux);
+          displayDirty.store(true, std::memory_order_release);
         }
       } else {
         const uint16_t v14 = ((uint16_t)(ps.sxBuf[4] & 0x7Fu) << 7u)

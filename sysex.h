@@ -58,6 +58,14 @@
 static constexpr uint8_t SX_SUB_PATCH_BLOB     = 0x02;
 static constexpr uint8_t SX_SUB_USR_SOUND_NAME = 0x03; /* App→device / device→App */
 static constexpr uint8_t SX_SUB_USR_PAT_NAME   = 0x04;
+/* [FIX-GRID-ENC] Clean grid-row bulk frame (replaces CMD_GRID_ROW_LO/HI v14 encoding
+ * which overlapped page bits with byte bits, corrupting step data for pages 1-3).
+ * Frame: { F0, ID, 05, bank_row, page, lo_lo4, lo_hi4, hi_lo4, hi_hi4, F7 }
+ *   bank_row = (bank<<4)|row  — 8 bits total, each field in its own byte position
+ *   page     = 0–3
+ *   lo/hi split into two 4-bit nibbles so all bytes are valid 7-bit MIDI data.
+ * Direction-tagged like all frames: 0x7C device→App, 0x7D App→device.         */
+static constexpr uint8_t SX_SUB_GRID_ROW       = 0x05;
 
 /* ── Harp synth (cmd 0–15) ──────────────────────────────────────────────── */
 static constexpr uint8_t CMD_H_WAVE = 0; /* base — add SynthParam index */

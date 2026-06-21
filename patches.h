@@ -1011,22 +1011,23 @@ static inline void echoAllDrumWaves();
 static inline void echoDbeamExprState();
 static inline void echoPbMapping();
 
-/* [G2] echoGridRow — send one row's ABSOLUTE 64-step state to the App as eight
- * half-row messages (4 pages × LO/HI).  Grid uses chain 0 (synth rows 0-7,
- * drum rows 8-15) — the OctopusApp matrix model.                             */
+/* [G2] echoGridRow — send one row's ABSOLUTE 64-step state to the App.
+ * [FIX-GRID-ENC] Now uses txGridRow (SX_SUB_GRID_ROW, sub 0x05) instead of
+ * the old txSysex(CMD_GRID_ROW_LO/HI, pageAddr|byte) encoding.  The old format
+ * overlapped page bits with byte bits (both shared bits 4-5 of v14), causing
+ * steps 4 and 5 to be spuriously set for pages 1-3 even when they were inactive.
+ * New format packs all fields into dedicated bytes — no overlap, no data loss.
+ * Grid uses chain 0 (synth rows 0-7, drum rows 8-15) — the OctopusApp model.  */
 static inline void echoGridRow(uint8_t bank, uint8_t row) {
   bank &= 3u;
   row &= 15u;
   portENTER_CRITICAL(&patchMux);
   const uint64_t mask = hwSeqData[bank][0][row]; /* chain pinned 0 */
   portEXIT_CRITICAL(&patchMux);
-  const uint16_t addr = (uint16_t)(((uint16_t)bank << 12) | ((uint16_t)row << 8));
   for (uint8_t page = 0; page < 4u; ++page) {
-    const uint16_t pageAddr = (uint16_t)(addr | ((uint16_t)page << 4));
-    const uint8_t lo = (uint8_t)((mask >> (page * 16)) & 0xFFu);
-    const uint8_t hi = (uint8_t)((mask >> (page * 16 + 8)) & 0xFFu);
-    txSysex(CMD_GRID_ROW_LO, (uint16_t)(pageAddr | lo));
-    txSysex(CMD_GRID_ROW_HI, (uint16_t)(pageAddr | hi));
+    const uint8_t lo = (uint8_t)((mask >> (page * 16u))      & 0xFFu);
+    const uint8_t hi = (uint8_t)((mask >> (page * 16u + 8u)) & 0xFFu);
+    txGridRow(bank, row, page, lo, hi);
   }
 }
 

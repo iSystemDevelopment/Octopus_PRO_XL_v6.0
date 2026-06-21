@@ -113,7 +113,15 @@ static inline uint16_t IRAM_ATTR cc7_to_v14_uni(uint8_t v7) {
 }
 static inline uint16_t IRAM_ATTR cc7_to_v14_bi(uint8_t v7) {
   v7 &= 0x7Fu;
-  if (v7 < 64) return (uint16_t)((uint32_t)v7 << 7);   /* [MIDI-BUG2] v7×128 */
+  /* Bipolar 7-bit → 14-bit mapping.  Center (unity) = v7=64 → 8192.
+   * [FIX-CC-BI] Both halves now use the same linear interpolation formula so
+   * the mapping is perfectly symmetric:
+   *   lower: v7  0..63  →  0..8191  (was v7*128 = 0..8064, 128-unit gap at center)
+   *   upper: v7 64..127 →  8192..16383
+   * The old lower formula (v7<<7) produced a dead zone of 128 units between
+   * the maximum negative (8064) and the center (8192), making the center of
+   * a hardware pitch-bend wheel noticeably non-zero in the App.             */
+  if (v7 < 64) return (uint16_t)((uint32_t)v7 * 8191u / 63u);
   return (uint16_t)(8192u + ((uint32_t)(v7 - 64u) * 8191u / 63u));
 }
 static inline uint8_t clamp_midi_channel(uint16_t v) {
@@ -134,6 +142,12 @@ void txSysex(uint8_t cmd, uint16_t v14bit);
  * single SysEx.  Called from recallHarpPatch/recallSeqPatch (patches.h) so every
  * preset recall, from any source, updates the App's knobs atomically. */
 void txPatchBlob(uint8_t engine);
+/* [FIX-GRID-ENC] Lossless grid-row echo using SX_SUB_GRID_ROW (sub 0x05).
+ * Replaces the old txSysex(CMD_GRID_ROW_LO/HI, pageAddr|byte) which corrupted
+ * step bits whenever page>0 and lo/hi had bits 4-5 set (page bits ORed into the
+ * byte field, then decoded as part of the step mask).  New frame packs bank/row/
+ * page/lo/hi into dedicated byte positions with no overlap.                    */
+void txGridRow(uint8_t bank, uint8_t row, uint8_t page, uint8_t lo, uint8_t hi);
 /* [USER-SLOTS] Echo sparse user-slot / user-pattern names to the App (sub 0x03/0x04). */
 void txUserLibraryNames();
 /* [WS5] FX preset recall echo — push the *resulting* param values to the App so
