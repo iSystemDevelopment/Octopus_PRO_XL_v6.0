@@ -1120,7 +1120,7 @@
         <!-- Transport (read-only reflectors — device owns play/stop/record/BPM) -->
         <button class="btn reflector" id="btnPlay" onclick="app.play()" title="PLAY status (device-controlled: hardware SCALE = play/stop)"><i class="fa-solid fa-play"></i></button>
         <button class="btn reflector" id="btnStop" onclick="app.stop()" title="STOP status (device-controlled: hardware SCALE = play/stop)"><i class="fa-solid fa-stop"></i></button>
-        <button class="btn reflector" id="btnRec" onclick="app.toggleRec()" title="RECORD status (device-controlled: hardware OC long-press = record-arm)"><i class="fa-solid fa-circle" style="color:var(--red);font-size:8px"></i>REC</button>
+        <button class="btn reflector" id="btnRec" onclick="app.toggleRec()" title="RECORD status (device-controlled: hardware OC short-press = record-arm)"><i class="fa-solid fa-circle" style="color:var(--red);font-size:8px"></i>REC</button>
 
         <div class="header-sep"></div>
         <!-- File -->
@@ -1475,7 +1475,7 @@
 
                 <p style="margin-top:10px"><b style="color:var(--cyan)">CONNECTION &amp; SYNC</b><br>
                 Select the ★ Octopus MIDI port → click <b>CONNECT</b> (or auto-connect when detected) → App sends CMD_APP_SYNC_REQ → device echoes full state. Badge shows LINKING then ONLINE once firmware replies. Heartbeat PING every ~800 ms keeps the OLED on "APP CONNECTED".<br>
-                <b>Hardware while connected:</b> SCALE = play/stop · OC long = record-arm · encoder = BPM · encoder long = SAVE menu.<br>
+                <b>Hardware while connected:</b> SCALE = play/stop · OC short = record-arm · encoder = BPM · encoder long = SAVE menu.<br>
                 <b>Playhead:</b> switch to the <b>SEQUENCER</b> tab while playing — cyan bar glides smoothly at 60 fps via a PLL slaved to STEP_SYNC (hardware anchors every step, App interpolates sub-step position). Snaps hard only on page change or pattern wrap. BPM range 40–240. ▶ / ■ / REC mirror device state only (clicking shows a hint). ▶<br>
                 <b>No inbound echo?</b> Close other OctopusApp tabs, hard-refresh (Ctrl+Shift+R), open MON with FILTER off — you must see ← lines when moving hardware controls.</p>
 
@@ -3921,11 +3921,11 @@
 
             // ── Transport (READ-ONLY REFLECTORS) ────────────────────────────────────────
             // [v6.0] Transport is owned exclusively by the device: SCALE = play/stop,
-            // OC long-press = record-arm, encoder = BPM, encoder long-press = save.
+            // OC short-press = record-arm, encoder = BPM, encoder long-press = save.
             // These buttons only MIRROR the device state (set in applyIncoming); clicking
             // them does nothing but remind the user where transport lives.
             _transportHint() {
-                this.log('Transport is device-controlled — use the hardware: SCALE = play/stop, OC long = record, encoder = BPM, encoder long = save.');
+                this.log('Transport is device-controlled — use the hardware: SCALE = play/stop, OC short = record, encoder = BPM, encoder long = save.');
             },
             // [SYNC-FIX] Single source of truth for the transport trio. Always sets
             // ALL THREE buttons so they can never disagree: play lit when playing,

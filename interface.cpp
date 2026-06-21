@@ -818,7 +818,7 @@ void updateHardwareInterface() {
    * locked to a fixed TRANSPORT role (the hardware ALWAYS owns transport), so
    * the buttons can never fall dead and the App can't fight over shared state:
    *   SCALE single   → play / stop        (seq_toggle echoes CMD_TRANSPORT)
-   *   OC long-press  → record-arm toggle  (echoes explicit record state 3/4)
+   *   OC single      → record-arm toggle  (seq_toggle_recording → ring echo 3/4)
    *   ENC turn       → BPM                 (setSequencerBpm echoes CMD_BPM)
    *   ENC long-press → save settings (NVS)
    * Menu navigation + parameter editing are suppressed (early return).  Gated on
@@ -861,7 +861,7 @@ void updateHardwareInterface() {
       seq_toggle();                             /* echoes CMD_TRANSPORT itself */
       dirty = true;
     }
-    if (evOC == BtnEvent::LONG)                 /* OC long → record toggle (App-connected SEQ UI) */
+    if (evOC == BtnEvent::SINGLE)               /* OC short  → record toggle */
       seq_toggle_recording();
     if (dirty) displayDirty.store(true, std::memory_order_relaxed);
     return;

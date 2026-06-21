@@ -1366,10 +1366,10 @@ static void drawTransportGlyph(int16_t x, int16_t y, bool playing,
  *
  * The App is the full control surface; the OLED only mirrors live transport
  * state (no parameter echo churn, no data-entry temptation).  Transport is
- * hardware-owned even while connected: SCALE=play/stop, OC long=record,
+ * hardware-owned even while connected: SCALE=play/stop, OC short=record,
  * ENC=BPM, ENC long=save.  Layout (128×64):
- *   y0-9   header  "APP CONNECTED"            + live play/stop glyph (right)
- *   y14    BPM 120   BANK A   *REC
+ *   y0-9   header  "APP CONNECTED"            + transport glyph (●/▶/■, right)
+ *   y14    BPM 120   BANK A                    (record shown in header glyph only)
  *   y25    Voices/Song/Pattern context  ·  Len
  *   y36    BEAM  <D-BEAM amplitude bar>      (separate row — never overdrawn)
  *   y56    full-width page-aware step playhead
@@ -1384,15 +1384,16 @@ void drawAppConnectedPage() {
   display.setCursor(LABEL_X, 1);
   display.print(F("APP CONNECTED"));
   drawTransportGlyph(SCREEN_W - 10, 1,
-                     seqPlaying.load(std::memory_order_relaxed));
+                     seqPlaying.load(std::memory_order_relaxed),
+                     seqRecording.load(std::memory_order_relaxed),
+                     SH110X_BLACK);
   display.setTextColor(SH110X_WHITE);
 
-  /* Line 1 — clock + bank + record arm */
+  /* Line 1 — clock + bank (record state: header glyph ●, same as SEQ dashboard) */
   display.setCursor(0, 14);
-  display.printf("BPM %-3d  BANK %c%s",
+  display.printf("BPM %-3d  BANK %c",
     (int)seqBpm.load(std::memory_order_relaxed),
-    (char)('A' + std::min(3, (int)seqActiveBank.load() & 15)),
-    seqRecording.load(std::memory_order_relaxed) ? "  *REC" : "");
+    (char)('A' + std::min(3, (int)seqActiveBank.load() & 15)));
 
   /* Line 2 — mute state (when any muted) + context (voices/song/pattern/len).
    * [MUTE-SPLASH] App mute buttons toggle mixHarpMute/mixSeqMute/mixDrumsMute.

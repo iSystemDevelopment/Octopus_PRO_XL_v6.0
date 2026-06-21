@@ -390,7 +390,7 @@
  *   • play/stop/record/BPM are ALWAYS driven by the physical surface.  While the
  *     App is connected (isAppConnected(), same predicate that draws the splash),
  *     the buttons+encoder are locked to a fixed transport role in
- *     updateHardwareInterface():  SCALE single = play/stop, OC long = record-arm
+ *     updateHardwareInterface():  SCALE single = play/stop, OC short = record-arm
  *     toggle, ENC turn = BPM, ENC long = save.  Menu/param editing is suppressed.
  *   • The ESP echoes transport state on every change (seq_start/stop/pause →
  *     CMD_TRANSPORT 0/1/2; record → CMD_TRANSPORT 3=on/4=off; BPM → CMD_BPM) and

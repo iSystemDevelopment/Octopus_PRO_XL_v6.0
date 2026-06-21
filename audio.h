@@ -32,7 +32,7 @@
  *  [A4] Transport ownership [v6.0].  Transport (play/stop/record/BPM) is ALWAYS
  *       hardware-owned.  While the App is connected (isAppConnected()),
  *       updateHardwareInterface() locks the surface to a fixed transport role
- *       (SCALE=play/stop, OC long=record, ENC=BPM, ENC long=save) and the App's
+ *       (SCALE=play/stop, OC short=record, ENC=BPM, ENC long=save) and the App's
  *       transport buttons are read-only reflectors.  The old transportAvailable
  *       hand-off was retired; the sync supervisor (groovebox.cpp) keeps the App
  *       converged on BPM/play/record/CPU load.
