@@ -114,6 +114,10 @@ struct Engine {
     gate_open = false;
     sounding_midi = -1;
     sounding_row = -1;
+    /* [FIX-3] Clear playback-cursor fields so a stale row from a previous
+     * session is never used as the first note's beam/hue assignment.      */
+    last_play_idx = 0;
+    last_play_row = 0;
   }
 
   void latchNotes(const int8_t* midi, const int8_t* src_rows, int n) {
@@ -123,10 +127,18 @@ struct Engine {
       rows[i]  = src_rows[i];
       notes[i] = midi[i];
     }
+    /* [FIX-2] Sort notes[] ascending AND keep rows[] in sync — rows[i] must
+     * always be the source beam for notes[i] after sorting.  Without this
+     * swap, rowForIndex(idx) returns the row for a different note (the one
+     * that was originally latched at that position), causing wrong beam
+     * lighting and hue on all sorted patterns (UP/DOWN/UP_DOWN/DOWN_UP/
+     * UP_OCT/DOWN_OCT).  raw[] is deliberately NOT sorted — it keeps the
+     * latch order for AS_PLAYED.                                           */
     for (int i = 0; i + 1 < count; ++i) {
       for (int j = i + 1; j < count; ++j) {
         if (notes[j] < notes[i]) {
-          const int8_t t = notes[i]; notes[i] = notes[j]; notes[j] = t;
+          const int8_t t  = notes[i]; notes[i] = notes[j]; notes[j] = t;
+          const int8_t tr = rows[i];  rows[i]  = rows[j];  rows[j]  = tr;
         }
       }
     }
@@ -176,10 +188,22 @@ struct Engine {
     case DOWN_UP: {
       if (count == 1) { idx = 0; break; }
       const int cycle = 2 * count - 2;
-      int pos = step_idx % cycle;
-      if (pattern == DOWN_UP) pos = (cycle - pos) % cycle;
-      if (pos < count) idx = pos;
-      else idx = (2 * count - 2) - pos;
+      const int pos = step_idx % cycle;
+      if (pattern == UP_DOWN) {
+        /* [FIX-1] UP_DOWN: ascend 0→n-1 then descend n-2→1 (bottom→top→bottom).
+         * Example count=3: 0,1,2,1,0,1,2,1... (C,E,G,E,C,E,G,E...)           */
+        if (pos < count) idx = pos;
+        else             idx = (2 * count - 2) - pos;
+      } else {
+        /* [FIX-1] DOWN_UP: descend n-1→0 then ascend 1→n-2 (top→bottom→top).
+         * Example count=3: 2,1,0,1,2,1,0,1... (G,E,C,E,G,E,C,E...)
+         * Previous code: (cycle-pos)%cycle produced the SAME sequence as UP_DOWN
+         * because the formula maps pos=0→0, pos=1→3, pos=2→2, pos=3→1 which
+         * after the existing idx formula gives identical notes. Fixed formula:
+         * mirror the position within the sorted array so step 0 = highest note. */
+        if (pos < count) idx = (count - 1) - pos;
+        else             idx = pos - (count - 1);
+      }
       step_idx = (int8_t)((step_idx + 1) % cycle);
       break;
     }
