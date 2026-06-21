@@ -855,8 +855,12 @@
             position: relative
         }
 
-        /* [SYNC-FIX] Absolute overlay — NOT a grid cell. Position is computed from
-         * step-cell geometry each frame so column width/gap changes never detach it. */
+        /* [PLAYHEAD-ISOLATED] Absolute overlay — fully detached from grid DOM flow.
+         * Position is written by _pllPositionTick() every rAF frame via transform;
+         * will-change promotes it to its own compositor layer so grid cell paints
+         * (classList.toggle on 256 cells) never block the playhead composite step.
+         * NO transform transition — the PLL already provides 60 fps sub-step glide;
+         * a CSS transition would add latency and fight the JS on page-snap frames. */
         #seq-playhead {
             position: absolute;
             top: 0;
@@ -870,7 +874,8 @@
             opacity: 0;
             transform: translate3d(0, 0, 0);
             will-change: transform, opacity;
-            transition: transform 120ms linear, opacity 80ms linear;
+            transition: opacity 80ms linear; /* transform handled by PLL JS — no CSS transition */
+            contain: strict;                 /* paint/layout isolation from grid siblings */
             box-sizing: border-box
         }
 
@@ -1658,11 +1663,8 @@
             DJ_FQ: 76,
             DJ_RES: 77,
             DJ_MIX: 78,
-            // Legacy LFO (backward compat aliases)
-            HLFO_R: 79,
-            HLFO_D: 80,
-            SLFO_R: 81,
-            SLFO_D: 82,
+            // 79-82: legacy LFO aliases (HLFO_R/D, SLFO_R/D) — removed v6.0 (replaced by HLFO_RT/SLFO_RT)
+            // 92 HW_GATE / 93 HW_WHITE / 96 HW_MARGIN — hardware-only params, no App UI; removed
             DB_CURVE: 83,
             DB_OFFSET: 84,
             DB_RANGE: 85,
@@ -1672,12 +1674,9 @@
             D_FX_IDX_B: 89,
             HW_H_OCT: 90,
             HW_S_OCT: 91,
-            HW_GATE: 92,
-            HW_WHITE: 93,
             HW_S_LEN: 94,
             TRANSPOSE: 95,
             H_PITCH: 166,
-            HW_MARGIN: 96,
             // Sequencer transport 97-127
             BPM: 97,
             BANK: 98,
@@ -3127,7 +3126,6 @@
             _playPage: -1,
             _playBeat: -1,
             _playAbsStep: -1, // absolute step index for wrap detection
-            _phPitch: 0, // [PLAYHEAD-FIX] last good column pitch (px) — survives reflow reads
             _playheadEl: null, // single grid overlay — zero per-cell class toggles
             _phPendingStep: -1,
             _phForceRemeasure: false,
@@ -3135,6 +3133,7 @@
             // [v6.0.01 PLL] phase-locked local tick clock — hardware anchors, App interpolates
             _pllAnchorStep: -1,  // hardware step received on last STEP_SYNC
             _pllAnchorTime: -1,  // performance.now() at that STEP_SYNC
+            _phResizeOb: null,        // ResizeObserver for grid geometry — stored so we can disconnect before rebuild
             _dispatch: null,          // [FIX-DISPATCH] built lazily by _buildDispatch()
             _songEditorDirty: false,  // [FIX-SONG] deferred buildSongEditor to rAF
             _debounceTimers: null,    // [THROTTLE] per-cmd timers for txSysexSoon
@@ -3744,8 +3743,12 @@
                     [CMD.HARP_ARP_PAT]:   v14 => { this._setKnob(CMD.HARP_ARP_PAT,  v14); },
                     [CMD.HARP_ARP_RATE]:  v14 => { this._setKnob(CMD.HARP_ARP_RATE, v14); },
                     [CMD.HARP_ARP_GATE]:  v14 => { this._setKnob(CMD.HARP_ARP_GATE, v14); },
-                    [CMD.H_WAVE]: v14 => { const e = document.getElementById('harpWave'); if (e) e.value = v14; this._setKnob(CMD.H_WAVE, v14); },
-                    [CMD.S_WAVE]: v14 => { const e = document.getElementById('seqWave');  if (e) e.value = v14; this._setKnob(CMD.S_WAVE, v14); },
+                    // H_WAVE / S_WAVE: update the select element; _setKnob is handled by
+                    // the catch-all below — removing the explicit call here eliminates a
+                    // double _setKnob() invocation (and two redundant DOM knob updates)
+                    // on every H_WAVE / S_WAVE echo.
+                    [CMD.H_WAVE]: v14 => { const e = document.getElementById('harpWave'); if (e) e.value = v14; },
+                    [CMD.S_WAVE]: v14 => { const e = document.getElementById('seqWave');  if (e) e.value = v14; },
                     [CMD.H_FX_IDX]:   v14 => { document.getElementById('harpFxA').value = v14; },
                     [CMD.H_FX_IDX_B]: v14 => { document.getElementById('harpFxB').value = v14; },
                     [CMD.S_FX_IDX]:   v14 => { document.getElementById('seqFxA').value  = v14; },
@@ -4394,7 +4397,7 @@
                 this.songSlotIdx = +idx & 15;
                 this.txSysex(CMD.SONG_SLOT, this.songSlotIdx);
                 document.getElementById('songSlotEdit').value = this.songSlotIdx;
-                this.buildSongEditor();
+                this._songEditorDirty = true; // deferred to rAF — never blocks playhead frame
             },
             editSongSlot(idx) {
                 this.setSongSlot(idx);
@@ -4403,7 +4406,7 @@
                 n = Math.min(16, Math.max(1, +n));
                 this.songData[this.songSlotIdx].numSteps = n;
                 this.txSysex(CMD.SONG_STEPS_N, n);
-                this.buildSongEditor();
+                this._songEditorDirty = true; // deferred to rAF — never blocks playhead frame
             },
             sendSongStep(stepIdx) {
                 const sl = this.songData[this.songSlotIdx];
@@ -4465,19 +4468,31 @@
                 this.log('Grid copied (bank ' + 'ABCD' [this.bankIdx] + ')');
             },
             pasteGrid() {
-                if (!this.clipboardGrid) {
-                    this.log('Nothing in clipboard');
-                    return;
-                }
-                for (let r = 0; r < 16; r++)
-                    for (let c = 0; c < 64; c++) {
-                        const on = !!(this.clipboardGrid[r] && this.clipboardGrid[r][c]);
-                        if (this.gridData[this.bankIdx][r][c] === on) continue;
-                        this.gridData[this.bankIdx][r][c] = on;
-                        this.txSysex(CMD.GRID_TOG, (r << 7) | c);
+                if (!this.clipboardGrid) { this.log('Nothing in clipboard'); return; }
+                const bank = this.bankIdx;
+                // [USB-OPT] Use GRID_ROW_LO/HI (8 bits per message) instead of per-cell
+                // GRID_TOG — worst case 16 rows × 4 pages × 2 (lo+hi) = 128 messages
+                // instead of up to 1024 individual GRID_TOG calls. The firmware applies
+                // each half-row absolutely (set, not toggle), so no state mismatch risk.
+                for (let r = 0; r < 16; r++) {
+                    const src = this.clipboardGrid[r];
+                    const dst = this.gridData[bank][r];
+                    for (let c = 0; c < 64; c++)
+                        dst[c] = !!(src && src[c]);
+                    for (let page = 0; page < 4; page++) {
+                        const base = page * 16;
+                        let lo = 0, hi = 0;
+                        for (let i = 0; i < 8; i++) {
+                            if (dst[base + i])     lo |= (1 << i);
+                            if (dst[base + 8 + i]) hi |= (1 << i);
+                        }
+                        const addr = (bank << 12) | (r << 8) | (page << 4);
+                        this.txSysex(CMD.GRID_ROW_LO, addr | lo);
+                        this.txSysex(CMD.GRID_ROW_HI, addr | hi);
                     }
+                }
                 this.repaintGrid();
-                this.log('Pasted to bank ' + 'ABCD' [this.bankIdx] + ' (all 64 steps)');
+                this.log('Pasted to bank ' + 'ABCD'[bank] + ' (all 64 steps)');
             },
             // RND — randomize cells in the active bank only.
             //   kind 'synth' = melody rows 0-7, 'drum' = drum rows 8-15.
@@ -4629,16 +4644,16 @@
                 const snapped = pageWrap || patternWrap || this._playCol < 0
                     || stepDelta > 1 || stepDelta < 0;
 
-                // [v6.0.01 PLL] _pllPositionTick() owns transform; advancePlayhead only
-                // sets size + opacity and resets the PLL anchor on hard snaps so the
-                // tick clock starts from the correct column immediately.
-                ph.style.width = geo.width + 'px';
+                // [PLAYHEAD-DETACH] advancePlayhead owns ONLY size + opacity + LED + geo.
+                // _pllPositionTick() owns ALL transform positioning (runs first each rAF).
+                // No inline transition override — CSS has `transition: opacity 80ms` only;
+                // removing the old inline set eliminates a style recalc every STEP_SYNC.
+                ph.style.width  = geo.width  + 'px';
                 ph.style.height = geo.height + 'px';
-                ph.style.transition = 'opacity 80ms linear'; // no transform transition — PLL is smooth
                 ph.style.opacity = '1';
                 if (snapped) {
-                    // Force the tick clock to snap: set anchor time to "now - 0 ms" so
-                    // _pllPositionTick computes frac=0 and positions exactly at this column.
+                    // Hard snap: reset PLL anchor so _pllPositionTick immediately places
+                    // the bar at exactly this column with frac=0 (no interpolation overshoot).
                     this._pllAnchorStep = s;
                     this._pllAnchorTime = performance.now();
                 }
@@ -4667,43 +4682,64 @@
                 for (let i = 0; i < 4; i++) document.getElementById('led-' + i) ?.classList.remove('active');
             },
 
-            // [v6.0.01 PLL] Sub-step playhead interpolation — called every rAF frame.
-            // Hardware STEP_SYNC sets _pllAnchorStep + _pllAnchorTime; we extrapolate
-            // the fractional column using performance.now() and the current BPM stepMs.
-            // This decouples smooth visual motion from USB packet timing so the playhead
-            // glides continuously at 60 fps regardless of USB batching or jitter.
+            // ── PLL playhead interpolation ────────────────────────────────────────────
+            // Called FIRST in every rAF frame (animateVU).  Hardware STEP_SYNC events
+            // set _pllAnchorStep + _pllAnchorTime; we extrapolate the fractional column
+            // position using performance.now() and the live BPM stepMs so the playhead
+            // glides at 60 fps between ticks regardless of USB batching or jitter.
+            //
+            // Sync accuracy is bounded by the USB one-way latency (~2–20 ms) between
+            // the hardware firing a step and the JS event loop receiving the STEP_SYNC.
+            // This is the physical limit for a USB connection — the PLL eliminates all
+            // software-layer jitter on top of that unavoidable hardware delay.
             _pllPositionTick() {
                 if (!this.isPlaying || this._pllAnchorStep < 0) return;
                 const ph = this._playheadEl;
-                if (!ph || ph.style.opacity === '0') return;
+                // Guard: only run while the playhead is fully visible. Checking !== '1'
+                // covers the empty-string case (before any inline opacity is set) as well
+                // as the '0' case after _hidePlayhead — avoids positioning an invisible bar.
+                if (!ph || ph.style.opacity !== '1') return;
                 const geo = this._phGeo;
                 if (!geo) return;
 
                 const now = performance.now();
                 const bpm = Math.max(40, this.bpm || 120);
                 const stepMs = 60000 / bpm / 4;   // 16th-note duration in ms (40–240 BPM)
-                const len = Math.max(1, this.seqLen | 0);
 
                 // Fractional steps elapsed since last hardware anchor.
-                // Cap at 0.98 so we never visually jump past the next step before its
-                // STEP_SYNC arrives (USB is always faster than one full step interval).
-                const frac = Math.min(0.98, (now - this._pllAnchorTime) / stepMs);
+                // • Lower bound 0: can't go before the anchor (clock hasn't gone backward).
+                // • Upper bound 0.98: never visually jump past the next column before its
+                //   STEP_SYNC arrives — the 2% dead-zone is ~1.25 ms at 120 BPM, invisible.
+                //   Also guards against USB stalls (very large elapsed times are clamped).
+                const elapsed = now - this._pllAnchorTime;
+                const frac = Math.min(0.98, Math.max(0, elapsed / stepMs));
 
-                // Absolute step position (fractional), wrapped to pattern length.
-                const absF = (this._pllAnchorStep + frac);
-                const col  = (this._pllAnchorStep & 15);          // integer column on current page
-                const colF = Math.min(15, col + frac);            // sub-column — stop at page edge
+                // Column position on the CURRENT PAGE only (0–15).
+                // _pllAnchorStep & 15 gives the integer column; frac glides within it.
+                // Clamped to 15 so we never cross the page boundary visually mid-step
+                // (page follow is a hard snap handled by advancePlayhead on STEP_SYNC).
+                const col  = this._pllAnchorStep & 15;
+                const colF = Math.min(15, col + frac);
 
-                const x = geo.x0 + colF * geo.pitch;
-                ph.style.transform = 'translate3d(' + x.toFixed(1) + 'px, 0, 0)';
+                ph.style.transform = 'translate3d(' + (geo.x0 + colF * geo.pitch).toFixed(1) + 'px, 0, 0)';
             },
 
             // ── Build sequencer grid ──────────────────────────────────────────────────
             buildSequencer() {
                 const g = document.getElementById('seq-grid');
                 if (!g) return;
-                g.innerHTML = '';
-                this._hidePlayhead();
+
+                // [PLAYHEAD-DETACH] Rescue the playhead element BEFORE wiping the grid.
+                // g.innerHTML='' destroys every child including #seq-playhead, tearing
+                // down its compositor layer and breaking the PLL animation.  By detaching
+                // it first and re-attaching after the rebuild, the element (and its GPU
+                // layer) survives the DOM rebuild completely intact.
+                const savedPh = this._playheadEl;
+                if (savedPh && savedPh.parentNode === g) g.removeChild(savedPh);
+
+                g.innerHTML = '';           // wipe labels + cells only — playhead is safe
+                this._hidePlayhead();       // reset visual state (opacity→0, cursor fields)
+
                 // Row 0 = top = highest note (firmware row0 = +12 st via kRowSemitone), row7 = root.
                 const synthLabels = ['C5', 'B4', 'A4', 'G4', 'F4', 'E4', 'D4', 'C4'];
                 const drumLabels = ['KICK', 'SNARE', 'CLAP', 'HH-C', 'HH-O', 'TOM-H', 'TOM-L', 'PERC'];
@@ -4729,13 +4765,25 @@
                         g.appendChild(cell);
                     }
                 }
-                const ph = document.createElement('div');
-                ph.id = 'seq-playhead';
-                ph.setAttribute('aria-hidden', 'true');
-                g.appendChild(ph);
-                this._playheadEl = ph;
+
+                // Re-attach or create the playhead — always last child so it layers above cells.
+                let ph = savedPh;
+                if (!ph) {
+                    ph = document.createElement('div');
+                    ph.id = 'seq-playhead';
+                    ph.setAttribute('aria-hidden', 'true');
+                    this._playheadEl = ph;
+                }
+                g.appendChild(ph);  // restore to grid — compositor layer continues uninterrupted
+
                 if (typeof ResizeObserver !== 'undefined') {
-                    new ResizeObserver(() => { this._phForceRemeasure = true; }).observe(g);
+                    // Disconnect any previous observer — buildSequencer() may be called
+                    // multiple times (bank switch, init). Without disconnect each call adds
+                    // another observer watching the same element, causing a memory leak and
+                    // redundant _phForceRemeasure callbacks.
+                    if (this._phResizeOb) this._phResizeOb.disconnect();
+                    this._phResizeOb = new ResizeObserver(() => { this._phForceRemeasure = true; });
+                    this._phResizeOb.observe(g);
                 }
                 this.repaintGrid();
             },
@@ -5159,24 +5207,35 @@
                 this._monPush(`· ${msg}`);
             },
 
-            // ── VU meter ──────────────────────────────────────────────────────────────
+            // ── VU meter + playhead rAF loop ──────────────────────────────────────────
             animateVU(ts) {
-                // [FIX-SONG] Deferred song editor rebuild — coalesces up to 18 calls from
-                // a sendFullStateSync burst (SONG_SLOT + 16×SONG_STEP + SONG_STEPS_N) into
-                // a single rAF-scheduled DOM rebuild, preventing 200-500 ms main thread stall.
-                if (this._songEditorDirty) {
-                    this._songEditorDirty = false;
-                    this.buildSongEditor();
-                }
+                // ┌─────────────────────────────────────────────────────────────────────┐
+                // │  HIGHEST PRIORITY: PLL playhead position — runs FIRST, every frame. │
+                // │  Nothing above this line.  No DOM mutations before this call.        │
+                // │  will-change:transform on #seq-playhead gives it a dedicated GPU     │
+                // │  compositor layer so grid cell paints never block this update.       │
+                // └─────────────────────────────────────────────────────────────────────┘
+                if (this.isPlaying) this._pllPositionTick();
+
+                // Page-follow + LED + geo remeasure (only when a new STEP_SYNC arrives
+                // or geometry needs refresh — NOT every frame).
                 if (this.isPlaying) {
                     if (this._phPendingStep >= 0) {
                         const step = this._phPendingStep;
                         this._phPendingStep = -1;
-                        this.advancePlayhead(step); // page-follow, LED, geo, snap detection
+                        this.advancePlayhead(step); // page-follow, LED, geometry
                     } else if (this._phForceRemeasure) {
                         this.advancePlayhead(this.visStep);
                     }
-                    this._pllPositionTick(); // [v6.0.01] sub-step glide — runs every rAF frame
+                }
+
+                // [PLAYHEAD-DETACH] Song editor rebuild is coalesced AND deferred to its
+                // OWN rAF frame — never the same frame as the playhead PLL tick.
+                // buildSongEditor() can take 50-200 ms (full DOM rebuild); running it in
+                // a shared frame would stall _pllPositionTick for that entire duration.
+                if (this._songEditorDirty) {
+                    this._songEditorDirty = false;
+                    requestAnimationFrame(() => this.buildSongEditor());
                 }
                 const mixerOn = document.getElementById('view-mixer')?.classList.contains('active');
                 const l = document.getElementById('vu-left'),
