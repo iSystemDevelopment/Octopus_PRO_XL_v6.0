@@ -939,6 +939,9 @@ void handleSysexCommand(uint8_t cmd, uint16_t v14) {
       /* [RESET v2] App-driven scoped reset (RAM wipe + persist + reboot).  The
        * App owns its own YES/NO confirm; the device just executes.              */
       if (v14 == 16383u) break; /* ACK echo — ignore */
+      if (v14 == 0u)     break; /* NACK echo — ignore (prevents accidental FULL
+                                 * reset when the device's own NACK is echoed
+                                 * back via the USB MIDI loopback path)         */
       handleScopedReset((ResetScope)(v14 & 3u)); break;
     case CMD_SEQ_CLEAR:
       /* [CLEAR] Mirror of hardware SEQ SETUP → Clear (active grid + sounds→0). */

@@ -3158,9 +3158,10 @@
             _lastTransportRxMs: 0,
             _lastStepSyncRxMs: 0,
             _linkDegradedUntil: 0, // cooldown after auto APP_SYNC_REQ
-            _persistBusy: false,   // one save / reset / load at a time (mirrors firmware)
-            _persistKind: '',      // 'save' | 'reset' | 'load'
+            _persistBusy: false,      // one save / reset / load at a time (mirrors firmware)
+            _persistKind: '',         // 'save' | 'reset' | 'load'
             _persistSince: 0,
+            _persistTimeoutId: null,  // auto-clear safety timeout handle
             _linkGraceUntil: 0,   // ms — allow boot/sync before declaring dead link
             _connOnline: false,   // true once device echo seen this session
             _linkWarned: false,   // one-shot hint when no 0x7C echo after connect
@@ -3229,12 +3230,23 @@
                 this._persistBusy = true;
                 this._persistKind = kind;
                 this._persistSince = Date.now();
+                /* Safety timeout: if no ACK/NACK arrives within 60 s (device crashed
+                 * or rebooted before ACK was delivered), auto-clear so the UI is not
+                 * stuck in the wait modal forever.  onConnect() also clears on reconnect. */
+                if (this._persistTimeoutId) clearTimeout(this._persistTimeoutId);
+                this._persistTimeoutId = setTimeout(() => {
+                    if (this._persistBusy) {
+                        this.log(kind.toUpperCase() + ' timed out — no ACK from device after 60 s. Clearing wait state.');
+                        this._clearPersist(null);
+                    }
+                }, 60000);
                 return true;
             },
             _clearPersist(msg) {
                 this._persistBusy = false;
                 this._persistKind = '';
                 this._persistSince = 0;
+                if (this._persistTimeoutId) { clearTimeout(this._persistTimeoutId); this._persistTimeoutId = null; }
                 this.closeAllPersistModals();
                 if (msg) this.log(msg);
             },
@@ -3686,6 +3698,7 @@
                 this._plockStealWarned = false;
                 this._persistBusy = false;
                 this._persistKind = '';
+                if (this._persistTimeoutId) { clearTimeout(this._persistTimeoutId); this._persistTimeoutId = null; }
                 this.closeAllPersistModals();
                 this._rxQueue.length = 0;
                 this._rxDrainScheduled = false;

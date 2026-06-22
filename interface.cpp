@@ -1297,8 +1297,10 @@ static void oledStatusLines(const char* line1, const char* line2) {
  * step "RESET FAILED" / "SAVE BUSY" would stick forever.                     */
 static void oledStatusHold(const char* line1, const char* line2,
                            uint32_t holdMs = 2000u) {
-  oledStatusLines(line1, line2);
+  /* Set the hold flag BEFORE drawing so display_refresh_task cannot slip in
+   * between oledStatusLines() and the store and overwrite the message. */
   g_oledStatusHoldMs.store(millis() + holdMs, std::memory_order_relaxed);
+  oledStatusLines(line1, line2);
 }
 
 static void oledStatusRestoreNow() {
@@ -1400,13 +1402,16 @@ void handleScopedReset(ResetScope scope) {
   }
 
   s_resetPersistScope = scope;
-  if (xTaskCreatePinnedToCore(reset_persist_task, "RstSave", 8192, nullptr, 5,
+  /* Stack 16384: failure path calls rollbackResetRam (NVS load) +
+   * sendFullStateSync (50+ sysex) — 8192 overflows and crashes silently,
+   * leaving g_resetInProgress stuck and the OLED frozen for 60 s.       */
+  if (xTaskCreatePinnedToCore(reset_persist_task, "RstSave", 16384, nullptr, 5,
                               nullptr, 1) != pdPASS) {
     g_resetInProgress.store(false, std::memory_order_release);
+    /* 2000 ms hold auto-expires via display_refresh_task; no vTaskDelay needed
+     * here (this runs on MidiUsbRx — blocking 2.1 s drops incoming MIDI). */
     oledStatusHold("RESET FAILED", "TASK ERROR", 2000u);
     if (isAppConnected()) txSysex(CMD_SCOPED_RESET, 0u);
-    vTaskDelay(pdMS_TO_TICKS(2100));
-    oledStatusRestoreNow();
   }
 }
 
