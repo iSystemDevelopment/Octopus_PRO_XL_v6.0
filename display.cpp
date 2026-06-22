@@ -135,7 +135,8 @@ void drawSaveToastIfActive() {
    *   • g_saveFailFlashMs      → "FAILED!" (~1.5 s after a failed commit)
    *   • g_saveFlashMs active   → "DONE!"   (~1.2 s after success)
    * WAIT takes precedence; FAILED shows only when not actively saving.       */
-  const bool saving = g_saveRequest.load(std::memory_order_acquire);
+  const bool saving = g_saveRequest.load(std::memory_order_acquire) ||
+      g_resetInProgress.load(std::memory_order_acquire);
   const bool failed = !saving &&
       (int32_t)(g_saveFailFlashMs.load(std::memory_order_relaxed) - millis()) > 0;
   const bool done   = !saving && !failed &&

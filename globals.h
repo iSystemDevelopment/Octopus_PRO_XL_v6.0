@@ -1174,6 +1174,9 @@ inline std::atomic<bool> g_restartAfterSave{ false };
 /** TRUE while handleScopedReset → reset_persist_task is running (blocks save/load). */
 inline std::atomic<bool> g_resetInProgress{ false };
 
+/** TRUE while an async scoped LOAD task is running (extends App link window). */
+inline std::atomic<bool> g_loadInProgress{ false };
+
 /** reset_persist_task sets this; NvsWorker ACKs CMD_SCOPED_RESET (not SESSION_SAVE). */
 inline std::atomic<bool> g_resetAckPending{ false };
 
@@ -1188,6 +1191,12 @@ inline std::atomic<uint32_t> g_oledStatusHoldMs{ 0 };
  *  [FIX-H1] Callers must check the return value and send a NACK to the App when
  *  false — the previous silent drop caused the App to think the save was queued. */
 static inline bool requestScopedSave(uint8_t scope) {
+  /* Recover stale flags left by an aborted persist (NACK without cleanup, etc.). */
+  if (g_resetInProgress.load(std::memory_order_acquire) &&
+      !g_saveRequest.load(std::memory_order_acquire) &&
+      !g_saveArmed.load(std::memory_order_acquire)) {
+    g_resetInProgress.store(false, std::memory_order_release);
+  }
   if (g_resetInProgress.load(std::memory_order_acquire) ||
       g_saveRequest.load(std::memory_order_acquire) ||
       g_saveArmed.load(std::memory_order_acquire))
@@ -1244,7 +1253,10 @@ static inline void saveForceUnlock() {
   g_restartAfterSave.store(false, std::memory_order_release);
   g_resetInProgress.store(false, std::memory_order_release);
   g_resetAckPending.store(false, std::memory_order_release);
+  g_loadInProgress.store(false, std::memory_order_release);
   g_oledStatusHoldMs.store(0u, std::memory_order_release);
+  g_saveFailFlashMs.store(millis() + 1500u, std::memory_order_relaxed);
+  displayDirty.store(true, std::memory_order_relaxed);
   if (g_saveDoneSem) xSemaphoreGive(g_saveDoneSem);
 }
 

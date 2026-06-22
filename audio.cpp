@@ -609,6 +609,7 @@ void settings_save_task(void* pvParameters) {
       Serial.println(F("[NVS] Save FAILED — check NVS partition size"));
       g_saveFailFlashMs.store(millis() + 1500u, std::memory_order_relaxed);
       displayDirty.store(true, std::memory_order_relaxed);
+      oledPersistRestore();
     } else {
       g_saveFailFlashMs.store(0u, std::memory_order_relaxed);
       /* Visible "DONE!" pill in every view for 1.2 s. */
@@ -633,6 +634,8 @@ void settings_save_task(void* pvParameters) {
      * legitimately change the volume during the write, and this late restore
      * would silently undo the user's change.                                 */
     g_saveRequest.store(false, std::memory_order_release);
+    g_resetInProgress.store(false, std::memory_order_release);
+    g_oledStatusHoldMs.store(0u, std::memory_order_release);
 
     /* [SAVE-FIX7] Release the I2C bus — OLED tasks may render again. */
     if (haveI2c) xSemaphoreGive(i2cMutex);
@@ -649,6 +652,14 @@ void settings_save_task(void* pvParameters) {
     const bool wasReset = g_resetAckPending.exchange(false, std::memory_order_acq_rel);
     const uint8_t ackCmd = wasReset ? CMD_SCOPED_RESET : CMD_SESSION_SAVE;
     txSysexPersistReply(ackCmd, ok ? 16383u : 0u);
+
+    /* Drain any queued persist ACK before reboot so the App is not left on FAILED. */
+    if (ok) {
+      for (int i = 0; i < 40; ++i) {
+        midi_drain_tx_retry();
+        delay(15);
+      }
+    }
 
     /* [SAVE-FIX14] Restart after a good commit — used by the scoped RESET menu,
      * the async reset task, AND now every runtime save (requestScopedSave sets

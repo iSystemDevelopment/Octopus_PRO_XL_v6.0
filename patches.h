@@ -1735,7 +1735,8 @@ static inline bool isAppConnected() {
    * the NvsWorker ACK/NACK is sent (heartbeats may stall during flash writes). */
   return g_saveRequest.load(std::memory_order_acquire) ||
          g_saveArmed.load(std::memory_order_acquire) ||
-         g_resetInProgress.load(std::memory_order_acquire);
+         g_resetInProgress.load(std::memory_order_acquire) ||
+         g_loadInProgress.load(std::memory_order_acquire);
 }
 
 /* [v6.0] transport_available() was removed — the hardware ALWAYS owns transport

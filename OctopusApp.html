@@ -3266,7 +3266,7 @@
                 if (this._persistTimeoutId) clearTimeout(this._persistTimeoutId);
                 this._persistTimeoutId = setTimeout(() => {
                     if (this._persistBusy) this._persistFinished(false, false);
-                }, 60000);
+                }, 25000);
                 return true;
             },
             /** Firmware encodes scope as v14 = ResetScope + 1 (0 reserved for NACK). */
@@ -3302,10 +3302,11 @@
                     title.style.color = ok ? 'var(--green)' : 'var(--red)';
                 }
                 if (el) el.style.display = 'flex';
-                this.log('Persist ' + (ok ? 'complete' : 'failed') + (reboot ? ' — device rebooting' : ''));
+                const ms = ok ? 1500 : 2000;
                 setTimeout(() => {
                     if (el) el.style.display = 'none';
                     this._hidePersistBanner();
+                    this._hidePersistWait();
                     if (ok) {
                         if (reboot) {
                             this._prepareForDeviceReboot();
@@ -3314,7 +3315,7 @@
                             if (this.midiOut) this.txSysex(CMD.APP_SYNC_REQ, 0);
                         }
                     }
-                }, 1500);
+                }, ms);
             },
             _clearPersist() {
                 this._persistBusy = false;
@@ -3760,7 +3761,6 @@
                 if (!this._userDisconnected) this._startReconnectPoll();
             },
             async onConnect() {
-                // [SYNC] NON-DESTRUCTIVE connect — never touches transport or bank.
                 const wasRebootPersist = this._persistBusy &&
                     (this._persistKind === 'save' || this._persistKind === 'reset');
                 this._stopReconnectPoll();
@@ -3775,12 +3775,10 @@
                 this._linkDegradedUntil = 0;
                 this._ringDropWarned = false;
                 this._plockStealWarned = false;
-                if (!wasRebootPersist) {
-                    this._persistBusy = false;
-                    this._persistKind = '';
-                    if (this._persistTimeoutId) { clearTimeout(this._persistTimeoutId); this._persistTimeoutId = null; }
-                    this.closeAllPersistModals();
-                }
+                this._persistBusy = false;
+                this._persistKind = '';
+                if (this._persistTimeoutId) { clearTimeout(this._persistTimeoutId); this._persistTimeoutId = null; }
+                this.closeAllPersistModals();
                 this._rxQueue.length = 0;
                 this._rxDrainScheduled = false;
                 this._syncBurstExpected = true;
@@ -3803,7 +3801,10 @@
                 this.txSysex(CMD.APP_SYNC_REQ, 0);
                 this.startHeartbeat();
                 this.log('Connecting to ' + (this.midiOut.name || 'MIDI') + '…');
-                if (wasRebootPersist) this._persistFinished(true, false);
+                if (wasRebootPersist) {
+                    this._persistBanner('DONE!', 'ok');
+                    setTimeout(() => this._hidePersistBanner(), 1500);
+                }
             },
             // Periodic heartbeat: the firmware marks the link "connected" only while it
             // keeps receiving App sysex (CMD.PING refreshes lastWebSysexMs).  Sending a
@@ -3855,14 +3856,14 @@
                 const beat = () => {
                     if (!this.midiOut || !this._portLive(this.midiOut)) {
                         if (this._persistBusy && (this._persistKind === 'save' || this._persistKind === 'reset')) {
-                            /* Expected USB drop while the device reboots after SAVE/RESET. */
+                            /* Expected USB drop while the device reboots — wait for reconnect. */
                             this.stopHeartbeat();
                             this._connOnline = false;
                             this.updateConnBadge(false);
                             if (!this._userDisconnected) this._startReconnectPoll();
                             return;
                         }
-                        this.closeAllPersistModals();
+                        this._hidePersistWait();
                         this.stopHeartbeat();
                         this._connOnline = false;
                         this.updateConnBadge(false);
@@ -4094,18 +4095,22 @@
                     [CMD.LOAD_PAT_S]: v14 => { const e = document.getElementById('synthPat'); if (e && v14 < SYNTH_PATTERNS.length) e.value = String(v14); },
                     [CMD.LOAD_PAT_D]: v14 => { const e = document.getElementById('drumPat');  if (e && v14 < DRUM_PATTERNS.length)  e.value = String(v14); },
                     [CMD.SESSION_SAVE]: v14 => {
+                        if (!this._persistBusy) return;
                         if (v14 === 16383) this._persistFinished(true, true);
                         else if (v14 === 0) this._persistFinished(false, false);
                     },
                     [CMD.SESSION_LOAD]: v14 => {
+                        if (!this._persistBusy) return;
                         if (v14 === 16383) this._persistFinished(true, false);
                         else if (v14 === 0) this._persistFinished(false, false);
                     },
                     [CMD.SCOPED_RESET]: v14 => {
+                        if (!this._persistBusy) return;
                         if (v14 === 16383) this._persistFinished(true, true);
                         else if (v14 === 0) this._persistFinished(false, false);
                     },
                     [CMD.SOFT_RESET]: v14 => {
+                        if (!this._persistBusy) return;
                         if (v14 === 16383) this._persistFinished(true, false);
                     },
                     [CMD.USR_SOUND_SAVE]: v14 => {

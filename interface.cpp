@@ -139,9 +139,7 @@ void init_fast_gpio() {
 /* ═══════════════════════════════════════════════════════════════════════════
  * SECTION 3 — HARDWARE INIT
  * ═══════════════════════════════════════════════════════════════════════════ */
-void initHardwareInterface() {
-  init_fast_gpio();
-
+void initBootButtons() {
   btnEnc  .init(PIN_ENC_BTN);
   btnOC   .init(PIN_BTN_OC);
   btnScale.init(PIN_BTN_SCALE);
@@ -150,19 +148,50 @@ void initHardwareInterface() {
    * too easily/fast.  Encoder button stays at the default snappy debounce. */
   btnOC   .debounceMs = DEBOUNCE_SLOW_MS;
   btnScale.debounceMs = DEBOUNCE_SLOW_MS;
+}
 
-  delay(100);
-
-  /* Factory-reset hold detection: both OC + SCALE held for 150 ms at boot */
-  {
-    bool combo = true;
-    for (int i = 0; i < 30; ++i) {
-      if (fastRead(PIN_BTN_OC) || fastRead(PIN_BTN_SCALE)) { combo = false; break; }
-      delay(5);
+/* OC + SCALE held (active LOW) for 1.5 s within a 10 s window → FULL factory reset.
+ * Call as early as possible after initBootButtons() + OLED init so the user can
+ * hold during the "INITIALIZING…" splash (not only during late encoder setup). */
+void pollBootFactoryReset() {
+  auto bothHeld = []() {
+    return !fastRead(PIN_BTN_OC) && !fastRead(PIN_BTN_SCALE);
+  };
+  uint32_t heldMs = 0u;
+  bool     armed  = false; /* set once either button is seen pressed */
+  for (uint32_t elapsed = 0u; elapsed < 10000u; elapsed += 10u) {
+    if (bothHeld()) {
+      armed = true;
+      heldMs += 10u;
+      if (hasOLED && heldMs >= 400u && (heldMs % 400u) == 0u) {
+        if (xSemaphoreTake(i2cMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+          display.clearDisplay();
+          display.setTextSize(1);
+          display.setTextColor(SH110X_WHITE);
+          display.setCursor(4, 24);
+          display.print(F("FACTORY RESET"));
+          display.setCursor(4, 36);
+          display.print(F("HOLD OC+SCALE..."));
+          display.display();
+          xSemaphoreGive(i2cMutex);
+        }
+      }
+      if (heldMs >= 1500u) {
+        handleFactoryReset();
+        break; /* esp_restart() on success; on failure fall through */
+      }
+    } else {
+      heldMs = 0u;
+      if (!armed && elapsed >= 400u)
+        return; /* no combo attempt — don't block boot */
     }
-    if (combo) handleFactoryReset();
+    delay(10);
   }
+}
 
+void initHardwareInterface() {
+  init_fast_gpio();
+  initBootButtons();
   /* Encoder — ESP32Encoder PCNT peripheral (library ≥ 0.12, ESP32 Arduino 3.x).
    *
    * vs encoder_example.txt (interrupt demo):
@@ -754,7 +783,7 @@ static void confirmDispatch(ConfirmAction a, uint8_t arg) {
     case ConfirmAction::LOAD:       handleScopedLoad ((ResetScope)(arg & 3u));   break;
     case ConfirmAction::SOFT_RESET:
       seqSoftResetWorkingImage();
-      oledPersistDone(true);
+      oledPersistSucceeded();
       break;
     case ConfirmAction::USR_SOUND_SAVE:                                          /* [USER-SLOTS] */
       if (saveLiveToUserSlot((uint8_t)((arg >> 6) & 1u), (uint8_t)(arg & 63u)) && isAppConnected())
@@ -798,10 +827,18 @@ void updateHardwareInterface() {
       const uint32_t limitMs = g_resetInProgress.load(std::memory_order_relaxed)
                                    ? 45000u : 25000u;
       if ((uint32_t)(now - s_saveStuckSince) > limitMs) {
+        const bool wasReset =
+            g_resetAckPending.load(std::memory_order_acquire);
+        const bool wasSave = g_saveRequest.load(std::memory_order_acquire) ||
+                             g_saveArmed.load(std::memory_order_acquire);
         saveForceUnlock();
+        if (wasReset)
+          txSysexPersistReply(CMD_SCOPED_RESET, 0u);
+        else if (wasSave)
+          txSysexPersistReply(CMD_SESSION_SAVE, 0u);
+        oledPersistFailed();
+        oledPersistRestore();
         s_saveStuckSince = 0u;
-        g_saveFailFlashMs.store(now + 1500u, std::memory_order_relaxed);
-        displayDirty.store(true, std::memory_order_relaxed);
         Serial.println(F("[NVS] WARN: save handshake timeout — unlocked"));
       }
     }
@@ -1312,13 +1349,27 @@ static void oledStatusRestoreNow() {
   displayDirty.store(true, std::memory_order_relaxed);
 }
 
-/* [PERSIST-UI] Unified OLED feedback for SAVE / LOAD / RESET (hardware + App). */
-void oledPersistWorking() {
-  oledStatusHold("PLEASE WAIT", nullptr, 60000u);
+void oledPersistRestore() {
+  oledStatusRestoreNow();
 }
 
-void oledPersistDone(bool ok) {
-  oledStatusHold(ok ? "DONE!" : "FAILED!", nullptr, 1200u);
+/* Non-blocking working state — WAIT… toast driven by g_saveRequest / g_resetInProgress. */
+void oledPersistWorking() {
+  displayDirty.store(true, std::memory_order_relaxed);
+}
+
+void oledPersistSucceeded() {
+  g_oledStatusHoldMs.store(0u, std::memory_order_relaxed);
+  g_saveFailFlashMs.store(0u, std::memory_order_relaxed);
+  g_saveFlashMs.store(millis() + 1200u, std::memory_order_relaxed);
+  displayDirty.store(true, std::memory_order_relaxed);
+}
+
+void oledPersistFailed() {
+  g_oledStatusHoldMs.store(0u, std::memory_order_relaxed);
+  g_resetInProgress.store(false, std::memory_order_release);
+  g_saveFailFlashMs.store(millis() + 1500u, std::memory_order_relaxed);
+  displayDirty.store(true, std::memory_order_relaxed);
 }
 
 bool scopedLoadExecute(ResetScope scope) {
@@ -1372,9 +1423,8 @@ static void reset_persist_task(void*) {
      * of whether the connection was reported as live at this exact moment. */
     txSysexPersistReply(CMD_SCOPED_RESET, 0u);
     g_resetInProgress.store(false, std::memory_order_release);
-    oledPersistDone(false);
-    vTaskDelay(pdMS_TO_TICKS(1300));
-    oledStatusRestoreNow();
+    oledPersistFailed();
+    oledPersistRestore();
   }
   /* On success NvsWorker calls esp_restart() — this task never returns. */
   vTaskDelete(nullptr);
@@ -1384,14 +1434,16 @@ static void reset_persist_task(void*) {
  * Boot OC+SCALE combo: blocking 16 KB save task (NvsWorker not running yet). */
 void handleScopedReset(ResetScope scope) {
   if (g_resetInProgress.exchange(true, std::memory_order_acq_rel)) {
-    oledPersistDone(false);
+    oledPersistFailed();
     txSysexPersistReply(CMD_SCOPED_RESET, 0u);
+    oledPersistRestore();
     return;
   }
   if (saveInProgress()) {
     g_resetInProgress.store(false, std::memory_order_release);
-    oledPersistDone(false);
+    oledPersistFailed();
     txSysexPersistReply(CMD_SCOPED_RESET, 0u);
+    oledPersistRestore();
     return;
   }
 
@@ -1406,13 +1458,13 @@ void handleScopedReset(ResetScope scope) {
     if (!settings_persist_blocking(scope)) {
       g_resetInProgress.store(false, std::memory_order_release);
       rollbackResetRam(scope);
-      oledPersistDone(false);
+      oledPersistFailed();
       txSysexPersistReply(CMD_SCOPED_RESET, 0u);
-      vTaskDelay(pdMS_TO_TICKS(1300));
-      oledStatusRestoreNow();
+      oledPersistRestore();
       return;
     }
-    vTaskDelay(pdMS_TO_TICKS(300));
+    oledPersistSucceeded();
+    vTaskDelay(pdMS_TO_TICKS(400));
     txSysexPersistReply(CMD_SCOPED_RESET, 16383u);
     esp_restart();
     return;
@@ -1422,48 +1474,51 @@ void handleScopedReset(ResetScope scope) {
   if (xTaskCreatePinnedToCore(reset_persist_task, "RstSave", 8192, nullptr, 5,
                               nullptr, 1) != pdPASS) {
     g_resetInProgress.store(false, std::memory_order_release);
-    oledPersistDone(false);
+    oledPersistFailed();
     txSysexPersistReply(CMD_SCOPED_RESET, 0u);
-    vTaskDelay(pdMS_TO_TICKS(1300));
-    oledStatusRestoreNow();
+    oledPersistRestore();
   }
 }
 
 /* handleScopedSave — menu / App scoped save (no restart). */
 void handleScopedSave(ResetScope scope) {
+  oledPersistWorking();
   if (!requestScopedSave((uint8_t)scope)) {
-    oledPersistDone(false);
+    oledPersistFailed();
     txSysexPersistReply(CMD_SESSION_SAVE, 0u);
+    oledPersistRestore();
     return;
   }
-  oledPersistWorking();
 }
 
 /* handleScopedLoad — menu / App scoped reload from NVS.  RAM-only (no flash
  * write) so there is NO reboot: the loaded state goes live immediately.         */
 void handleScopedLoad(ResetScope scope) {
-  if (saveInProgress() || g_resetInProgress.load(std::memory_order_acquire)) {
-    oledPersistDone(false);
+  if (saveInProgress() || g_resetInProgress.load(std::memory_order_acquire) ||
+      g_loadInProgress.load(std::memory_order_acquire)) {
+    oledPersistFailed();
     txSysexPersistReply(CMD_SESSION_LOAD, 0u);
+    oledPersistRestore();
     return;
   }
 
   oledPersistWorking();
+  g_loadInProgress.store(true, std::memory_order_release);
 
   const bool ok = scopedLoadExecute(scope);
-
-  oledPersistDone(ok);
+  g_loadInProgress.store(false, std::memory_order_release);
 
   if (ok) {
+    oledPersistSucceeded();
     sendFullStateSync();
     echoSongState();
     txSysexPersistReply(CMD_SESSION_LOAD, 16383u);
   } else {
+    oledPersistFailed();
     txSysexPersistReply(CMD_SESSION_LOAD, 0u);
   }
-
-  vTaskDelay(pdMS_TO_TICKS(1200));
-  oledStatusRestoreNow();
+  vTaskDelay(pdMS_TO_TICKS(800));
+  oledPersistRestore();
   menuState.store(MenuState::IDLE, std::memory_order_relaxed);
   displayDirty.store(true, std::memory_order_relaxed);
 }

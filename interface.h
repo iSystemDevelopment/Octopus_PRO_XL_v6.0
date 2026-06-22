@@ -488,6 +488,8 @@ extern DisplayI2CStats display_stats;
  * ═══════════════════════════════════════════════════════════════════════════ */
 enum class ResetScope : uint8_t; /* full def in settings.h [I6] */
 void init_fast_gpio();
+void initBootButtons();       /* GPIO + OC/SCALE/ENC buttons (safe before OLED/NVS) */
+void pollBootFactoryReset();  /* OC+SCALE hold @ boot → FULL factory reset + reboot */
 void initHardwareInterface();
 void updateHardwareInterface();
 void updateHardwareParameter(uint8_t l1, uint8_t l2, int16_t delta);
@@ -496,8 +498,10 @@ void handleScopedReset(ResetScope scope); /* [I6] menu-driven scoped reset + res
 void handleScopedSave(ResetScope scope);  /* [WS10] menu/App scoped save (no restart) */
 void handleScopedLoad(ResetScope scope);  /* [LOAD-MENU] menu/App scoped reload (no reboot) */
 bool scopedLoadExecute(ResetScope scope); /* NVS reload + DAC thresholds; no SysEx/UI       */
-void oledPersistWorking();                /* unified "PLEASE WAIT" during persist ops     */
-void oledPersistDone(bool ok);            /* unified "DONE!" / "FAILED!" OLED toast       */
+void oledPersistWorking();                /* brief PLEASE WAIT (non-blocking toast path)  */
+void oledPersistSucceeded();              /* DONE! toast + release OLED hold              */
+void oledPersistFailed();                 /* FAILED! toast + clear stuck persist flags    */
+void oledPersistRestore();                /* force return to APP CONNECTED / dashboard    */
 void updateTaskStackStats();  /* sample uxTaskGetStackHighWaterMark → g_stackStats */
 void printInterfaceStats();   /* recurring Serial telemetry (stack + heap)       */
 

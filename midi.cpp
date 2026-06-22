@@ -74,13 +74,20 @@ struct NvsLoadCtx { uint8_t scope; };
 static void nvs_load_task(void* p) {
   auto* c = static_cast<NvsLoadCtx*>(p);
   oledPersistWorking();
+  g_loadInProgress.store(true, std::memory_order_release);
   const bool ok = scopedLoadExecute((ResetScope)c->scope);
-  oledPersistDone(ok);
+  g_loadInProgress.store(false, std::memory_order_release);
   if (ok) {
+    oledPersistSucceeded();
     sendFullStateSync();
     echoSongState();
+    txSysexPersistReply(CMD_SESSION_LOAD, 16383u);
+  } else {
+    oledPersistFailed();
+    txSysexPersistReply(CMD_SESSION_LOAD, 0u);
   }
-  txSysexPersistReply(CMD_SESSION_LOAD, ok ? 16383u : 0u);
+  vTaskDelay(pdMS_TO_TICKS(800));
+  oledPersistRestore();
   delete c;
   vTaskDelete(nullptr);
 }
@@ -918,40 +925,61 @@ void handleSysexCommand(uint8_t cmd, uint16_t v14) {
       requestFullStateSync(true, true);
       break;
     case CMD_SESSION_SAVE:
-      /* App encodes scope as v14 = scope + 1  (FULL=1 BANKS=2 MOTION=3 SETTINGS=4).
-       * v14=0 is the NACK echo; v14=16383 is the ACK echo.  Using scope+1 avoids
-       * the collision between FULL scope (0) and the NACK sentinel (0) that was
-       * silently dropping every FULL-scope save request. */
-      if (v14 == 16383u) break; /* ACK echo — ignore */
-      if (v14 < 1u || v14 > 4u) break; /* NACK echo (0) or out-of-range */
-      if (saveInProgress() || g_resetInProgress.load(std::memory_order_acquire)) {
+      if (v14 == 16383u) break;
+      if (v14 < 1u || v14 > 4u) {
         txSysexPersistReply(CMD_SESSION_SAVE, 0u);
         break;
       }
-      if (!requestScopedSave((uint8_t)((v14 - 1u) & 3u)))
-        txSysexPersistReply(CMD_SESSION_SAVE, 0u); /* NACK — save already in flight */
+      if (g_resetInProgress.load(std::memory_order_acquire) &&
+          !saveInProgress()) {
+        g_resetInProgress.store(false, std::memory_order_release);
+      }
+      if (saveInProgress() || g_resetInProgress.load(std::memory_order_acquire)) {
+        oledPersistFailed();
+        txSysexPersistReply(CMD_SESSION_SAVE, 0u);
+        oledPersistRestore();
+        break;
+      }
+      oledPersistWorking();
+      if (!requestScopedSave((uint8_t)((v14 - 1u) & 3u))) {
+        oledPersistFailed();
+        txSysexPersistReply(CMD_SESSION_SAVE, 0u);
+        oledPersistRestore();
+      }
       break;
     case CMD_SESSION_LOAD:
       if (v14 == 16383u) break; /* ACK echo — ignore */
-      if (v14 < 1u || v14 > 4u) break; /* NACK echo (0) or out-of-range */
-      if (saveInProgress() || g_resetInProgress.load(std::memory_order_acquire)) {
-        txSysexPersistReply(CMD_SESSION_LOAD, 0u); /* NACK — persist op in flight */
+      if (v14 < 1u || v14 > 4u) {
+        txSysexPersistReply(CMD_SESSION_LOAD, 0u);
         break;
       }
+      if (saveInProgress() || g_resetInProgress.load(std::memory_order_acquire) ||
+          g_loadInProgress.load(std::memory_order_acquire)) {
+        oledPersistFailed();
+        txSysexPersistReply(CMD_SESSION_LOAD, 0u);
+        oledPersistRestore();
+        break;
+      }
+      oledPersistWorking();
       /* [FIX-C1] Dispatch LOAD to a 16 KB task — MidiUsbRx has only 8 KB. */
       {
         NvsLoadCtx* ctx = new NvsLoadCtx{ (uint8_t)((v14 - 1u) & 3u) };
         if (xTaskCreatePinnedToCore(nvs_load_task, "NvsLoad", 16384,
                                     ctx, 3, nullptr, 1) != pdPASS) {
           delete ctx;
-          txSysexPersistReply(CMD_SESSION_LOAD, 0u); /* NACK — task create failed */
+          oledPersistFailed();
+          txSysexPersistReply(CMD_SESSION_LOAD, 0u);
+          oledPersistRestore();
         }
       }
       break;
     case CMD_SCOPED_RESET:
-      /* App encodes scope as v14 = scope + 1 (same convention as SESSION_SAVE). */
-      if (v14 == 16383u) break; /* ACK echo — ignore */
-      if (v14 < 1u || v14 > 4u) break; /* NACK echo (0) or out-of-range */
+      if (v14 == 16383u) break;
+      if (v14 < 1u || v14 > 4u) break;
+      if (g_resetInProgress.load(std::memory_order_acquire) &&
+          !saveInProgress()) {
+        g_resetInProgress.store(false, std::memory_order_release);
+      }
       handleScopedReset((ResetScope)((v14 - 1u) & 3u)); break;
     case CMD_SEQ_CLEAR:
       /* [CLEAR] Mirror of hardware SEQ SETUP → Clear (active grid + sounds→0). */
@@ -961,7 +989,7 @@ void handleSysexCommand(uint8_t cmd, uint16_t v14) {
       /* [SOFT-RESET] CLEAR extended: all settings + sounds + nav → initial. */
       if (v14 == 16383u) break;
       seqSoftResetWorkingImage();
-      oledPersistDone(true);
+      oledPersistSucceeded();
       txSysexPersistReply(CMD_SOFT_RESET, 16383u);
       break;
     case CMD_SEQ_RESTART:

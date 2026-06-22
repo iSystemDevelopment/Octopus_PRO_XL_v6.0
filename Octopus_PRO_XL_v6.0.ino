@@ -171,6 +171,11 @@ void setup() {
     Serial.println(F("not detected — headless mode"));
   }
 
+  /* Factory-reset combo: hold OC + SCALE during INITIALIZING… (before NVS load). */
+  init_fast_gpio();
+  initBootButtons();
+  pollBootFactoryReset();
+
   /* PHASE 4 — Load settings from NVS */
   Serial.print(F("  [4] NVS settings ... "));
   if (!loadSettings()) {
