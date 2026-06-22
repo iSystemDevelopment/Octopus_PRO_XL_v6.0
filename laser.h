@@ -243,22 +243,13 @@ static inline void IRAM_ATTR update_mcpwm_channel(
   uint32_t val, uint32_t& cval, int8_t& cforce) {
   if (!gen || !cmpr) return;
   const int8_t ft = (val == 0u) ? 0 : -1;
-  /* Write compare BEFORE releasing force so the new duty is already in the
-   * hardware register when the generator output is un-forced.  The comparators
-   * are configured with update_cmp_on_tez = false (immediate, not TEZ-buffered)
-   * so the write takes effect within a few CPU cycles — well before the
-   * force-level call completes.  This prevents the first PWM cycle after a
-   * beam turn-on from briefly firing at the *previous* beam's duty cycle,
-   * which was invisible with the overflow-dimmed values but appears as a
-   * faint flash at full brightness.
-   * Force=0 (OFF) keeps the output LOW during the compare write — no glitch. */
-  if (ft == -1 && val != cval) {
-    mcpwm_comparator_set_compare_value(cmpr, val);
-    cval = val;
-  }
   if (ft != cforce) {
     mcpwm_generator_set_force_level(gen, ft, true);
     cforce = ft;
+  }
+  if (ft == -1 && val != cval) {
+    mcpwm_comparator_set_compare_value(cmpr, val);
+    cval = val;
   }
 }
 
@@ -287,15 +278,15 @@ static inline void IRAM_ATTR laserRGB(uint8_t r, uint8_t g, uint8_t b, int si) {
   const uint32_t duty = stringDuty[si & 7].load(std::memory_order_relaxed);
   const uint32_t maxD = MCPWM_MAX_DUTY;
   /* Two-step scaling avoids uint32 overflow: r*duty*maxD overflows for r≥64
-   * with DUTY_UNITY=65025, maxD=1036 (product reaches ~17 B, > 2^32=4.3 B).
-   * Step 1: r*maxD/255 ≤ maxD ≤ 1036.  Step 2: v*duty/DUTY_UNITY ≤ maxD. */
-  auto scale = [maxD, duty](uint8_t c) -> uint32_t {
-    const uint32_t v = (uint32_t)c * maxD / 255u;
-    return std::min(maxD, v * duty / DUTY_UNITY);
-  };
-  update_mcpwm_channel(laser_gen_r, laser_cmpr_r, scale(r), cache_val_r, cache_force_r);
-  update_mcpwm_channel(laser_gen_g, laser_cmpr_g, scale(g), cache_val_g, cache_force_g);
-  update_mcpwm_channel(laser_gen_b, laser_cmpr_b, scale(b), cache_val_b, cache_force_b);
+   * with DUTY_UNITY=65025, maxD=1036 (product reaches ~17 B > 2^32=4.3 B).
+   * Step 1: c*maxD/255 ≤ maxD.  Step 2: v*duty/DUTY_UNITY ≤ maxD.
+   * Written as explicit code (no lambda) so all arithmetic is IRAM-resident. */
+  const uint32_t vr = (uint32_t)r * maxD / 255u;
+  const uint32_t vg = (uint32_t)g * maxD / 255u;
+  const uint32_t vb = (uint32_t)b * maxD / 255u;
+  update_mcpwm_channel(laser_gen_r, laser_cmpr_r, std::min(maxD, vr * duty / DUTY_UNITY), cache_val_r, cache_force_r);
+  update_mcpwm_channel(laser_gen_g, laser_cmpr_g, std::min(maxD, vg * duty / DUTY_UNITY), cache_val_g, cache_force_g);
+  update_mcpwm_channel(laser_gen_b, laser_cmpr_b, std::min(maxD, vb * duty / DUTY_UNITY), cache_val_b, cache_force_b);
 }
 
 static inline void IRAM_ATTR laserWhite(uint8_t lum) {

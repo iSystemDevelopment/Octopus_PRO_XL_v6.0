@@ -146,16 +146,8 @@ void setupMCPWM() {
   mcpwm_operator_connect_timer(laser_oper_g, laser_timer);
   mcpwm_operator_connect_timer(laser_oper_b, laser_timer);
 
-  /* Comparators — IMMEDIATE update (update_cmp_on_tez = false, all flags 0).
-   * We always write the new compare value while force=0 holds the output LOW,
-   * so there is no mid-cycle glitch risk.  Immediate mode means the register
-   * is live within a few CPU cycles of the write — the new duty is already in
-   * hardware when set_force_level(-1) releases the output a few cycles later.
-   * TEZ-buffered mode (update_cmp_on_tez = true, the old setting) delayed the
-   * update by up to one full period (103 µs), causing the first PWM cycle of
-   * each dwell to fire at the previous beam's duty cycle — a visible flash now
-   * that the laserRGB overflow bug no longer masks brightness. */
-  mcpwm_comparator_config_t cmpr_cfg = {}; /* all flags 0 → immediate update */
+  /* Comparators — update on timer-zero for glitch-free duty changes */
+  mcpwm_comparator_config_t cmpr_cfg = { .flags = { .update_cmp_on_tez = true } };
   if (mcpwm_new_comparator(laser_oper_r, &cmpr_cfg, &laser_cmpr_r) != ESP_OK) return;
   if (mcpwm_new_comparator(laser_oper_g, &cmpr_cfg, &laser_cmpr_g) != ESP_OK) return;
   if (mcpwm_new_comparator(laser_oper_b, &cmpr_cfg, &laser_cmpr_b) != ESP_OK) return;

@@ -299,14 +299,23 @@ static constexpr uint32_t LASER_STAB_US = 200;   /* ACTIVE: beam+comparator sett
 static constexpr uint32_t SETTLE_MIN_US = 600;   /* ACTIVE: min galvo settle  */
 static constexpr uint32_t SETTLE_MAX_US = 800;   /* ACTIVE: settle cap (big moves) */
 /* GALVO_REVERSE_EXTRA_US — extra dark-settle added to the THREE moves nearest
- * each scan turnaround (reverseSettleCnt=3 in laser.cpp).  The galvo reverses
- * at full scan velocity, producing overshoot/ringing that bleeds across more
- * than 2 strings.  Raised 250→500 µs so the physical-extreme strings (1 and 8)
- * get 1228 µs total settle (728 base + 500) instead of 978 µs, which was
- * insufficient to clear the ringing at the DAC hard limits.  Lower toward 250
- * if the extra latency becomes audible as a scan-rate drop; raise toward 700
- * if faint lines still cling to the outer beams. */
-static constexpr uint32_t GALVO_REVERSE_EXTRA_US = 500;
+ * each scan turnaround (reverseSettleCnt=3 in laser.cpp).
+ *
+ * Root cause of faint lines on strings 1, 6, 7, 8:
+ *   1. The laserRGB overflow fix raised beam brightness from ~25 % to 100 %,
+ *      making pre-existing micro-ringing visible that was previously too dim
+ *      to see.
+ *   2. The original reverseSettleCnt=2 only covered the endpoint + 1 neighbour;
+ *      string 6 (idx 5) received zero extra settle and showed a faint trace.
+ *   3. String 1 (idx 0) received 978 µs (728 base + 250) — insufficient at the
+ *      physical DAC extreme where galvo overshoot is largest.
+ *
+ * Fix: reverseSettleCnt raised 2→3 (covers string 6), extra raised 250→350 µs
+ * so endpoints get 1078 µs total (728 + 350).  Keep SETTLE_MIN_US=600 unchanged
+ * so inner strings are unaffected.  If a faint still clings to string 1 or 8,
+ * raise in 50 µs steps toward 500; if endpoint beams look dimmer than inner
+ * ones (refresh-rate drop), lower back toward 250. */
+static constexpr uint32_t GALVO_REVERSE_EXTRA_US = 350;
 
 static constexpr uint32_t BEAM_GATE_HOLD_MAX = 500;
 /* [STUCK-FIX] Upper bound for the anti-stuck fail-safe timeout (beamStuckReleaseMs,
