@@ -337,7 +337,7 @@ bool IRAM_ATTR harp_synth_fill_buf(int16_t* out_buf, size_t frames) {
    * evaluates exp2f() pitch modulation, selects the wave-morph table and slews
    * the SVF coefficients EVERY frame — work that is pure waste when no voice is
    * sounding.  Without this guard an idle harp still grinds all 512 frames of
-   * every DMA buffer (and can call Flash exp2f 48 kHz·times/s if the patch LFO
+   * every DMA buffer (and can call Flash exp2f 44.1 kHz·times/s if the patch LFO
    * routes to pitch), inflating baseline load and stealing headroom from the
    * engine that IS playing.  Bail to silence the instant the engine is quiet. */
   /* [MUTE-GATE] If the harp is muted, skip the entire DSP pass — the FX stage
@@ -1061,8 +1061,18 @@ void IRAM_ATTR harpMidiNoteOff(uint8_t note) {
  * ═══════════════════════════════════════════════════════════════════════════ */
 void harpSetPlayMode(PlayMode m) {
   if (m == currentPlayMode.load(std::memory_order_relaxed)) return;
-  if (m == PlayMode::STRINGS)
-    harpArpEnabled.store(false, std::memory_order_relaxed);
+  /* [ARP-ECHO-FIX] STRINGS force-disables the harp arpeggiator (it is POLY8/SOLO
+   * only).  exchange() reports whether the arp was actually ON, so CMD_HARP_ARP_EN=0
+   * is echoed ONLY on a genuine ON→OFF transition.  Without this, a device-side
+   * mode change (hardware OC-cycle in interface.cpp or App-pushed CMD_PLAY_MODE)
+   * silenced the arp but left the App's HARP ARP toggle stale ON until the next
+   * full resync — the App's PLAY_MODE handler reflects mode with tx=false and
+   * never runs its own arp-disable branch.  txSysex self-gates on isAppConnected();
+   * harpSetPlayMode runs only on the MIDI/UI tasks, so taking the MIDI mutex is
+   * safe (never called from the audio core). */
+  if (m == PlayMode::STRINGS &&
+      harpArpEnabled.exchange(false, std::memory_order_relaxed))
+    txSysex(CMD_HARP_ARP_EN, 0u);
   currentPlayMode.store(m, std::memory_order_release);
   harpAllNotesOff();                               /* drop voices/owners/solo stack */
   /* [STUCK-FIX] Also clear the laser's per-string physical-hold detection state

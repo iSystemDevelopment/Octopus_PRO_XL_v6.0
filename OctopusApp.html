@@ -1817,7 +1817,10 @@
             D_FX_P2: 192,            // drum insert-A depth (p2)
             // [RND-RESTART] App→firmware: restart step counter from 0 while playing.
             // Sent after RND-H / RND-D so the new random pattern plays from beat 1.
-            SEQ_RESTART: 193
+            SEQ_RESTART: 193,
+            // [SUBSTEP] device→App ONLY: sub-step phase for the PLL playhead.
+            // v14 = (step6 << 8) | phase8 — refines _pllAnchorTime within the current step.
+            STEP_PHASE: 194
         };
         const ARP_PAT_NAMES = ['Up', 'Down', 'UpDn', 'DnUp', 'Rnd', 'AsIs', 'Up+1', 'Dn-1'];
         const ARP_RATE_NAMES = ['1/1', '1/2', '1/4', '1/8', '1/8T', '1/16', '1/16T', '1/32'];
@@ -4221,6 +4224,26 @@
                             this._phPendingStep = s;
                         }
                     },
+                    // [SUBSTEP] Sub-step phase refinement (CMD_STEP_PHASE, ~20 Hz).
+                    // Pure refinement: it ONLY nudges _pllAnchorTime within the CURRENT
+                    // step so interpolation reflects the true hardware phase (USB/drain
+                    // latency corrected). It never sets step/page/wrap — STEP_SYNC owns
+                    // those. Guards: same step only, and forward-only (never a backward
+                    // stutter), capped at 0.98 like _pllPositionTick.
+                    [CMD.STEP_PHASE]: v14 => {
+                        if (!this.isPlaying || this._pllAnchorStep < 0) return;
+                        // Pure visual refinement — deliberately does NOT touch the
+                        // STEP_SYNC liveness/staleness timers (_lastStepSyncRxMs), so a
+                        // real STEP_SYNC stall is still detectable even if phase flows.
+                        const step = (v14 >> 8) & 0x3F;
+                        if (step !== (this._pllAnchorStep | 0)) return; // boundary in flight → STEP_SYNC
+                        const ph = (v14 & 0xFF) / 256;       // true phase within step (0..~0.996)
+                        const bpm = Math.max(40, this.bpm || 120);
+                        const stepMs = 60000 / bpm / 4;
+                        const now = performance.now();
+                        const curFrac = (now - this._pllAnchorTime) / stepMs;
+                        if (ph > curFrac && ph <= 0.98) this._pllAnchorTime = now - ph * stepMs;
+                    },
                     [CMD.CPU_LOAD]: v14 => {
                         const pct = Math.max(0, Math.min(100, v14 & 0x7F));
                         const drops = (v14 >> 7) & 0x7F;
@@ -4243,15 +4266,11 @@
                             this.log('P-lock lanes full — oldest lane replaced to record new automation');
                         }
                     },
-                    // [G2] Grid rows: separate entries for lo/hi so each is a direct lookup.
-                    [CMD.GRID_ROW_LO]: v14 => {
-                        const bulk = this._syncBurstExpected || this._syncBurstActive;
-                        this._applyGridRowHalf((v14 >> 12) & 3, (v14 >> 8) & 15, v14 & 0xFF, false, (v14 >> 4) & 3, bulk);
-                    },
-                    [CMD.GRID_ROW_HI]: v14 => {
-                        const bulk = this._syncBurstExpected || this._syncBurstActive;
-                        this._applyGridRowHalf((v14 >> 12) & 3, (v14 >> 8) & 15, v14 & 0xFF, true,  (v14 >> 4) & 3, bulk);
-                    },
+                    // [FIX-GRID-ENC] No incoming CMD.GRID_ROW_LO/HI (162/163) handlers.
+                    // The device emits grid rows ONLY as SX_SUB_GRID_ROW frames (sub 0x05),
+                    // decoded in onMidiMessage() below — never the legacy v14 encoding whose
+                    // page bits overlapped the byte bits (corrupting steps 4-5 on pages 1-3).
+                    // A stray legacy 162/163 frame falls through applyIncoming() as a no-op.
                 };
             },
             applyIncoming(cmd, v14) {
@@ -5538,7 +5557,7 @@
             // stay readable; toggle with the FILTER button.
             _monBuf: [],
             _monOpen: false,
-            _monFilter: true,                       // hide PING / STEP_SYNC / CPU_LOAD / SONG_POS
+            _monFilter: true,                       // hide PING / STEP_SYNC / STEP_PHASE / CPU_LOAD / SONG_POS
             _monMax: 300,
             _userDisconnected: false,               // sticky: survives device rescans
             _ac: null,                              // [LIVE-PERF] silent keep-alive AudioContext
@@ -5556,7 +5575,8 @@
             // High-rate / low-value streams suppressed when the filter is on.
             _monNoisy(cmd) {
                 return cmd === CMD.PING || cmd === CMD.STEP_SYNC ||
-                    cmd === CMD.CPU_LOAD || cmd === CMD.SONG_POS;
+                    cmd === CMD.CPU_LOAD || cmd === CMD.SONG_POS ||
+                    cmd === CMD.STEP_PHASE;
             },
             _monPush(line) {
                 const b = this._monBuf;

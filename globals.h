@@ -718,16 +718,36 @@ inline portMUX_TYPE patchMux = portMUX_INITIALIZER_UNLOCKED;  /* livePatch + hwS
 inline portMUX_TYPE motionMux = portMUX_INITIALIZER_UNLOCKED; /* motion matrix        */
 
 /* ═══════════════════════════════════════════════════════════════════════════
- * SECTION 6 — FREERTOS TASK HANDLES
- * ═══════════════════════════════════════════════════════════════════════════ */
-inline TaskHandle_t hAudioTask = nullptr;   /* Core 0, priority 24 */
-inline TaskHandle_t hMidiTask = nullptr;    /* Core 0, priority 20 */
-inline TaskHandle_t hDBeamTask = nullptr;   /* Core 0, priority 19 */
-inline TaskHandle_t hSeqBgTask = nullptr;   /* Core 0, priority 18 */
-inline TaskHandle_t hControlTask = nullptr; /* Core 0, priority  5 */
-inline TaskHandle_t hDisplayTask = nullptr; /* Core 0, priority  4 */
-inline TaskHandle_t hLaserTask = nullptr;   /* Core 1, loop()      */
-inline TaskHandle_t hNvsTask = nullptr;     /* Core 1, priority  2 */
+ * SECTION 6 — FREERTOS TASK PRIORITIES + HANDLES
+ *
+ * [TASK-PRIO-SSOT] Single source of truth for the persistent core-task priorities.
+ * These were RAISED vs the original layout to cure UI-render / App-echo starvation
+ * under full DSP load.  The relative ORDER is the contract: the realtime task
+ * (AudioSynth on Core 0, LaserSweep on Core 1) at TASK_PRIO_RT always outranks
+ * every cooperative task on its own core.  Change a priority HERE, never at the
+ * xTaskCreatePinnedToCore() call sites — inline literals there are what let the old
+ * comments drift out of sync.  Mirrored in the code_info.h / audio.h task maps.
+ *
+ *   Core 0: AUDIO(24) > [esp_timer 22] > DBEAM(19) > OLED(18) > CONTROL(16)
+ *   Core 1: LASER(24) > SEQ_SYSEX(14) > MIDI_RX(12) > NVS(9) > FULLSYNC(8)
+ * Transient one-shot workers (NvsBlk/RstSave 5, NvsLoad 3) stay below FULLSYNC.   */
+static constexpr UBaseType_t TASK_PRIO_RT        = 24; /* AudioSynth (C0) + LaserSweep (C1) */
+static constexpr UBaseType_t TASK_PRIO_DBEAM     = 19; /* dbeam_adc      (C0)               */
+static constexpr UBaseType_t TASK_PRIO_OLED      = 18; /* OledRender     (C0)               */
+static constexpr UBaseType_t TASK_PRIO_CONTROL   = 16; /* ControlPoll    (C0)               */
+static constexpr UBaseType_t TASK_PRIO_SEQ_SYSEX = 14; /* SeqSysexOut    (C1)               */
+static constexpr UBaseType_t TASK_PRIO_MIDI_RX   = 12; /* MidiUsbRx      (C1)               */
+static constexpr UBaseType_t TASK_PRIO_NVS       = 9;  /* NvsWorker      (C1)               */
+static constexpr UBaseType_t TASK_PRIO_FULLSYNC  = 8;  /* FullSyncOut    (C1)               */
+
+inline TaskHandle_t hAudioTask = nullptr;   /* Core 0, TASK_PRIO_RT        (24) */
+inline TaskHandle_t hMidiTask = nullptr;    /* Core 1, TASK_PRIO_MIDI_RX   (12) */
+inline TaskHandle_t hDBeamTask = nullptr;   /* Core 0, TASK_PRIO_DBEAM     (19) */
+inline TaskHandle_t hSeqBgTask = nullptr;   /* Core 1, TASK_PRIO_SEQ_SYSEX (14) */
+inline TaskHandle_t hControlTask = nullptr; /* Core 0, TASK_PRIO_CONTROL   (16) */
+inline TaskHandle_t hDisplayTask = nullptr; /* Core 0, TASK_PRIO_OLED      (18) */
+inline TaskHandle_t hLaserTask = nullptr;   /* Core 1, TASK_PRIO_RT        (24) */
+inline TaskHandle_t hNvsTask = nullptr;     /* Core 1, TASK_PRIO_NVS       (9)  */
 
 /* ═══════════════════════════════════════════════════════════════════════════
  * SECTION 7 — CORE RUNTIME MODE & UI STATE

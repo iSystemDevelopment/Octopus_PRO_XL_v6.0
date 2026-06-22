@@ -68,7 +68,7 @@ esp_err_t init_i2s_hardware() {
  * by each instrument module; the multibuffer FX mix is owned by effect.cpp.
  * This task only sequences the per-buffer pipeline and feeds the I2S DMA.
  *
- * Per-DMA-buffer pipeline (512 frames @ 48 kHz → ~10.67 ms):
+ * Per-DMA-buffer pipeline (512 frames @ 44.1 kHz → ~11.61 ms):
  *   1. FX preset change detection (cold-loaded off the hot path)
  *   2. Sync D-BEAM drum sends into the FX struct (syncDrumSends; self-locks)
  *   3. Sample-locked step engine tick (sequencer_render_block, groovebox.cpp)
@@ -317,7 +317,7 @@ void IRAM_ATTR audio_synthesis_task(void* pvParameters) {
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
- * control_surface_task — Core 0, priority 10  [ControlPoll]
+ * control_surface_task — Core 0, priority 16  [ControlPoll]
  *
  * Polls ESP32Encoder::getCount() at 200 Hz.  MUST stay on the same core as
  * ESP32Encoder::isrServiceCpuCore (interface.cpp initHardwareInterface).
@@ -354,7 +354,7 @@ void IRAM_ATTR control_surface_task(void* pvParameters) {
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
- * display_refresh_task — Core 0, priority 4  [A5]
+ * display_refresh_task — Core 0, priority 18  [A5]
  *
  * When the App is connected: show a static "APP CONNECTED" splash and do not
  * render the full menu tree.  This avoids parameter display churn, prevents
@@ -530,7 +530,7 @@ void IRAM_ATTR display_refresh_task(void* pvParameters) {
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
- * settings_save_task — Core 1, priority 3
+ * settings_save_task — Core 1, priority 9  [NvsWorker]
  *
  * NVS save handshake:
  *   1. g_saveRequest fires → ramp master volume to 0 (click-free)
@@ -737,6 +737,8 @@ bool init_audio_system() {
    * layout is NEGATIVE work removal: the bursty data-traffic tasks (MIDI USB RX,
    * SeqSysexOut, NVS flash) live on Core 1 so their ISRs + cache thrash no longer
    * stall the audio core mid-buffer.  That isolation is the lowest-glitch setup yet.
+   * Live priorities come from the globals.h TASK_PRIO_* constants ([TASK-PRIO-SSOT];
+   * raised vs the original layout to cure UI/echo starvation):
    *   24 AudioSynth  — never preempted while an I2S DMA write is pending
    *   19 dbeam_adc   — D-BEAM ADC Kalman.  Its GDMA ISR is installed on Core 1
    *                    (initDBeamSensor runs from setup() on Core 1), so only the
@@ -746,13 +748,13 @@ bool init_audio_system() {
    *                    Core-1 ADC task would never run in that window.  At 19 it
    *                    drains the ring in audio's I2S-block slack; below 24 it can
    *                    never delay a buffer fill.
-   *   14 OledRender  — moved here from Core 1 so the laser owns Core 1 alone
+   *   18 OledRender  — moved here from Core 1 so the laser owns Core 1 alone
    *                    (smoother beams).  Its ~9 ms blocking I2C flush is SAFE:
    *                    AudioSynth (24) + dbeam_adc (19) preempt it instantly, so
    *                    the flush is chopped across slack → "sluggish but reliable"
    *                    display, never an underrun.
-   *   10 ControlPoll — encoder/buttons; runs in leftover slack.
-   * NOTE: OledRender(14) sits ABOVE ControlPoll(10), so during a redraw the
+   *   16 ControlPoll — encoder/buttons; runs in leftover slack.
+   * NOTE: OledRender(18) sits ABOVE ControlPoll(16), so during a redraw the
    * screen out-prioritises input — that is why the UI feels heaviest while it
    * repaints.  If input latency ever matters more than redraw speed, drop
    * OledRender below ControlPoll.
@@ -762,9 +764,12 @@ bool init_audio_system() {
    * shipping: the boot log prints each task's stack high-water mark ~5 s after
    * boot (see control_surface_task) — if any task shows < 512 bytes free, bump
    * it back up. */
-  xTaskCreatePinnedToCore(audio_synthesis_task, "AudioSynth", 16384, NULL, 24, &hAudioTask,   0);
-  xTaskCreatePinnedToCore(display_refresh_task,      "OledRender",  16384, NULL,  18, &hDisplayTask,0);//14
-  xTaskCreatePinnedToCore(control_surface_task,    "ControlPoll",8192, NULL, 16, &hControlTask,0); //10
+  /* Priorities come from globals.h TASK_PRIO_* (single source of truth — see the
+   * [TASK-PRIO-SSOT] block).  The old inline priority + `// old:N` notes are kept
+   * in code_info.h / the comment blocks above; do not re-introduce literals here. */
+  xTaskCreatePinnedToCore(audio_synthesis_task, "AudioSynth", 16384, NULL, TASK_PRIO_RT,      &hAudioTask,   0);
+  xTaskCreatePinnedToCore(display_refresh_task, "OledRender", 16384, NULL, TASK_PRIO_OLED,    &hDisplayTask, 0);
+  xTaskCreatePinnedToCore(control_surface_task, "ControlPoll", 8192, NULL, TASK_PRIO_CONTROL, &hControlTask, 0);
   /* [DBEAM-FIX] Priority 8 → 19.  At 8 this task sat BELOW OledRender(14) and
    * ControlPoll(10), so under full play (audio 65–98 %) it was the lowest-priority
    * task on a saturated core → starved → ADC ring backed up → "D-BEAM dead /
@@ -775,7 +780,7 @@ bool init_audio_system() {
    * symptom).  On Core 0 the lit window stays open independently; priority 19 lets
    * the ADC drain the ring in audio's I2S-block slack, above the cooperative UI
    * tasks but still below AudioSynth(24) so it can never cause an underrun. */
-  xTaskCreatePinnedToCore(adc_dma_processing_task, "dbeam_adc",  6144, NULL, 19, &hDBeamTask,  0);
+  xTaskCreatePinnedToCore(adc_dma_processing_task, "dbeam_adc",  6144, NULL, TASK_PRIO_DBEAM, &hDBeamTask,  0);
 
 
 
@@ -790,17 +795,17 @@ bool init_audio_system() {
    *                   owns the core during every lit dwell — which is exactly why
    *                   dbeam_adc CANNOT live here (it would never run while lit and
    *                   so could never commit a sample).  dbeam_adc is on Core 0.
-   *   12 SeqSysexOut— drains the lock-free out-ring → App STEP_SYNC / SONG_POS
+   *   14 SeqSysexOut— drains the lock-free out-ring → App STEP_SYNC / SONG_POS
    *                   SysEx echoes (takes midiMutex, must stay off the audio core).
-   *    6 MidiUsbRx  — USB MIDI in; ~1 ms parse latency is inaudible.  Carries the
+   *   12 MidiUsbRx  — USB MIDI in; ~1 ms parse latency is inaudible.  Carries the
    *                   OctopusApp 0x7D SysEx control + optional instrument play-in.
-   *    3 NvsWorker  — blocked 99 % of the time; wakes only on a save request. */
+   *    9 NvsWorker  — blocked 99 % of the time; wakes only on a save request. */
    
 
 
-  xTaskCreatePinnedToCore(laser_sweep_task,          "LaserSweep",  8192,  NULL, 24, &hLaserTask,  1);
-  xTaskCreatePinnedToCore(sequencer_background_task,"SeqSysexOut", 4096, NULL, 14, &hSeqBgTask, 1);//12
-  xTaskCreatePinnedToCore(midi_usb_event_task,  "MidiUsbRx",  8192, NULL, 12, &hMidiTask,  1);//6
+  xTaskCreatePinnedToCore(laser_sweep_task,          "LaserSweep",  8192, NULL, TASK_PRIO_RT,        &hLaserTask, 1);
+  xTaskCreatePinnedToCore(sequencer_background_task, "SeqSysexOut", 4096, NULL, TASK_PRIO_SEQ_SYSEX, &hSeqBgTask, 1);
+  xTaskCreatePinnedToCore(midi_usb_event_task,       "MidiUsbRx",   8192, NULL, TASK_PRIO_MIDI_RX,   &hMidiTask,  1);
   
   /* [USB-ONLY] MIDI RX always runs: it polls USB MIDI for OctopusApp 0x7D SysEx
    * control + optional instrument play-in (DIN UART removed in v6.0).            */
@@ -819,7 +824,7 @@ bool init_audio_system() {
    * in sequence with comfortable margin for future IDF stack growth.
    * Task is NOT IRAM_ATTR — NVS/flash paths execute from flash; marking the task
    * IRAM_ATTR made cache-off windows riskier on some IDF builds. */
-  xTaskCreatePinnedToCore(settings_save_task, "NvsWorker", 16384, NULL, 9, &hNvsTask, 1);//3
+  xTaskCreatePinnedToCore(settings_save_task, "NvsWorker", 16384, NULL, TASK_PRIO_NVS, &hNvsTask, 1);
   Serial.printf("[Audio] DSP online — %u Hz / %u frames / %u Hz PWM\n",
     SAMPLE_RATE, (unsigned)DMA_BUFFER_FRAMES, LASER_PWM_FREQ_HZ);
   return true;

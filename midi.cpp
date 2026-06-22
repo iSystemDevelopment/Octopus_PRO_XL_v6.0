@@ -251,9 +251,10 @@ void txSysex(uint8_t cmd, uint16_t v14bit) {
 
   const uint32_t now = millis();
   /* Deduplication: don't re-send the same value within 500 ms.
-   * STEP_SYNC / SONG_POS are clock position — never dedup (playhead stalls if
-   * the same step index repeats within 500 ms at slow tempos / short lengths). */
-  if (cmd != CMD_STEP_SYNC && cmd != CMD_SONG_POS) {
+   * STEP_SYNC / SONG_POS / STEP_PHASE are clock position — never dedup (the
+   * playhead stalls if the same step/phase value repeats within 500 ms at slow
+   * tempos / short lengths). */
+  if (cmd != CMD_STEP_SYNC && cmd != CMD_SONG_POS && cmd != CMD_STEP_PHASE) {
     if (s_last_tx_val[cmd] == v14bit && (now - s_last_tx_ms[cmd] < 500u)) return;
   }
   /* Rate limiting for fast-changing parameter groups */
@@ -263,7 +264,7 @@ void txSysex(uint8_t cmd, uint16_t v14bit) {
   /* [ECHO-FIX] Stamp dedup/rate-limit state ONLY after a successful send. */
   if (!txSysexEmit(cmd, v14bit)) {
     /* Clock-position echoes go stale quickly — never queue for retry. */
-    if (cmd != CMD_STEP_SYNC && cmd != CMD_SONG_POS)
+    if (cmd != CMD_STEP_SYNC && cmd != CMD_SONG_POS && cmd != CMD_STEP_PHASE)
       txRetryPush(cmd, v14bit);
     return;
   }
@@ -1313,9 +1314,11 @@ void sendFullStateSync() {
   txSysex(CMD_PLAY_MODE, (uint16_t)currentPlayMode.load(std::memory_order_relaxed));
 
   /* ── [R8] Extended state — all previously-missing echoes ─────────────── */
-  /* echoFullSeqState() ends with echoFullGrid() (patches.h), so the full 16×16
-   * grid bulk dump (CMD_GRID_ROW_LO/HI ×128) is already sent LAST — after every
-   * param knob — giving the App a 1:1 mirror of hwSeqData on connect.          */
+  /* echoFullSeqState() ends with echoFullGrid() (patches.h), so the full 4-bank
+   * × 16-row grid bulk dump is already sent LAST — after every param knob —
+   * giving the App a 1:1 mirror of hwSeqData on connect.  Each row ships as four
+   * SX_SUB_GRID_ROW frames (sub 0x05, 64 steps via txGridRow), NOT the retired
+   * CMD_GRID_ROW_LO/HI v14 encoding whose page/byte bits overlapped. [FIX-GRID-ENC] */
   echoFullSeqState();
   txUserLibraryNames(); /* [USER-SLOTS] sparse custom names + pat occupancy */
 
@@ -1362,8 +1365,8 @@ bool init_midi_hardware() {
   /* [MIDI-OPT5/6] Dedup tables are static zero-init; no memset needed on boot. */
   harpVoiceOwnerInit();
   if (!hFullSyncTask) {
-    xTaskCreatePinnedToCore(full_sync_task, "FullSyncOut", 8192, nullptr, 8,
-                            &hFullSyncTask, 1);
+    xTaskCreatePinnedToCore(full_sync_task, "FullSyncOut", 8192, nullptr,
+                            TASK_PRIO_FULLSYNC, &hFullSyncTask, 1);  /* globals.h SSOT */
   }
   return true;
 }

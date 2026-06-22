@@ -291,8 +291,10 @@ inline const char* const kInsertFxNames[16] = {
 };
 
 /* 16 dynamics (insert slot B) preset names.
- * Order MUST match DYNAMICS_PRESETS[] in effect.cpp and DYN_NAMES[] in
- * OctopusApp.html so index→DSP mapping is identical on hw, device, and app. */
+ * Order MUST match DYNAMICS_PRESETS[] in effect.cpp and DYNAMICS_NAMES[] in
+ * OctopusApp.html so index→DSP mapping is identical on hw, device, and app.
+ * (Display strings differ cosmetically — e.g. "Glue Comp" here vs "GlueComp"
+ *  in the App — but the ORDER is the contract, never the spelling.)            */
 inline const char* const kDynNames[16] = {
   "Dyn Byp", "Glue Comp", "Punch Comp", "Soft Lim",
   "Brick Lim", "Noise Gate", "Tight Gate", "Trans Pun",

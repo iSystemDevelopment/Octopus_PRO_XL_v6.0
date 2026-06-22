@@ -1107,6 +1107,7 @@ void sequencer_background_task(void* pvParameters) {
     vTaskDelay(pdMS_TO_TICKS(1));
 
   uint32_t lastSupervisorMs = 0u;
+  uint32_t lastPhaseMs      = 0u;
   for (;;) {
     midi_drain_tx_retry();
 
@@ -1141,6 +1142,24 @@ void sequencer_background_task(void* pvParameters) {
       if (g_plock_lane_steal.exchange(false, std::memory_order_acq_rel))
         cpuV |= (1u << 14);
       txSysex(CMD_CPU_LOAD, cpuV);
+    }
+
+    /* ── [SUBSTEP] Sub-step phase echo (~20 Hz while playing) ─────────────────
+     * Tells the App where WITHIN the current step the sample-locked clock is, so
+     * its PLL anchors interpolation to the true phase (correcting USB/drain
+     * latency) rather than restarting each step at frac 0.  One tick read drives
+     * both fields so step and phase are coherent.  Decoupled from the per-step
+     * STEP_SYNC path; far below per-step traffic, so it adds no meaningful load.
+     * The App treats it as a refinement only (ignored unless its step matches). */
+    if ((uint32_t)(now - lastPhaseMs) >= 50u &&
+        seqPlaying.load(std::memory_order_relaxed) && isAppConnected()) {
+      lastPhaseMs = now;
+      const uint32_t tick = master_tick_counter.load(std::memory_order_relaxed);
+      const uint32_t len  = std::max<uint32_t>(1u,
+                              (uint32_t)seqLength.load(std::memory_order_relaxed));
+      const uint8_t  step = (uint8_t)((tick / TICKS_PER_STEP) % len);
+      const uint8_t  ph8  = (uint8_t)(((tick % TICKS_PER_STEP) * 256u) / TICKS_PER_STEP);
+      txSysex(CMD_STEP_PHASE, (uint16_t)(((uint16_t)(step & 0x3Fu) << 8) | ph8));
     }
     vTaskDelay(pdMS_TO_TICKS(2));
   }

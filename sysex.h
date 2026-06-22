@@ -124,6 +124,10 @@ static constexpr uint8_t CMD_STEP_SYNC = 105;
 static constexpr uint8_t CMD_H_PATCH = 106;
 static constexpr uint8_t CMD_S_PATCH = 107;
 static constexpr uint8_t CMD_H_SCALE = 108;
+/* CMD_S_SCALE: RESERVED — scale is GLOBAL (harp + seq share harpScaleIndex via
+ * CMD_H_SCALE).  No firmware handler and absent from the OctopusApp CMD map; the
+ * App routes both scale dropdowns through CMD_H_SCALE.  Kept only so the wire IDs
+ * never renumber.  Do not repurpose without a protocol-version bump.            */
 static constexpr uint8_t CMD_S_SCALE = 109;
 static constexpr uint8_t CMD_D_FX_IDX = 110;
 static constexpr uint8_t CMD_H_FX_IDX_B = 111;
@@ -269,6 +273,17 @@ static constexpr uint8_t CMD_D_FX_P2  = 192; /* v14 0–16383 → p2 0..250 (dep
  * Sent by App after RND-H / RND-D randomisation so the new pattern plays from
  * beat 1 immediately.  Firmware-side: no-op when stopped.                    */
 static constexpr uint8_t CMD_SEQ_RESTART = 193;
-static constexpr uint8_t CMD_COUNT = 194; /* total command count              */
+/* [SUBSTEP] Device→App ONLY — sub-step phase echo for the App PLL playhead.
+ *   v14 = (step6 << 8) | phase8
+ *     step6  = current step 0–63 (bits 13-8)
+ *     phase8 = position WITHIN that step 0–255 (bits 7-0) = (tick % TICKS_PER_STEP)
+ *              scaled to 0..255.
+ * Emitted at ~20 Hz from SeqSysexOut while playing so the App can anchor its
+ * interpolation to the TRUE sub-step phase (correcting USB/drain latency) instead
+ * of restarting each step at frac 0.  Refinement ONLY: it nudges the App's
+ * _pllAnchorTime within the current step and never carries step/page/wrap
+ * authority — CMD_STEP_SYNC remains the sole boundary/snap source. Never RX. */
+static constexpr uint8_t CMD_STEP_PHASE = 194;
+static constexpr uint8_t CMD_COUNT = 195; /* total command count              */
 
 #endif /* SYSEX_H */

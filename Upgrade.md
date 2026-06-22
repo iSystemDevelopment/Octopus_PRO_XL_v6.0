@@ -15,13 +15,13 @@ then implement clean — no scattered visions. Edit freely; mark items as you de
 
 ## Active upgrade anchor — **v6.0.01**
 
-**Production baseline today:** firmware + OctopusApp **6.0.00** (stable; field-tested rollback).
+**Field-tested rollback:** firmware + OctopusApp **6.0.00** (stable).
 
-**Next release target:** **6.0.01** — **all new TODO items added after this anchor belong to v6.0.01** and ship together unless explicitly marked otherwise. Do not bump `SYSTEM_FW_VERSION`, `SETTINGS_VERSION`, or App title/help strings until the 6.0.01 bundle is tested and flashed.
+**Current source version:** **6.0.01** — `SYSTEM_FW_VERSION`, the OctopusApp title/help, and the docs are now bumped to 6.0.01; `SETTINGS_VERSION` stays `0x0615` (no new persisted fields, so 6.0.00 NVS loads unchanged). ⚠️ **Still pending on-hardware validation:** compile + flash + run the acceptance tests below before treating 6.0.01 as the production-stable build (revert to 6.0.00 if a regression appears).
 
-Cross-reference: [CHANGELOG.md §6.0.01 (planned)](./CHANGELOG.md#601--2026-06-20-planned) · [README.md](./README.md) (stable 6.0.00 note).
+Cross-reference: [CHANGELOG.md §6.0.01](./CHANGELOG.md#601--2026-06-22) · [README.md](./README.md) (6.0.01 current / 6.0.00 rollback note).
 
-### TODO — v6.0.01: App playhead mirror (PLL slaved tick clock)
+### ✅ DONE — v6.0.01: App playhead mirror (PLL slaved tick clock)
 
 **Problem (field test).** The hardware OLED **16-box playhead** (`DRAW_STEP_BARGRAPH` in
 `display.cpp`) is sample-locked to the groovebox clock and is visually the most
@@ -79,14 +79,26 @@ heuristics. Instead: **hardware ticks, web interpolates between them** (PLL).
 **Files:** `OctopusApp.html` (primary); confirm `groovebox.cpp` / `midi.cpp` never
 dedupe `STEP_SYNC`; note mirror model in `code_info.h`.
 
-**Status:** 📋 **TODO — v6.0.01** (supersedes partial Workstream 7 §7.4 glide work;
-see also CHANGELOG 6.0.01 playhead + FX/harp items).
+**Status:** ✅ **DONE — v6.0.01** (shipped in `OctopusApp.html`). Implemented exactly
+as specified: `_pllAnchorStep` / `_pllAnchorTime` set on each `CMD_STEP_SYNC`;
+`_pllPositionTick()` interpolates in rAF (`stepMs = 60000/bpm/4`, `frac =
+elapsed/stepMs`, `col = _pllAnchorStep & 15`); re-anchor on STEP_SYNC with hard
+snap on page change / pattern wrap; CSS `transform` transition retired (overlay
+detached from grid DOM); clock stops + playhead hides on transport stop / link loss.
+Steps 1–4 + the "retire/simplify" cleanup are complete. **Step 5 (firmware sub-step
+phase) is now ALSO done** — implemented as a separate low-rate `CMD_STEP_PHASE` (194)
+echo rather than packing it into STEP_SYNC: SeqSysexOut emits `(step6<<8)|phase8` at
+~20 Hz while playing, and the App's `[CMD.STEP_PHASE]` handler nudges `_pllAnchorTime`
+forward-only within the current step (STEP_SYNC keeps sole step/page/wrap authority).
+This corrects USB/drain-latency jitter on top of the per-step re-anchor. Supersedes the
+partial Workstream 7 §7.4 glide work. Verify the manual acceptance tests (BPM/LEN
+sweep, LEN=1, page follow, mid-play disconnect) on hardware before the 6.0.01 flash.
 
 ---
 
 ## Product documentation & headers (v6.0.00) ✅
 
-- `octopus_web.html` — full v6.0 product page (USB-only, ARP, fog reject, transport model, 190 SysEx cmds).
+- `octopus_web.html` — full v6.0 product page (USB-only, ARP, fog reject, transport model, 194 SysEx cmds / CMD_COUNT).
 - `code_info.h` — manifest updated (build 2026-06-20, seq/harp ARP, drum pitch, app notes).
 - All firmware `.h/.cpp/.ino` — standard proprietary header block (DIODAC ELECTRONICS).
 - `OctopusApp.html` / `octopus_web.html` — HTML proprietary notice comments.

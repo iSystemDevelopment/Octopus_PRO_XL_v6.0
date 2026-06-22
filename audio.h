@@ -48,6 +48,12 @@
  *
  * ── TASK MAP (actual pinning — see init_audio_system in audio.cpp) ─────────
  *
+ * Priorities were RAISED from the original layout to cure UI-render and App-echo
+ * starvation under full DSP load ("Raise RTOS task priorities to avoid starvation");
+ * the original values are noted in trailing `// old:N` comments on each xTaskCreate
+ * call in init_audio_system().  Relative ORDER is what matters: on each core the
+ * realtime task (AudioSynth / LaserSweep @ 24) still outranks everything below it.
+ *
  * Core 0 (audio island — I2S + DSP; bursty traffic kept OFF this core):
  *   Priority  Task            Stack   Notes
  *   ────────  ──────────────  ─────   ─────────────────────────────────────
@@ -55,16 +61,16 @@
  *                                     sample-locked sequencer (no uClock)
  *      19     dbeam_adc        6144   ADC Kalman drain (MUST be Core 0 — laser
  *                                     owns Core 1 during lit dwell)
- *      14     OledRender      16384   OLED @ 30 Hz (preempted by audio/ADC)
- *      10     ControlPoll      8192   encoder + buttons @ 200 Hz
+ *      18     OledRender      16384   OLED @ 30 Hz (preempted by audio/ADC)
+ *      16     ControlPoll      8192   encoder + buttons @ 200 Hz
  *
  * Core 1 (laser + bursty data — flash/MIDI/SysEx cache stalls stay off Core 0):
  *   Priority  Task            Stack   Notes
  *   ────────  ──────────────  ─────   ─────────────────────────────────────
  *      24     LaserSweep       8192   galvo one-shot timer sleep [v6.0 Option B]
- *      12     SeqSysexOut      4096   STEP_SYNC / SONG_POS / sync supervisor
- *       6     MidiUsbRx        8192   USB MIDI parser (App SysEx + play-in)
- *       3     NvsWorker        4096   NVS save on demand
+ *      14     SeqSysexOut      4096   STEP_SYNC / SONG_POS / sync supervisor
+ *      12     MidiUsbRx        8192   USB MIDI parser (App SysEx + play-in)
+ *       9     NvsWorker       16384   NVS save on demand (deep IDF flash stack)
  *
  * WHY audio on Core 0 and laser on Core 1:
  *   Core 1 runs Arduino loop() at priority 1 and also needs to host the

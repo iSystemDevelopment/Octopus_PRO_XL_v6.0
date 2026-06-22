@@ -5,10 +5,14 @@ All notable changes to Octopus PRO XL firmware and OctopusApp are documented her
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning aligns with firmware `SYSTEM_FW_VERSION` in `code_info.h`.
 
-> **Current stable release: [6.0.00](#600--2026-06-20).**  
-> **[6.0.01](#601--2026-06-20-planned)** is documented below for the next upgrade session (not deployed to production yet).
+> **Current version: [6.0.01](#601--2026-06-22)** (`SYSTEM_FW_VERSION` bumped) — build + field-test before flashing to production.  
+> **Previous field-tested rollback: [6.0.00](#600--2026-06-20).**
 
-## [6.0.01] — 2026-06-20 (planned)
+## [6.0.01] — 2026-06-22
+
+### Added
+
+- **Sub-step PLL phase echo (`CMD_STEP_PHASE`, 194)** — device→App-only ~20 Hz echo of the position *within* the current step (`v14 = (step6<<8)|phase8`), emitted from SeqSysexOut. The App nudges its PLL anchor (`_pllAnchorTime`) forward-only within the step so the cyan playhead tracks the true hardware phase despite USB/drain latency. Pure refinement — `CMD_STEP_SYNC` keeps sole step/page/wrap authority. `CMD_COUNT 194 → 195`.
 
 ### Fixed
 
@@ -16,10 +20,14 @@ Versioning aligns with firmware `SYSTEM_FW_VERSION` in `code_info.h`.
 - **Click / crackle** — Harp/seq/drum mute uses envelope release instead of hard voice kill; click-free seq voice retrigger; harp SOLO legato (phase reset on pitch change); poly headroom before soft-clip (√N scaling).
 - **Stuck notes** — Cross-core `stringActiveMask`; per-buffer `harpReconcileStuckNotesLocked()` for SOLO/POLY8; beam release hysteresis; panic + MIDI CC120/123 full harp/laser state reset; held-beam silent recovery.
 - **Arpeggiator (`arp.h`)** — `pitch_rows[]` kept in sync with sorted notes (correct laser row for Up/Down patterns); **DnUp** ping-pong sequence corrected; **AsIs** uses latch-order rows only.
+- **Harp ARP ↔ App sync** — entering **STRINGS** (hardware OC-cycle or App `CMD_PLAY_MODE`) force-disables the harp arpeggiator AND now echoes `CMD_HARP_ARP_EN=0`, so the App's HARP ARP toggle no longer lingers **ON** after a device-side play-mode change (`harp.cpp harpSetPlayMode` `[ARP-ECHO-FIX]`).
 
 ### Changed
 
 - **OctopusApp v6.0.01** — help/changelog aligned with firmware; playhead wrap fix for 1-step patterns; LEN change re-syncs playhead while playing.
+- **OctopusApp v6.0.01 — PLL playhead (shipped)** — cyan grid playhead glides at 60 fps via a phase-locked tick clock slaved to `CMD_STEP_SYNC` (hardware anchors each step, App interpolates sub-step position via `_pllPositionTick`); hard-snaps only on page change / pattern wrap; CSS transform transition retired. Closes the v6.0.01 playhead roadmap item.
+- **Task priorities centralized** — the raised RTOS priorities now live in one place (`globals.h` `TASK_PRIO_*` constants, `[TASK-PRIO-SSOT]`) and are referenced at every `xTaskCreatePinnedToCore` site (`audio.cpp`, `midi.cpp`), so the values can never drift from the docs again (the priority raise itself preserved relative ordering — realtime tasks still dominate each core, so no behavioral change). Stale task-handle/core comments in `globals.h` corrected.
+- **Docs / comment accuracy** — `audio.h` + `audio.cpp` + `code_info.h` task maps corrected to the live RTOS priorities (OledRender 18, ControlPoll 16, SeqSysexOut 14, MidiUsbRx 12, NvsWorker 9; NvsWorker stack 16 KB); 44.1 kHz buffer-period comments fixed (`audio.cpp`, `effect.h`, `harp.cpp` — were 48 kHz); SysEx command table documented through CMD 0–194 (CMD_COUNT 195) incl. PLAY_MODE/H_PITCH/drum-insert FX/SEQ_RESTART/STEP_PHASE and the sub-0x02..0x05 variable-length frames; retired `CMD_GRID_ROW_LO/HI` decoders removed from the App (grid sync uses lossless sub-0x05 frames); `CMD_S_SCALE` marked reserved (scale is global via `CMD_H_SCALE`).
 
 ## [6.0.00] — 2026-06-20
 

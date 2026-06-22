@@ -6,7 +6,7 @@
 
 | | |
 |---|---|
-| **Version** | **6.0.00** (stable) |
+| **Version** | **6.0.01** (current — compile + field-test before flashing to production) |
 | **Platform** | ESP32-S3 (dual-core, FreeRTOS, ESP-IDF 5) |
 | **Author** | DIODAC ELECTRONICS / [iSystem](https://isystem.app) |
 | **Launch App** | **[octopus.isystem.app](https://octopus.isystem.app)** |
@@ -14,7 +14,7 @@
 | **Source code** | **[GitHub](https://github.com/iSystemDevelopment/Octopus_PRO_XL_v6.0)** |
 | **Documentation** | [User Manual](./user_manual.md) · [Deployment](./DEPLOYMENT.md) · [Changelog](./CHANGELOG.md) · [Roadmap](./Upgrade.md) |
 
-> **6.0.01** fixes are documented in [CHANGELOG.md](./CHANGELOG.md) for the next upgrade session; production is pinned to **6.0.00** until field testing completes.
+> **6.0.01** rolls up the fixes in [CHANGELOG.md](./CHANGELOG.md) — harp-arp ↔ App sync, the sub-step PLL playhead, centralized task priorities, and comment/doc hygiene. `SYSTEM_FW_VERSION` is now `6.0.01`; **build and field-test on hardware before flashing to production** (the previous field-tested rollback is **6.0.00**).
 
 ---
 
@@ -155,8 +155,8 @@ Consult **`code_info.h`** before changing SysEx commands or persistence.
 
 - [CONTRIBUTING.md](./CONTRIBUTING.md) — issues, authorized PRs  
 - [SECURITY.md](./SECURITY.md) — vulnerability reporting  
-- [CHANGELOG.md](./CHANGELOG.md) — release history (stable **6.0.00**; **6.0.01** planned)  
-- GitHub Issues — include firmware **`6.0.00`** (or `SYSTEM_FW_VERSION` from Serial boot), App connected Y/N, repro steps  
+- [CHANGELOG.md](./CHANGELOG.md) — release history (current **6.0.01**; previous stable **6.0.00**)  
+- GitHub Issues — include firmware **`6.0.01`** (or `SYSTEM_FW_VERSION` from Serial boot), App connected Y/N, repro steps  
 
 | Link | URL |
 |------|-----|

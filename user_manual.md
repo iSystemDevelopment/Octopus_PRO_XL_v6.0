@@ -1,11 +1,11 @@
 # Octopus PRO XL v6.0 — User Manual
 
-**Laser Harp Groovebox · Firmware 6.0.00**
+**Laser Harp Groovebox · Firmware 6.0.01**
 
 | Field | Value |
 |-------|-------|
 | Document type | End-user & integrator reference |
-| Firmware | `6.0.00` (`SETTINGS_VERSION 0x0615`) |
+| Firmware | `6.0.01` (`SETTINGS_VERSION 0x0615` — unchanged from 6.0.00) |
 | Companion app | [octopus.isystem.app](https://octopus.isystem.app) (Web MIDI / SysEx) |
 | Hardware UI | SH1106 OLED · rotary encoder · SCALE · OC |
 
@@ -427,7 +427,7 @@ UpDown cycle for 3 notes (indices 0,1,2,1):
 
 **Harp arp** maps UI indices 0–3 to **Up, Down, UpDn, Rnd** only. In **POLY8**, the engine latches all held strings; in **SOLO**, the king note defines the motif. Single-beam input expands to a **scale motif** so patterns remain musically distinct.
 
-> **Stable v6.0.00:** Harp arp maps **Up, Down, UpDn, Rnd** (see table above). Planned **6.0.01** improvements (pitch-row laser sync, DnUp ping-pong, AsIs latch order) are listed in [CHANGELOG.md](./CHANGELOG.md#601--2026-06-20-planned).
+> **v6.0.01:** Harp arp maps **Up, Down, UpDn, Rnd** (see table above). The arpeggiator engine fixes (pitch-row laser sync, DnUp ping-pong, AsIs latch order) and the harp-arp ↔ App sync fix are in this release — see [CHANGELOG.md](./CHANGELOG.md#601--2026-06-22).
 
 ### 7.3 D-BEAM response curves
 

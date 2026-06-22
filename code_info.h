@@ -15,12 +15,14 @@
  * ─────────────────────────────────────────────────────────────────────────────
  * VERSION IDENTIFIERS
  * ─────────────────────────────────────────────────────────────────────────────
- * SYSTEM_FW_VERSION "6.0.00"
- * SYSTEM_BUILD_DATE "2026-06-20"
+ * SYSTEM_FW_VERSION "6.0.01"
+ * SYSTEM_BUILD_DATE "2026-06-22"
  * SYSTEM_ARCH_TAG   "ESP32-S3-DUALCORE-IDF5-FREERTOS"
- * SETTINGS_VERSION  0x0615   (0x0614 seq arp; 0x0615 harp arp)
- * CMD_COUNT         190       (sysex indices 0-189; … 182-185 seq arp;
- *                              186-189 harp arp)
+ * SETTINGS_VERSION  0x0615   (0x0614 seq arp; 0x0615 harp arp — UNCHANGED in 6.0.01:
+ *                             no new persisted fields, so 6.0.00 NVS loads as-is)
+ * CMD_COUNT         195       (sysex indices 0-194; … 186-189 harp arp;
+ *                              190-192 drum insert FX; 193 seq restart;
+ *                              194 step-phase, device→App PLL refinement)
  *
  * ─────────────────────────────────────────────────────────────────────────────
  * WHAT CHANGED IN v6.0 (vs v5.3.x)
@@ -57,30 +59,36 @@
 #ifndef CODE_INFO_H
 #define CODE_INFO_H
 
-#define SYSTEM_FW_VERSION "6.0.00"
-#define SYSTEM_BUILD_DATE "2026-06-20"
+#define SYSTEM_FW_VERSION "6.0.01"
+#define SYSTEM_BUILD_DATE "2026-06-22"
 #define SYSTEM_ARCH_TAG   "ESP32-S3-DUALCORE-IDF5-FREERTOS"
 
 /* ═══════════════════════════════════════════════════════════════════════════
  * 1. CORE ASSIGNMENT
  *
+ *   Priorities were RAISED vs the original layout to cure UI-render and App-echo
+ *   starvation under full DSP load; relative ORDER is the contract (the realtime
+ *   task @24 always outranks everything else on its own core).  All tasks are
+ *   created in init_audio_system() (audio.cpp) EXCEPT FullSyncOut, which
+ *   init_midi_hardware() (midi.cpp) creates on Core 1.
+ *
  *   Core 0 — DSP core (no galvo ISR, no SPI DMA contention):
  *     Priority  Task              Stack    Role
  *     ────────  ────────────────  ──────   ─────────────────────────────────
- *        24     AudioSynth        16384    I2S DMA + full DSP pipeline
- *        10     MidiUsbRx(Core1)   8192    USB MIDI parser (App SysEx + play-in)
+ *        24     AudioSynth        16384    I2S DMA + full DSP pipeline + seq clock
  *        19     dbeam_adc          6144    ADC DMA + Kalman filter
- *        14     SeqSysexOut(Core1) 4096    drains hi coalesced slots (BPM/TRANSPORT/
- *                                          STEP_SYNC) + bulk out-ring + sync supervisor
- *         8     FullSyncOut(Core1) 8192    chunked sendFullStateSync (yields every 8 frames)
- *        10     ControlPoll        6144    encoder + buttons @ 200 Hz + TX drain
- *         4     OledRender         8192    OLED @ 30 Hz
+ *        18     OledRender        16384    OLED @ 30 Hz (page-diff flush)
+ *        16     ControlPoll        8192    encoder + buttons @ 200 Hz + TX drain
  *
- *   Core 1 — Laser core (dedicated to galvo timing):
+ *   Core 1 — Laser core (galvo timing) + ALL bursty data traffic:
  *     Priority  Task              Stack    Role
  *     ────────  ────────────────  ──────   ─────────────────────────────────
- *        24     LaserSweep         6144    galvo sweep, trigger detect, vibrato
- *         2     NvsWorker         16384    NVS save on demand (16 KB — four blobs)
+ *        24     LaserSweep         8192    galvo sweep, trigger detect, vibrato
+ *        14     SeqSysexOut        4096    hi coalesced slots (BPM/TRANSPORT/STEP_SYNC)
+ *                                          + bulk out-ring + sync supervisor
+ *        12     MidiUsbRx          8192    USB MIDI parser (App SysEx + play-in)
+ *         9     NvsWorker         16384    NVS save on demand (16 KB — four blobs)
+ *         8     FullSyncOut        8192    chunked sendFullStateSync (yields every 8)
  *         1     loop()             —       Arduino fallback (safety only)
  *
  *   Stack high-water marks are sampled every 5 s and printed to Serial (and the
@@ -138,15 +146,23 @@
  *         loadFactorySynthPattern (companion preset).
  *
  * ═══════════════════════════════════════════════════════════════════════════ 
- * 3. SYSEX COMMAND TABLE (CMD 0–189, canonical as of v6.0.00)
+ * 3. SYSEX COMMAND TABLE (CMD 0–194, canonical as of v6.0.01; CMD_COUNT = 195)
  *
  *   Wire format: [0xF0] [ID] [sub] [cmd_wire] [hi7] [lo7] [0xF7]
  *   ID = 0x7D  App → device  (only ID the firmware RX accepts)
  *   ID = 0x7C  device → App  (all firmware echoes — ignored by firmware RX so a
  *              looped MIDI stream can't fake an App heartbeat / re-toggle play)
  *   sub=0x00: cmd 0-127   (cmd_wire = cmd)
- *   sub=0x01: cmd 128-164 (cmd_wire = cmd - 128)
+ *   sub=0x01: cmd 128-194 (cmd_wire = cmd - 128)
  *   v14 = (hi7 << 7) | lo7  ∈ [0, 16383]
+ *
+ *   Variable-length frames carry their own sub-byte (NOT the 7-byte cmd format):
+ *     sub 0x02  PATCH BLOB   {F0,ID,02,engine,16×(hi,lo),F7}  — full 16-param preset
+ *     sub 0x03  USR_SND_NAME {F0,ID,03,engine,slot,15×name,F7}
+ *     sub 0x04  USR_PAT_NAME {F0,ID,04,slot,15×name,F7}
+ *     sub 0x05  GRID_ROW     {F0,ID,05,bank_row,page,lo_lo4,lo_hi4,hi_lo4,hi_hi4,F7}
+ *               — lossless 64-step grid row; SUPERSEDES the retired CMD_GRID_ROW_LO/HI
+ *                 v14 packing whose page bits overlapped the byte bits. [FIX-GRID-ENC]
  *
  *   ── Harp synth (0–13) — SynthParam direct index ─────────────────────────
  *    0 H_WAVE       harpWaveform      0–24 wavetable index
@@ -283,7 +299,10 @@
  *   183 SEQ_ARP_PAT  seqArpPattern         0–7 (Up…Down−Oct)
  *   184 SEQ_ARP_RATE seqArpRate            0–7 (1/1…1/32)
  *   185 SEQ_ARP_GATE seqArpGate            0–7 gate duty index
- *   186 HARP_ARP_EN  harpArpEnabled        0=OFF 16383=ON (POLY8/SOLO only)
+ *   186 HARP_ARP_EN  harpArpEnabled        0=OFF 16383=ON (POLY8/SOLO only).
+ *                    Entering STRINGS (CMD_PLAY_MODE / hardware OC-cycle) force-
+ *                    disables the arp AND echoes CMD_HARP_ARP_EN=0 [ARP-ECHO-FIX] so
+ *                    the App toggle never lingers ON after a device-side mode change.
  *   187 HARP_ARP_PAT harpArpPattern        0–3 (Up/Down/UpDn/Rnd)
  *   188 HARP_ARP_RATE harpArpRate          0–3 (1/8…1/16T)
  *   189 HARP_ARP_GATE harpArpGate          0–3 gate duty index
@@ -310,7 +329,8 @@
  *   149 SONG_SLOT    activeSongSlot  0–15
  *   150 SONG_STEP    applySongStep(): [step:4][bank:4][chain:2][rpt:4]
  *   151 SONG_STEPS_N hwSongData[slot].numSteps  1–16
- *   152 SONG_POS     echo only: [(step<<8)|repeat] >> 1  (fits v14)
+ *   152 SONG_POS     echo only: v14 = (step & 0xF) << 4  (App reads (v14>>4)&0xF).
+ *                    [FIX-SONG-POS] repeat nibble unused by the App; ring + echo agree.
  *   153 TRANSPORT    RX (App→ESP, legacy/external): 0=stop 1=play 2=pause
  *                    3=rec_toggle.  ECHO (ESP→App): 0=stop 1=play 2=pause,
  *                    3=record ON, 4=record OFF (play + record are decoupled).
@@ -323,7 +343,7 @@
  *   158 DRUM_KIT     applyDrumKit(): 0=TR-909 1=TR-808 2=Trap 3=House. Loads the
  *                    kit tuning into drumLivePatch+atomics (echoes all 32 drum
  *                    params) and sets kick pitch-sweep + hat base character.
- *                    Persisted in DrumSettings.kit (SETTINGS_VERSION 0x0532).
+ *                    Persisted in DrumSettings.kit (current SETTINGS_VERSION 0x0615).
  *                    Live-switchable from an external controller via MIDI CC 70
  *                    (Sound Variation) on the drum channel: kit = value>>5 (0-3).
  *                    handleControlChange() drum-channel block, midi.cpp. The active
@@ -333,12 +353,32 @@
  *   159 H_PAN        mixHarpPan   v14: 0=full L, 8192=centre, 16383=full R
  *   160 S_PAN        mixSeqPan    (same encoding)
  *   161 D_PAN        mixDrumsPan  (same encoding)
- *   162 GRID_ROW_LO  absolute half-row state, steps page*16+0..7  (bulk, not toggle)
- *                    v14 = (bank<<12)|(row<<8)|(page<<4)|byteMask
- *   163 GRID_ROW_HI  absolute half-row state, steps page*16+8..15 (same packing)
+ *   162 GRID_ROW_LO  [RETIRED v6.0] legacy half-row v14 = (bank<<12)|(row<<8)|
+ *                    (page<<4)|byteMask — page bits overlapped byte bits and
+ *                    corrupted steps 4-5 on pages 1-3.  RX is a no-op; firmware
+ *                    emits grid rows ONLY as sub 0x05 GRID_ROW frames (see above).
+ *                    Constants kept so wire IDs never renumber. [FIX-GRID-ENC]
+ *   163 GRID_ROW_HI  [RETIRED v6.0] — see CMD 162.
+ *   162/163 telemetry bits: CPU_LOAD also packs ring-drop count (bits 7-13) and a
+ *                    P-lock lane-steal flag (bit 14) above the load % (bits 0-6).
  *   164 CPU_LOAD     [v6.0] device→App ONLY: audio-core load, raw 0–100 % (not
  *                    14-bit scaled).  Pushed by the sync supervisor (~600 ms) while
  *                    the App is connected; drives the header CPU readout. Never RX.
+ *
+ *   ── v6.0 play mode / harp tune / drum insert-FX / restart (165-166, 190-193) ─
+ *   165 PLAY_MODE    currentPlayMode  0=POLY8 1=STRINGS 2=SOLO (bidirectional echo)
+ *   166 H_PITCH      harpPitchMult    continuous ±1 oct; v14 8192=unity (2^(semis/12))
+ *   190 D_FX_WET     fx.drumInsert.fx_mix  v14 0–16383 → 0..1 (drum insert-A wet/dry)
+ *   191 D_FX_P1      fx.drumInsert.p1      v14 0–16383 → 0..30  (rate/time)
+ *   192 D_FX_P2      fx.drumInsert.p2      v14 0–16383 → 0..250 (depth/swing)
+ *   193 SEQ_RESTART  seq_restart_from_step_zero()  App→ESP; no-op when stopped
+ *   194 STEP_PHASE   [v6.0.01] device→App ONLY: PLL sub-step refinement.
+ *                    v14 = (step6<<8)|phase8 (step 0–63 bits 13-8, phase 0–255
+ *                    bits 7-0 = tick%TICKS_PER_STEP scaled).  Emitted ~20 Hz from
+ *                    SeqSysexOut while playing; the App nudges its _pllAnchorTime
+ *                    within the CURRENT step (forward-only) so interpolation tracks
+ *                    the true phase despite USB/drain latency.  STEP_SYNC keeps sole
+ *                    step/page/wrap authority; phase is refinement only.  Never RX.
  *
  * ═══════════════════════════════════════════════════════════════════════════
  * 4. ADDING A NEW GLOBAL PARAMETER (step-by-step)

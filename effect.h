@@ -92,7 +92,7 @@ static inline float fx_tanh(float x) {
 /* ── FX engine constants ─────────────────────────────────────────────────── */
 static constexpr float FX_INV_SR = 1.0f / (float)FX_SR;
 static constexpr float DENORMAL_FLOOR = 1.0e-6f;
-static constexpr uint32_t INSERT_DELAY_LEN = 1024u; /* power-of-2, ~21 ms @ 48 kHz */
+static constexpr uint32_t INSERT_DELAY_LEN = 1024u; /* power-of-2, ~23 ms @ 44.1 kHz */
 static constexpr size_t FX_BUF_SIZE = 512u;         /* must match DMA_BUFFER_FRAMES  */
 
 /* Amplitude-aware aux tail gate (effect.cpp).  Keeps shared delay/reverb draining
