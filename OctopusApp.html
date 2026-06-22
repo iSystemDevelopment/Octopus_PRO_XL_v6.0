@@ -866,17 +866,20 @@
             top: 0;
             left: 0;
             pointer-events: none;
-            z-index: 4;
+            z-index: 8;
             border-radius: 3px;
             border: 1px solid rgba(207, 255, 255, 0.9);
             box-shadow: 0 0 8px rgba(6, 182, 212, 0.55), inset 0 0 8px rgba(6, 182, 212, 0.3);
             background: linear-gradient(180deg, rgba(120, 224, 255, 0.34), rgba(6, 182, 212, 0.10));
-            opacity: 0;
+            visibility: hidden;
+            opacity: 1;
             transform: translate3d(0, 0, 0);
-            will-change: transform, opacity;
-            transition: opacity 80ms linear; /* transform handled by PLL JS — no CSS transition */
-            contain: strict;                 /* paint/layout isolation from grid siblings */
+            will-change: transform;
             box-sizing: border-box
+        }
+
+        #seq-playhead.ph-visible {
+            visibility: visible
         }
 
         .seq-row-label {
@@ -1424,7 +1427,7 @@
         <!-- SEQUENCER VIEW -->
         <div id="view-seq" class="view-content">
             <!-- Normal grid -->
-            <div id="seq-grid-wrap" style="width:100%;height:100%;max-width:1280px">
+            <div id="seq-grid-wrap" style="width:100%;height:100%;max-width:1280px;position:relative">
                 <div class="seq-grid" id="seq-grid"></div>
             </div>
             <!-- Song editor (shown when song mode active) -->
@@ -3474,9 +3477,27 @@
                 if (this._phRemeasureRaf) return;
                 this._phRemeasureRaf = requestAnimationFrame(() => {
                     this._phRemeasureRaf = 0;
-                    if (!this._phForceRemeasure && !this.isPlaying) return;
+                    if (!this._seqGridVisible()) return;
+                    if (!this._phForceRemeasure && !this.isPlaying && !this._phStoppedPaint) return;
                     this.advancePlayhead(this.visStep | 0);
                 });
+            },
+            /** True when the pattern grid is on-screen and measurable (not song editor). */
+            _seqGridVisible() {
+                const v = document.getElementById('view-seq');
+                if (!v || !v.classList.contains('active')) return false;
+                if (this.showSongEditor) return false;
+                const wrap = document.getElementById('seq-grid-wrap');
+                if (!wrap || wrap.style.display === 'none') return false;
+                return true;
+            },
+            _showPlayheadEl(ph) {
+                if (!ph) return;
+                ph.classList.add('ph-visible');
+            },
+            _hidePlayheadEl(ph) {
+                if (!ph) return;
+                ph.classList.remove('ph-visible');
             },
             async init() {
                 this.populateDropdowns();
@@ -4840,9 +4861,17 @@
                 const wrap = document.getElementById('seq-grid-wrap');
                 if (wrap) wrap.style.display = this.showSongEditor ? 'none' : '';
                 if (!this.showSongEditor) {
+                    this._phGeo = null;
                     this._phForceRemeasure = true;
                     this._phPendingStep = this.visStep | 0;
-                    if (!this.isPlaying) this._phStoppedPaint = true;
+                    this._phStoppedPaint = !this.isPlaying;
+                    requestAnimationFrame(() => requestAnimationFrame(() => {
+                        if (!this._seqGridVisible()) return;
+                        this._phGeo = null;
+                        this._phForceRemeasure = true;
+                        if (!this.isPlaying) this._positionPlayheadStatic(this.visStep | 0);
+                        else this.advancePlayhead(this.visStep | 0);
+                    }));
                 }
                 this._updateSeqModeBtn();
                 if (autoSwitchTab && this.showSongEditor) this.switchView(3);
@@ -5063,20 +5092,23 @@
                 this._playBeat = beat;
             },
             _measurePlayheadGeo() {
+                if (!this._seqGridVisible()) return null;
+                const wrap = document.getElementById('seq-grid-wrap');
                 const grid = document.getElementById('seq-grid');
                 const c0 = this._domGridCache?.[0]?.[0];
                 const c1 = this._domGridCache?.[0]?.[1];
-                if (!grid || !c0) return null;
-                const gr = grid.getBoundingClientRect();
+                if (!wrap || !grid || !c0) return null;
+                const wr = wrap.getBoundingClientRect();
                 const r0 = c0.getBoundingClientRect();
                 const r1 = c1 ? c1.getBoundingClientRect() : null;
                 const pitch = r1 ? (r1.left - r0.left) : (r0.width + 2);
-                if (!(pitch > 0) || !(r0.width > 0)) return null;
+                if (!(pitch > 0) || !(r0.width > 0) || !(wr.height > 0)) return null;
                 return {
-                    x0: r0.left - gr.left,
+                    x0: r0.left - wr.left,
+                    y0: r0.top - wr.top,
                     pitch,
                     width: r0.width,
-                    height: gr.height
+                    height: wr.height
                 };
             },
             advancePlayhead(s) {
@@ -5103,8 +5135,11 @@
                     return;
                 }
 
-                /* Same step, geometry stable — skip redundant DOM work (common on LEN=1). */
-                if (s === this._playLast && prevAbs === s && !this._phForceRemeasure) return;
+                /* Same step, geometry stable — skip redundant DOM work (common on LEN=1).
+                 * When stopped, never skip if the bar is not yet visible. */
+                if (s === this._playLast && prevAbs === s && !this._phForceRemeasure) {
+                    if (this.isPlaying || (ph.classList.contains('ph-visible') && this._phGeo)) return;
+                }
 
                 if (page !== this.gridPageIdx) {
                     this.setGridPage(page, true);
@@ -5118,6 +5153,7 @@
                 const geo = this._phGeo || this._measurePlayheadGeo();
                 if (!geo) {
                     this._phForceRemeasure = true;
+                    this._phStoppedPaint = !this.isPlaying;
                     this._playCol = col;
                     this._playPage = page;
                     this._playAbsStep = s;
@@ -5139,7 +5175,8 @@
                 // removing the old inline set eliminates a style recalc every STEP_SYNC.
                 ph.style.width  = geo.width  + 'px';
                 ph.style.height = geo.height + 'px';
-                ph.style.opacity = '1';
+                ph.style.top    = (geo.y0 || 0) + 'px';
+                this._showPlayheadEl(ph);
                 this._phStoppedPaint = false;
                 if (this.isPlaying) {
                     if (snapped) {
@@ -5162,7 +5199,7 @@
                 this._playBeat = -1;
                 this._playAbsStep = -1;
                 this._playLast = -1;
-                if (this._playheadEl) this._playheadEl.style.opacity = '0';
+                this._hidePlayheadEl(this._playheadEl);
                 for (let i = 0; i < 4; i++) document.getElementById('led-' + i) ?.classList.remove('active');
             },
             /** Stopped playhead — fixed at column, no PLL (hardware idle bar). */
@@ -5189,8 +5226,9 @@
                 const col = s & 15;
                 ph.style.width = geo.width + 'px';
                 ph.style.height = geo.height + 'px';
-                ph.style.opacity = '1';
+                ph.style.top = (geo.y0 || 0) + 'px';
                 ph.style.transform = 'translate3d(' + (geo.x0 + col * geo.pitch).toFixed(1) + 'px, 0, 0)';
+                this._showPlayheadEl(ph);
                 this._playCol = col;
                 this._playPage = page;
                 this._playAbsStep = s;
@@ -5213,10 +5251,7 @@
             _pllPositionTick() {
                 if (!this.isPlaying || this._pllAnchorStep < 0) return;
                 const ph = this._playheadEl;
-                // Guard: only run while the playhead is fully visible. Checking !== '1'
-                // covers the empty-string case (before any inline opacity is set) as well
-                // as the '0' case after _hidePlayhead — avoids positioning an invisible bar.
-                if (!ph || ph.style.opacity !== '1') return;
+                if (!ph || !ph.classList.contains('ph-visible')) return;
                 const geo = this._phGeo;
                 if (!geo) return;
 
@@ -5247,17 +5282,13 @@
             // ── Build sequencer grid ──────────────────────────────────────────────────
             buildSequencer() {
                 const g = document.getElementById('seq-grid');
-                if (!g) return;
+                const wrap = document.getElementById('seq-grid-wrap');
+                if (!g || !wrap) return;
 
-                // [PLAYHEAD-DETACH] Rescue the playhead element BEFORE wiping the grid.
-                // g.innerHTML='' destroys every child including #seq-playhead, tearing
-                // down its compositor layer and breaking the PLL animation.  By detaching
-                // it first and re-attaching after the rebuild, the element (and its GPU
-                // layer) survives the DOM rebuild completely intact.
                 const savedPh = this._playheadEl;
-                if (savedPh && savedPh.parentNode === g) g.removeChild(savedPh);
+                if (savedPh && savedPh.parentNode) savedPh.parentNode.removeChild(savedPh);
 
-                g.innerHTML = '';           // wipe labels + cells only — playhead is safe
+                g.innerHTML = '';
                 this._playCol = -1;
                 this._playPage = -1;
                 this._playAbsStep = -1;
@@ -5299,19 +5330,17 @@
                     ph.setAttribute('aria-hidden', 'true');
                     this._playheadEl = ph;
                 }
-                g.appendChild(ph);  // restore to grid — compositor layer continues uninterrupted
+                wrap.appendChild(ph);
 
                 if (typeof ResizeObserver !== 'undefined') {
-                    // Disconnect any previous observer — buildSequencer() may be called
-                    // multiple times (bank switch, init). Without disconnect each call adds
-                    // another observer watching the same element, causing a memory leak and
-                    // redundant _phForceRemeasure callbacks.
                     if (this._phResizeOb) this._phResizeOb.disconnect();
                     this._phResizeOb = new ResizeObserver(() => {
+                        this._phGeo = null;
                         this._phForceRemeasure = true;
+                        this._phStoppedPaint = !this.isPlaying;
                         this._schedulePlayheadRemeasure();
                     });
-                    this._phResizeOb.observe(g);
+                    this._phResizeOb.observe(wrap);
                 }
                 this.repaintGrid();
             },
@@ -5663,11 +5692,20 @@
                     document.getElementById(v) ?.classList.toggle('active', i === id - 1);
                     document.getElementById('tab' + (i + 1)) ?.classList.toggle('active', i === id - 1);
                 });
-                /* Show playhead on sequencer tab — running or stopped at visStep. */
                 if (id === 3) {
+                    this._phGeo = null;
                     this._phForceRemeasure = true;
                     this._phPendingStep = this.visStep | 0;
                     this._phStoppedPaint = !this.isPlaying;
+                    /* Grid was display:none — measure only after layout paints. */
+                    requestAnimationFrame(() => requestAnimationFrame(() => {
+                        if (!this._seqGridVisible()) return;
+                        this._phGeo = null;
+                        this._phForceRemeasure = true;
+                        this._phPendingStep = this.visStep | 0;
+                        if (!this.isPlaying) this._positionPlayheadStatic(this.visStep | 0);
+                        else this.advancePlayhead(this.visStep | 0);
+                    }));
                 }
             },
 
@@ -5758,10 +5796,11 @@
                 if (this._phPendingStep >= 0) {
                     const step = this._phPendingStep;
                     this._phPendingStep = -1;
-                    this.advancePlayhead(step);
-                } else if (!this.isPlaying && this._playheadEl) {
+                    if (this._seqGridVisible()) this.advancePlayhead(step);
+                    else this._phStoppedPaint = true;
+                } else if (!this.isPlaying && this._playheadEl && this._seqGridVisible()) {
                     const step = this._playAbsStep >= 0 ? this._playAbsStep : (this.visStep | 0);
-                    if (this._phStoppedPaint || this._playheadEl.style.opacity !== '1')
+                    if (this._phStoppedPaint || !this._playheadEl.classList.contains('ph-visible'))
                         this._positionPlayheadStatic(step);
                 }
 
