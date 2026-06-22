@@ -626,6 +626,14 @@ void settings_save_task(void* pvParameters) {
     }
 
     /* ── Step 4: clear flags ─────────────────────────────────────────── */
+    /* Extend link BEFORE dropping g_saveArmed — otherwise isAppConnected()
+     * goes false for one window and PING replies + state echoes are dropped. */
+    if (!ok) {
+      linkExtendPersistWindow(30000u);
+    } else {
+      linkExtendPersistWindow(12000u);
+    }
+    linkTouchAppHeartbeat();
     std::atomic_thread_fence(std::memory_order_release);
     g_loopParked.store(false, std::memory_order_release);
     g_saveArmed .store(false, std::memory_order_release);
@@ -669,19 +677,12 @@ void settings_save_task(void* pvParameters) {
         midi_drain_tx_retry();
         delay(25);
       }
-      linkExtendPersistWindow(12000u);
-      linkTouchAppHeartbeat();
     } else {
       for (int burst = 0; burst < 6; ++burst) {
         txSysexPersistReply(ackCmd, 0u);
         midi_drain_tx_retry();
         delay(25);
       }
-      /* [LINK-HEAL] Failed save still killed the link: PINGs stalled during the
-       * write, then isAppConnected() dropped the instant flags cleared.  Extend
-       * the window and push a full resync so BPM/transport/playhead recover. */
-      linkExtendPersistWindow(30000u);
-      linkTouchAppHeartbeat();
       requestFullStateSync(true, false);
     }
 

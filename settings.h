@@ -392,15 +392,14 @@ static inline uint32_t crc32_buf(const uint8_t* p, size_t n) {
 
 /* [NVS-HEAP] Staging buffer for an NVS blob save/load.  These are large
  * (MotionBlob ~17 KB, UserPatBlob ~14.6 KB, PatternsBlob ~8 KB) and short-lived.
- * Internal DRAM is scarce at runtime (audio/FX/RAM-wavetables), so a
- * MALLOC_CAP_INTERNAL-only alloc can fail and make EVERY save/load return false
- * → nothing persists, nothing loads, UI shows FAILED on every SAVE/RESET.
- * Try internal first (fast); fall back to PSRAM, which is ample and perfectly
- * safe for a one-shot staging copy (no DMA — only memcpy + CRC + nvs_*_blob).
- * heap_caps_free() works for both capabilities, so call sites free as before. */
+ * Internal DRAM is scarce at runtime (audio/FX/RAM-wavetables), so prefer PSRAM
+ * for these staging copies (no DMA — only memcpy + CRC + nvs_*_blob).  Fall back
+ * to internal only when PSRAM is unavailable. */
 static inline void* nvsBlobAlloc(size_t n) {
-  void* p = heap_caps_malloc(n, MALLOC_CAP_INTERNAL);
-  if (!p) p = heap_caps_malloc(n, MALLOC_CAP_SPIRAM);
+  /* PSRAM first — internal DRAM is tight during audio; a save staging blob
+   * only needs memcpy + CRC (no DMA), so SPIRAM is safe and much more reliable. */
+  void* p = heap_caps_malloc(n, MALLOC_CAP_SPIRAM);
+  if (!p) p = heap_caps_malloc(n, MALLOC_CAP_INTERNAL);
   return p;
 }
 
@@ -1613,6 +1612,10 @@ static inline bool settings_save_scoped(ResetScope scope) {
         return false;
       }
     }
+    Serial.printf("[NVS] save begin scope=%d  DRAMfree=%u PSRAMfree=%u\n",
+                  (int)scope,
+                  (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+                  (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
   }
 
   nvs_handle_t h;

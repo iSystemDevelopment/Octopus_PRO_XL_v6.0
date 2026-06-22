@@ -845,7 +845,11 @@ void handleSysexCommand(uint8_t cmd, uint16_t v14) {
     /* ── System ──────────────────────────────────────────────────────────── */
     case CMD_FETCH:     requestFullStateSync(false, false); break;
     case CMD_HARD_SAVE: requestSessionSave(); break;
-    case CMD_PING:      txSysex(CMD_PING, 1u); break;
+    case CMD_PING:
+      /* Always reply — link heal depends on PING even when the 4.5 s window
+       * expired during a long NVS write (isAppConnected() would block txSysex). */
+      (void)txSysexEmit(CMD_PING, 1u, true);
+      break;
 
     /* ── Laser show ──────────────────────────────────────────────────────── */
     /* [LASER-SHOW v2] Show Mode and MIDI→Hue are INDEPENDENT toggles (matches the
@@ -1146,8 +1150,17 @@ void parseMidiByte(uint8_t b, MidiParserState& ps) {
       } else {
         const uint16_t v14 = ((uint16_t)(ps.sxBuf[4] & 0x7Fu) << 7u)
                             | (ps.sxBuf[5] & 0x7Fu);
-        if      (ps.sxBuf[2] == 0x00u) handleSysexCommand(ps.sxBuf[3], v14);
-        else if (ps.sxBuf[2] == 0x01u) handleSysexCommand((uint8_t)(ps.sxBuf[3] + 128u), v14);
+        const uint8_t cmd = (ps.sxBuf[2] == 0x00u) ? ps.sxBuf[3]
+                           : (uint8_t)(ps.sxBuf[3] + 128u);
+        /* [SAVE-LINK] During NVS flash, only PING may be handled — keeps the App
+         * link alive while blocking grid/knob writes that would race the snapshot. */
+        if (g_saveArmed.load(std::memory_order_acquire)) {
+          if (cmd == CMD_PING)
+            handleSysexCommand(CMD_PING, v14);
+        } else {
+          if      (ps.sxBuf[2] == 0x00u) handleSysexCommand(ps.sxBuf[3], v14);
+          else if (ps.sxBuf[2] == 0x01u) handleSysexCommand((uint8_t)(ps.sxBuf[3] + 128u), v14);
+        }
       }
     }
     ps.sxPtr = 0;
@@ -1396,10 +1409,6 @@ void midi_usb_event_task(void* pvParameters) {
     vTaskDelay(pdMS_TO_TICKS(1));
 
   for (;;) {
-    if (g_saveArmed.load(std::memory_order_acquire)) {
-      vTaskDelay(pdMS_TO_TICKS(10)); continue;
-    }
-
     midiEventPacket_t rx;
     while (MIDI.readPacket(&rx)) {
       switch (rx.header & 0x0Fu) {
@@ -1420,6 +1429,7 @@ void midi_usb_event_task(void* pvParameters) {
       }
     }
 
-    vTaskDelay(pdMS_TO_TICKS(1));
+    /* Slower poll while flash armed — PING still parsed above for link keepalive. */
+    vTaskDelay(pdMS_TO_TICKS(g_saveArmed.load(std::memory_order_acquire) ? 5 : 1));
   }
 }

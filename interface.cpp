@@ -827,7 +827,7 @@ void updateHardwareInterface() {
        * [SAVE-FIX16] 25 s was too aggressive for FULL saves on a loaded session;
        * premature saveForceUnlock() sent NACK while NvsWorker was still committing. */
       const uint32_t limitMs = g_resetInProgress.load(std::memory_order_relaxed)
-                                   ? 60000u : 45000u;
+                                   ? 90000u : 75000u;
       if ((uint32_t)(now - s_saveStuckSince) > limitMs) {
         const bool wasReset =
             g_resetAckPending.load(std::memory_order_acquire);
@@ -1415,18 +1415,18 @@ static void reset_persist_task(void*) {
       g_saveDoneSem &&
       (xSemaphoreTake(g_saveDoneSem, pdMS_TO_TICKS(45000)) == pdTRUE);
 
-  if (!got || !g_saveLastOk.load(std::memory_order_acquire)) {
-    g_restartAfterSave.store(false, std::memory_order_release);
-    g_resetAckPending.store(false, std::memory_order_release);
-    rollbackResetRam(s_resetPersistScope);
-    linkExtendPersistWindow(30000u);
-    linkTouchAppHeartbeat();
-    requestFullStateSync(true, false);
-    for (int burst = 0; burst < 6; ++burst) {
-      txSysexPersistReply(CMD_SCOPED_RESET, 0u);
-      midi_drain_tx_retry();
-      vTaskDelay(pdMS_TO_TICKS(25));
-    }
+    if (!got || !g_saveLastOk.load(std::memory_order_acquire)) {
+      g_restartAfterSave.store(false, std::memory_order_release);
+      g_resetAckPending.store(false, std::memory_order_release);
+      rollbackResetRam(s_resetPersistScope);
+      linkExtendPersistWindow(60000u);
+      linkTouchAppHeartbeat();
+      requestFullStateSync(true, false);
+      for (int burst = 0; burst < 8; ++burst) {
+        txSysexPersistReply(CMD_SCOPED_RESET, 0u);
+        midi_drain_tx_retry();
+        vTaskDelay(pdMS_TO_TICKS(25));
+      }
     g_resetInProgress.store(false, std::memory_order_release);
     oledPersistFailed();
     oledPersistRestore();
