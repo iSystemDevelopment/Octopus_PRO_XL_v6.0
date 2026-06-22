@@ -927,8 +927,16 @@ void handleSysexCommand(uint8_t cmd, uint16_t v14) {
       break;
     case CMD_SESSION_SAVE:
       if (v14 == 16383u) break;
+      /* [SAVE-FIX15] Recover wedged g_saveArmed so saveInProgress() is not stuck. */
+      if (!g_saveRequest.load(std::memory_order_acquire) &&
+          g_saveArmed.load(std::memory_order_acquire)) {
+        g_saveArmed.store(false, std::memory_order_release);
+        g_loopParked.store(false, std::memory_order_release);
+      }
       if (v14 < 1u || v14 > 4u) {
         txSysexPersistReply(CMD_SESSION_SAVE, 0u);
+        linkExtendPersistWindow(12000u);
+        requestFullStateSync(true, false);
         break;
       }
       if (g_resetInProgress.load(std::memory_order_acquire) &&
@@ -939,6 +947,8 @@ void handleSysexCommand(uint8_t cmd, uint16_t v14) {
         oledPersistFailed();
         txSysexPersistReply(CMD_SESSION_SAVE, 0u);
         oledPersistRestore();
+        linkExtendPersistWindow(12000u);
+        requestFullStateSync(true, false);
         break;
       }
       oledPersistWorking();
@@ -946,6 +956,8 @@ void handleSysexCommand(uint8_t cmd, uint16_t v14) {
         oledPersistFailed();
         txSysexPersistReply(CMD_SESSION_SAVE, 0u);
         oledPersistRestore();
+        linkExtendPersistWindow(12000u);
+        requestFullStateSync(true, false);
       }
       break;
     case CMD_SESSION_LOAD:

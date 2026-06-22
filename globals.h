@@ -1033,6 +1033,16 @@ inline std::atomic<uint8_t> wireHarpMidiChannel{ 1 }; /* 1–16                 
 inline std::atomic<uint8_t> wireSeqMidiChannel{ 2 };
 inline std::atomic<uint8_t> wireDrumMidiChannel{ 10 }; /* GM drums standard channel */
 inline std::atomic<uint32_t> lastWebSysexMs{ 0 };      /* heartbeat watchdog        */
+/** [LINK-HEAL] After NVS persist completes, PINGs may have stalled for seconds
+ * while flash was armed — extend isAppConnected() so echoes resume immediately. */
+inline std::atomic<uint32_t> g_linkExtendUntilMs{ 0 };
+
+static inline void linkExtendPersistWindow(uint32_t extraMs = 12000u) {
+  const uint32_t until = millis() + extraMs;
+  const uint32_t prev = g_linkExtendUntilMs.load(std::memory_order_relaxed);
+  if (until > prev)
+    g_linkExtendUntilMs.store(until, std::memory_order_relaxed);
+}
 /* [LINK-HEAL] Bulk seq_ext ring drops (motion/BANK/etc.) — coalesced hi slots
  * never increment this.  Packed into CMD_CPU_LOAD bits 7–13 for App telemetry. */
 inline std::atomic<uint32_t> g_seq_ext_drops{ 0 };
@@ -1283,6 +1293,7 @@ static inline void saveForceUnlock() {
   g_loadInProgress.store(false, std::memory_order_release);
   g_oledStatusHoldMs.store(0u, std::memory_order_release);
   g_saveFailFlashMs.store(millis() + 1500u, std::memory_order_relaxed);
+  linkExtendPersistWindow(12000u);
   displayDirty.store(true, std::memory_order_relaxed);
   if (g_saveDoneSem) xSemaphoreGive(g_saveDoneSem);
 }

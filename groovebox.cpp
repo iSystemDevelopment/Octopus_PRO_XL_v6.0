@@ -830,6 +830,9 @@ void seq_start() {
 }
 
 void seq_stop() {
+  /* Echo final step before clearing play state — App/OLED keep this position when
+   * stopped (same as seqCurrentStep on hardware).  seq_start() resets to 0. */
+  const uint16_t holdStep = seqCurrentStep.load(std::memory_order_relaxed) & 63u;
   seqPlaying.store(false, std::memory_order_release);
   /* Disarm record inline — not seq_set_recording(): stop must push play-off (0)
    * before record-off (4) in one ordered ring burst (see echoes below).        */
@@ -843,6 +846,7 @@ void seq_stop() {
   s_seqArp.request_reset();
   for (int i = 0; i < SEQ_POLYPHONY; ++i) release_seq_note(i);
   allNotesOff();
+  seq_ext_push(CMD_STEP_SYNC, holdStep);
   seq_ext_push(CMD_TRIG_MODE, 0u);
   seq_ext_push(CMD_TRANSPORT, 0u);  /* play off  */
   seq_ext_push(CMD_TRANSPORT, 4u);  /* record off — after play off, decoupled   */

@@ -1084,8 +1084,8 @@ static inline void echoFullSeqState() {
   txSysex(CMD_TRANSPORT, playingNow ? 1u : 0u);
   /* Read seqRecording atomically — snapshot only, no seq_set_recording() echo. */
   txSysex(CMD_TRANSPORT, seqRecording.load(std::memory_order_relaxed) ? 3u : 4u);
-  if (playingNow)
-    txSysex(CMD_STEP_SYNC, (uint16_t)(seqCurrentStep.load(std::memory_order_relaxed) & 63u));
+  /* Always echo step position — running or stopped (hardware bar never hides). */
+  txSysex(CMD_STEP_SYNC, (uint16_t)(seqCurrentStep.load(std::memory_order_relaxed) & 63u));
   txSysex(CMD_SONG_MODE, songModeActive.load(std::memory_order_relaxed) ? 16383u : 0u);
   txSysex(CMD_BANK, (uint16_t)(seqActiveBank.load(std::memory_order_relaxed) & 15u));
   txSysex(CMD_SEQ_CHAIN, (uint16_t)(seqActiveChain.load(std::memory_order_relaxed) & 3u));
@@ -1730,7 +1730,10 @@ static inline bool isAppConnected() {
    * (Without this guard the first 4.5 s after power-on read as connected because
    *  millis()-0 < 4500.) */
   if (last == 0u) return false;
-  if ((millis() - last) < 4500u) return true;
+  const uint32_t now = millis();
+  if ((now - last) < 4500u) return true;
+  /* Persist just finished — heartbeats may have stalled during flash write. */
+  if (now < g_linkExtendUntilMs.load(std::memory_order_relaxed)) return true;
   /* Persist in flight — App initiated save/load/reset; keep TX path alive until
    * the NvsWorker ACK/NACK is sent (heartbeats may stall during flash writes). */
   return g_saveRequest.load(std::memory_order_acquire) ||

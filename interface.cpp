@@ -838,6 +838,8 @@ void updateHardwareInterface() {
           txSysexPersistReply(CMD_SCOPED_RESET, 0u);
         else if (wasSave)
           txSysexPersistReply(CMD_SESSION_SAVE, 0u);
+        linkExtendPersistWindow(15000u);
+        requestFullStateSync(true, false);
         oledPersistFailed();
         oledPersistRestore();
         s_saveStuckSince = 0u;

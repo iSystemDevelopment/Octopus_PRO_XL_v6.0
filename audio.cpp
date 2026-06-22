@@ -669,8 +669,18 @@ void settings_save_task(void* pvParameters) {
         midi_drain_tx_retry();
         delay(25);
       }
+      linkExtendPersistWindow(8000u);
     } else {
-      txSysexPersistReply(ackCmd, 0u);
+      for (int burst = 0; burst < 4; ++burst) {
+        txSysexPersistReply(ackCmd, 0u);
+        midi_drain_tx_retry();
+        delay(20);
+      }
+      /* [LINK-HEAL] Failed save still killed the link: PINGs stalled during the
+       * write, then isAppConnected() dropped the instant flags cleared.  Extend
+       * the window and push a full resync so BPM/transport/playhead recover. */
+      linkExtendPersistWindow(15000u);
+      requestFullStateSync(true, false);
     }
 
     /* Drain any queued persist ACK before reboot so the App is not left on FAILED. */
