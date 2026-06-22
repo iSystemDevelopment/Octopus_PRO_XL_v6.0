@@ -396,13 +396,17 @@
  *   • The ESP echoes transport state on every change (seq_start/stop/pause →
  *     CMD_TRANSPORT; record → CMD_TRANSPORT 3/4; BPM → CMD_BPM) via coalesced
  *     hi-priority outbound slots (never dropped; latest value wins).  Motion/BANK
- *     echoes use a bulk ring; overflow increments g_seq_ext_drops (telemetry in
- *     CMD_CPU_LOAD bits 7–13).  A SYNC SUPERVISOR (sequencer_background_task,
- *     every 600 ms while connected) re-pushes BPM + play + record + STEP_SYNC
- *     through the same hi slots.  sendFullStateSync runs on FullSyncOut with
- *     vTaskDelay every 8 frames so MidiUsbRx is not mutex-starved.  The App
- *     transport watchdog auto-sends APP_SYNC_REQ when BPM/transport/playhead
- *     echoes stall >1.5 s while the link badge is still ONLINE.
+ *     echoes use a bulk ring (256 deep, tail coalesce); overflow increments
+ *     g_seq_ext_drops (telemetry in CMD_CPU_LOAD bits 7–13).  Failed midiMutex
+ *     sends queue in midi_drain_tx_retry() (32 slots, coalesced).  P-lock lane
+ *     steal when 4 lanes full (CMD_CPU_LOAD bit 14).  sendFullStateSync uses
+ *     s_fspPending counter so coalesced task notifies still run every request.
+ *     A SYNC SUPERVISOR (sequencer_background_task, every 600 ms while connected)
+ *     re-pushes BPM + play + record + STEP_SYNC through the same hi slots.
+ *     sendFullStateSync runs on FullSyncOut with vTaskDelay every 8 frames so
+ *     MidiUsbRx is not mutex-starved.  App _rxQueue capped at 2048 (coalesce +
+ *     evict legacy grid rows first); transport watchdog auto-sends APP_SYNC_REQ
+ *     when BPM/transport/playhead echoes stall >4 s while playing.
  *   • The App's transport buttons are read-only reflectors — they send nothing.
  *   • CMD_TRANSPORT_AVAIL=154 is retired (accepted-and-ignored for old App builds).
  *

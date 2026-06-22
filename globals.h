@@ -1004,6 +1004,8 @@ inline std::atomic<uint32_t> lastWebSysexMs{ 0 };      /* heartbeat watchdog    
 /* [LINK-HEAL] Bulk seq_ext ring drops (motion/BANK/etc.) — coalesced hi slots
  * never increment this.  Packed into CMD_CPU_LOAD bits 7–13 for App telemetry. */
 inline std::atomic<uint32_t> g_seq_ext_drops{ 0 };
+/* Set when recordMotionParam steals lane 0 (4 lanes full) — pulse on CMD_CPU_LOAD bit 14. */
+inline std::atomic<bool> g_plock_lane_steal{ false };
 
 /* ── App connectivity ──────────────────────────────────────────────────────
  * [v6.0 TRANSPORT-OWNERSHIP] Transport (play/stop/record/BPM) is ALWAYS owned
@@ -1589,10 +1591,14 @@ static inline void recordMotionParam(uint8_t cmd, uint16_t val) {
   }
   if (tgt < 0) {
     if (emp < 0) {
-      portEXIT_CRITICAL(&motionMux);
-      return;
+      /* Four lanes already used — steal lane 0 so recording never silently drops. */
+      tgt = 0;
+      g_plock_lane_steal.store(true, std::memory_order_relaxed);
+      for (int s = 0; s < (int)MOTION_STEPS_PER_LANE; ++s)
+        hwMotionData[bank][chain][tgt].steps[s] = 0xFFFFu;
+    } else {
+      tgt = emp;
     }
-    tgt = emp;
     hwMotionData[bank][chain][tgt].targetCmd = cmd;
   }
   hwMotionData[bank][chain][tgt].steps[step] = val;

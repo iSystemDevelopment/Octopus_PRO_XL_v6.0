@@ -91,16 +91,15 @@ extern MidiParserState g_usb_parse;
 /* ── Per-command TX/RX dedup tables — defined in midi.cpp (file scope) ─── */
 
 /* ── Mutex helpers ───────────────────────────────────────────────────────── */
-/* [FIX-LOCK] Timeout raised 1 ms → 5 ms.
+/* [FIX-LOCK] Timeout raised 1 ms → 8 ms.
  * Root cause of "can't restart play after stop": seq_start()/seq_stop() call
  * txSysex() from ControlPoll (priority 5) while SeqSysexOut (priority 18) is
  * draining STEP_SYNC — holding midiMutex ~0.5 ms per send.  Under Chrome USB
  * backpressure this can stretch to 3-4 ms.  The 1 ms timeout caused transport
  * echoes to be silently dropped; the supervisor self-heals at 600 ms which felt
- * like "play button frozen".  5 ms is still safe: audio task never calls
- * txSysex directly (uses seq_ext ring), so no audio-task stall risk.          */
+ * like "play button frozen".  8 ms + retry queue handles USB backpressure bursts. */
 static inline bool IRAM_ATTR midiLock() {
-  return (midiMutex && xSemaphoreTake(midiMutex, pdMS_TO_TICKS(5)) == pdTRUE);
+  return (midiMutex && xSemaphoreTake(midiMutex, pdMS_TO_TICKS(8)) == pdTRUE);
 }
 static inline void IRAM_ATTR midiUnlock() {
   if (midiMutex) xSemaphoreGive(midiMutex);
@@ -139,6 +138,8 @@ void wireRecordInputNote(uint8_t channel, uint8_t note, uint8_t vel);
 void sendFullStateSync();
 void requestFullStateSync(bool echoSongAfter = false, bool sendSyncAck = false);
 void txSysex(uint8_t cmd, uint16_t v14bit);
+/* Drain mutex-failed outbound frames retried from SeqSysexOut (call each loop). */
+void midi_drain_tx_retry();
 /* [BLOB] One-shot full-preset echo (engine 0=harp, 1=seq) — all 16 params in a
  * single SysEx.  Called from recallHarpPatch/recallSeqPatch (patches.h) so every
  * preset recall, from any source, updates the App's knobs atomically. */

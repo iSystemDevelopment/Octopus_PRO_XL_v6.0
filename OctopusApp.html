@@ -3139,6 +3139,7 @@
             _debounceTimers: null,    // [THROTTLE] per-cmd timers for txSysexSoon
             _sxRxBuf: null, // reassemble split inbound SysEx (some USB stacks fragment frames)
             _rxQueue: [],           // [RENDER-FIX] deferred inbound — drained across rAF ticks
+            _rxQueueMax: 2048,
             _rxDrainScheduled: false,
             _syncBurstExpected: false, // connect / resync — grid model-only until queue drains
             _syncBurstActive: false,
@@ -3153,6 +3154,7 @@
             _connOnline: false,   // true once device echo seen this session
             _linkWarned: false,   // one-shot hint when no 0x7C echo after connect
             _ringDropWarned: false, // one-shot when bulk ring drop counter rises
+            _plockStealWarned: false,
             _lastRingDrops: 0,
 
             // Match Octopus USB MIDI ports (Windows names vary wildly).
@@ -3241,10 +3243,29 @@
                 return cmd === CMD.STEP_SYNC || cmd === CMD.TRANSPORT || cmd === CMD.TRIG_MODE
                     || cmd === CMD.BPM || cmd === CMD.SONG_POS;
             },
+            _rxIsLowPriority(cmd) {
+                return cmd === CMD.GRID_ROW_LO || cmd === CMD.GRID_ROW_HI;
+            },
+            _rxQueueEvictOne() {
+                const i = this._rxQueue.findIndex(x => this._rxIsLowPriority(x.c));
+                if (i >= 0) this._rxQueue.splice(i, 1);
+                else if (this._rxQueue.length) this._rxQueue.shift();
+            },
             _enqueueIncoming(cmd, v14) {
                 if (this._rxIsPriority(cmd)) {
                     this.applyIncoming(cmd, v14);
                     return;
+                }
+                if (this._rxQueue.length >= this._rxQueueMax)
+                    this._rxQueueEvictOne();
+                if (this._rxQueue.length >= this._rxQueueMax) return;
+                for (let i = this._rxQueue.length - 1; i >= 0; i--) {
+                    if (this._rxQueue[i].c === cmd) {
+                        this._rxQueue[i].v = v14;
+                        if (this._rxQueue.length > 20) this._syncBurstActive = true;
+                        this._scheduleRxDrain();
+                        return;
+                    }
                 }
                 this._rxQueue.push({ c: cmd, v: v14 });
                 if (this._rxQueue.length > 20) this._syncBurstActive = true;
@@ -3605,6 +3626,7 @@
                 this._lastStepSyncRxMs = 0;
                 this._linkDegradedUntil = 0;
                 this._ringDropWarned = false;
+                this._plockStealWarned = false;
                 this._rxQueue.length = 0;
                 this._rxDrainScheduled = false;
                 this._syncBurstExpected = true;
@@ -4011,6 +4033,7 @@
                     [CMD.CPU_LOAD]: v14 => {
                         const pct = Math.max(0, Math.min(100, v14 & 0x7F));
                         const drops = (v14 >> 7) & 0x7F;
+                        const plockSteal = !!(v14 & (1 << 14));
                         const v = document.getElementById('cpuLoadVal'), box = document.getElementById('cpuLoad');
                         if (v) v.innerText = pct + '%' + (drops ? ' ⚠' : '');
                         if (box) {
@@ -4023,6 +4046,10 @@
                                 this._ringDropWarned = true;
                                 this.log('MIDI out-ring drops: ' + drops + ' (motion echoes trimmed — transport uses priority path)');
                             }
+                        }
+                        if (plockSteal && !this._plockStealWarned) {
+                            this._plockStealWarned = true;
+                            this.log('P-lock lanes full — oldest lane replaced to record new automation');
                         }
                     },
                     // [G2] Grid rows: separate entries for lo/hi so each is a direct lookup.

@@ -98,12 +98,82 @@ static uint16_t s_last_tx_val[256] = {};
 static bool     s_txSyncYield      = false;
 static uint8_t  s_txSyncYieldCount = 0;
 static TaskHandle_t hFullSyncTask  = nullptr;
-static std::atomic<bool> s_fspEchoSong{ false };
-static std::atomic<bool> s_fspSendAck{ false };
+static std::atomic<bool>     s_fspEchoSong{ false };
+static std::atomic<bool>     s_fspSendAck{ false };
+static std::atomic<uint32_t> s_fspPending{ 0 }; /* pending sync runs (notify coalesces) */
+
+/* [LINK-HEAL] Frames that lost midiMutex — drained by midi_drain_tx_retry(). */
+struct TxRetryEvt { uint8_t cmd; uint16_t v14; };
+constexpr size_t TX_RETRY_SIZE = 32u;
+TxRetryEvt             s_txRetry[TX_RETRY_SIZE];
+std::atomic<uint16_t>  s_txRetryHead{ 0 };
+std::atomic<uint16_t>  s_txRetryTail{ 0 };
+
+static void midiEmitRaw(const uint8_t* msg, uint8_t n);
+
+static bool txRetryPush(uint8_t cmd, uint16_t v14) {
+  const uint16_t t = s_txRetryTail.load(std::memory_order_relaxed);
+  for (uint16_t i = t; i != s_txRetryHead.load(std::memory_order_acquire);
+       i = (uint16_t)((i + 1u) & (TX_RETRY_SIZE - 1u))) {
+    if (s_txRetry[i].cmd == cmd) {
+      s_txRetry[i].v14 = v14;
+      return true;
+    }
+  }
+  const uint16_t h  = s_txRetryHead.load(std::memory_order_relaxed);
+  const uint16_t nh = (uint16_t)((h + 1u) & (TX_RETRY_SIZE - 1u));
+  if (nh == t) return false;
+  s_txRetry[h] = TxRetryEvt{ cmd, v14 };
+  s_txRetryHead.store(nh, std::memory_order_release);
+  return true;
+}
+
+static bool midiLockRetry(unsigned attempts = 3u) {
+  for (unsigned i = 0; i < attempts; ++i) {
+    if (midiLock()) return true;
+    if (i + 1u < attempts) vTaskDelay(pdMS_TO_TICKS(1));
+  }
+  return false;
+}
+
+/* Emit one 0x7C frame — caller passes dedup/rate-limit checks separately. */
+static bool txSysexEmit(uint8_t cmd, uint16_t v14bit) {
+  if (!isAppConnected()) return false;
+  if (v14bit > 16383u) v14bit = 16383u;
+  if (!midiLockRetry(3u)) return false;
+  const uint8_t v14hi = (uint8_t)((v14bit >> 7) & 0x7Fu);
+  const uint8_t v14lo = (uint8_t)(v14bit & 0x7Fu);
+  if (cmd <= 127u) {
+    const uint8_t f[7] = { 0xF0u, 0x7Cu, 0x00u, cmd, v14hi, v14lo, 0xF7u };
+    midiEmitRaw(f, 7);
+  } else {
+    const uint8_t f[7] = { 0xF0u, 0x7Cu, 0x01u, (uint8_t)(cmd - 128u), v14hi, v14lo, 0xF7u };
+    midiEmitRaw(f, 7);
+  }
+  midiUnlock();
+  return true;
+}
+
+void midi_drain_tx_retry() {
+  unsigned budget = 8u;
+  while (budget--) {
+    const uint16_t t = s_txRetryTail.load(std::memory_order_relaxed);
+    if (t == s_txRetryHead.load(std::memory_order_acquire)) return;
+    const TxRetryEvt e = s_txRetry[t];
+    if (!txSysexEmit(e.cmd, e.v14)) return;
+    s_last_tx_ms[e.cmd]  = millis();
+    s_last_tx_val[e.cmd] = e.v14;
+    s_txRetryTail.store((uint16_t)((t + 1u) & (TX_RETRY_SIZE - 1u)),
+                        std::memory_order_release);
+  }
+}
 
 void requestFullStateSync(bool echoSongAfter, bool sendSyncAck) {
-  s_fspEchoSong.store(echoSongAfter, std::memory_order_relaxed);
-  s_fspSendAck.store(sendSyncAck, std::memory_order_relaxed);
+  if (echoSongAfter)
+    s_fspEchoSong.store(true, std::memory_order_relaxed);
+  if (sendSyncAck)
+    s_fspSendAck.store(true, std::memory_order_relaxed);
+  s_fspPending.fetch_add(1u, std::memory_order_relaxed);
   if (hFullSyncTask)
     xTaskNotifyGive(hFullSyncTask);
 }
@@ -176,29 +246,11 @@ void txSysex(uint8_t cmd, uint16_t v14bit) {
   if (cmd < 90u || (cmd >= 112u && cmd <= 120u)) {
     if (now - s_last_tx_ms[cmd] < 10u) return;
   }
-  /* [ECHO-FIX] Stamp dedup/rate-limit state ONLY after a successful send.
-   * Stamping before the lock meant a failed midiLock() recorded a phantom send,
-   * so the retry of the same value got deduped → silent permanent echo loss. */
-  if (!midiLock()) return;
-  const uint8_t v14hi = (uint8_t)((v14bit >> 7) & 0x7Fu);
-  const uint8_t v14lo = (uint8_t)(v14bit & 0x7Fu);
-  /* Direction-tagged manufacturer ID for MIDI-loop immunity:
-   *   0x7C = device → App (these echoes/replies)
-   *   0x7D = App → device (accepted by parseMidiByte)
-   * The RX parser accepts ONLY 0x7D, so the firmware ignores its own 0x7C
-   * echoes if MIDI OUT is ever looped back to IN (USB-MIDI loopback / dongle).
-   * Without this, looped echoes faked an "App connected" heartbeat and could
-   * re-toggle transport.  The App listens for 0x7C and still sends 0x7D.        */
-  if (cmd <= 127u) {
-    const uint8_t f[7] = { 0xF0u, 0x7Cu, 0x00u, cmd, v14hi, v14lo, 0xF7u };
-    midiEmitRaw(f, 7);
-  } else {
-    /* Extended: sub-byte 0x01, wire value = cmd - 128 (0–36 for cmds 128–164) */
-    const uint8_t f[7] = { 0xF0u, 0x7Cu, 0x01u, (uint8_t)(cmd - 128u), v14hi, v14lo, 0xF7u };
-    midiEmitRaw(f, 7);
+  /* [ECHO-FIX] Stamp dedup/rate-limit state ONLY after a successful send. */
+  if (!txSysexEmit(cmd, v14bit)) {
+    txRetryPush(cmd, v14bit);
+    return;
   }
-  midiUnlock();
-
   s_last_tx_ms[cmd]  = now;
   s_last_tx_val[cmd] = v14bit;
 
@@ -740,26 +792,10 @@ void handleSysexCommand(uint8_t cmd, uint16_t v14) {
      * lo/hi when their bits 4-5 were genuinely set (those bits are irretrievably
      * merged), but it prevents phantom steps caused purely by page-bit injection.  */
     case CMD_GRID_ROW_LO:
-    case CMD_GRID_ROW_HI: {
-      const uint8_t bank  = (uint8_t)((v14 >> 12) & 3u);
-      const uint8_t row   = (uint8_t)((v14 >> 8)  & 15u);
-      /* Page is in bits 4-5 of the pre-OR'd pageAddr.  The raw bits 4-5 of v14
-       * equal (page_actual | byte_bits_4_5) which may be wrong; we use them as a
-       * best-effort estimate for the legacy format.                              */
-      const uint8_t page  = (uint8_t)((v14 >> 4)  & 3u);
-      /* Strip the page contribution from the byte field.  If byte's own bits 4-5
-       * were set, they'll be cleared — partial recovery only.  Use SX_SUB_GRID_ROW
-       * (txGridRow) for lossless transmission from new firmware and updated App.  */
-      const uint8_t byte  = (uint8_t)((v14 & 0xFFu) & ~((uint8_t)(page << 4)));
-      const int shift = (int)(page * 16 + (cmd == CMD_GRID_ROW_LO ? 0 : 8));
-      portENTER_CRITICAL(&patchMux);
-      uint64_t m = hwSeqData[bank][0][row];
-      m = (m & ~(0xFFull << shift)) | ((uint64_t)byte << shift);
-      hwSeqData[bank][0][row] = m;
-      portEXIT_CRITICAL(&patchMux);
-      displayDirty.store(true, std::memory_order_release);
+    case CMD_GRID_ROW_HI:
+      /* Legacy v14 grid encoding retired — page bits overlap byte bits and corrupt
+       * steps 4–5 for pages 1–3.  App + current firmware use SX_SUB_GRID_ROW (0x05). */
       break;
-    }
     case CMD_CLR_PLOCKS: {
       const uint8_t bank  = seqActiveBank .load(std::memory_order_relaxed);
       const uint8_t chain = seqActiveChain.load(std::memory_order_relaxed);
@@ -1240,11 +1276,17 @@ static void full_sync_task(void* pv) {
   (void)pv;
   for (;;) {
     ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
-    sendFullStateSync();
-    if (s_fspEchoSong.exchange(false, std::memory_order_acq_rel))
-      echoSongState();
-    if (s_fspSendAck.exchange(false, std::memory_order_acq_rel))
-      txSysex(CMD_APP_SYNC_REQ, 16383u);
+    /* Notify coalesces — run once per pending request so rapid APP_SYNC_REQ bursts
+     * cannot skip an intermediate resync. */
+    for (;;) {
+      if (s_fspPending.load(std::memory_order_acquire) == 0u) break;
+      sendFullStateSync();
+      if (s_fspEchoSong.exchange(false, std::memory_order_acq_rel))
+        echoSongState();
+      if (s_fspSendAck.exchange(false, std::memory_order_acq_rel))
+        txSysex(CMD_APP_SYNC_REQ, 16383u);
+      s_fspPending.fetch_sub(1u, std::memory_order_release);
+    }
   }
 }
 

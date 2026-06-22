@@ -195,7 +195,7 @@ struct SeqExtEvt {
   uint16_t v14;
 };
 
-constexpr size_t SEQ_EXT_QUEUE_SIZE = 128u;
+constexpr size_t SEQ_EXT_QUEUE_SIZE = 256u;
 SeqExtEvt             seq_ext_queue[SEQ_EXT_QUEUE_SIZE];
 std::atomic<uint16_t> seq_ext_head{ 0 };
 std::atomic<uint16_t> seq_ext_tail{ 0 };
@@ -240,9 +240,18 @@ inline void IRAM_ATTR seq_ext_push(uint8_t cmd, uint16_t v14) {
     seq_ext_push_critical(cmd, v14);
     return;
   }
-  const uint16_t h  = seq_ext_head.load(std::memory_order_relaxed);
+  /* Coalesce: same cmd already queued → update value in place (motion echoes). */
+  const uint16_t t = seq_ext_tail.load(std::memory_order_acquire);
+  uint16_t h  = seq_ext_head.load(std::memory_order_relaxed);
+  if (t != h) {
+    uint16_t prev = (uint16_t)((h - 1u) & (SEQ_EXT_QUEUE_SIZE - 1u));
+    if (seq_ext_queue[prev].cmd == cmd) {
+      seq_ext_queue[prev].v14 = v14;
+      return;
+    }
+  }
   const uint16_t nh = (uint16_t)((h + 1u) & (SEQ_EXT_QUEUE_SIZE - 1u));
-  if (nh == seq_ext_tail.load(std::memory_order_acquire)) {
+  if (nh == t) {
     g_seq_ext_drops.fetch_add(1u, std::memory_order_relaxed);
     return;
   }
@@ -1099,6 +1108,8 @@ void sequencer_background_task(void* pvParameters) {
 
   uint32_t lastSupervisorMs = 0u;
   for (;;) {
+    midi_drain_tx_retry();
+
     /* Critical coalesced slots first — never starved by bulk ring flood. */
     seq_ext_drain_critical();
 
@@ -1124,10 +1135,13 @@ void sequencer_background_task(void* pvParameters) {
       if (seqPlaying.load(std::memory_order_relaxed))
         seq_ext_push(CMD_STEP_SYNC,
                      (uint16_t)(seqCurrentStep.load(std::memory_order_relaxed) & 63u));
-      /* bits 0–6: load %; bits 7–13: bulk ring drop count (mod 128) */
+      /* bits 0–6: load %; 7–13: bulk ring drops (mod 128); 14: P-lock lane steal */
       const uint16_t loadPct = (uint16_t)g_audio_load_pct.load(std::memory_order_relaxed);
       const uint16_t drops   = (uint16_t)(g_seq_ext_drops.load(std::memory_order_relaxed) & 127u);
-      txSysex(CMD_CPU_LOAD, (uint16_t)((loadPct & 0x7Fu) | (drops << 7)));
+      uint16_t cpuV = (uint16_t)((loadPct & 0x7Fu) | (drops << 7));
+      if (g_plock_lane_steal.exchange(false, std::memory_order_acq_rel))
+        cpuV |= (1u << 14);
+      txSysex(CMD_CPU_LOAD, cpuV);
     }
     vTaskDelay(pdMS_TO_TICKS(2));
   }
