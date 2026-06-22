@@ -1530,7 +1530,15 @@ struct SettingsPersistCtx {
 
 static void settings_persist_task_fn(void* arg) {
   auto* ctx = static_cast<SettingsPersistCtx*>(arg);
+  /* Subscribe to the Task-WDT so the esp_task_wdt_reset() calls inside
+   * settings_save_scoped() are valid on THIS task.  NvsWorker already
+   * subscribes; without this the blocking / first-boot-seed path floods
+   * "task_wdt: esp_task_wdt_reset(): task not found" on every blob write
+   * (the WDT is then NOT actually fed during the multi-second seed, risking a
+   * real watchdog trip on the idle task while flash is busy). */
+  const bool wdtAdded = (esp_task_wdt_add(NULL) == ESP_OK);
   ctx->ok = settings_save_scoped(ctx->scope);
+  if (wdtAdded) esp_task_wdt_delete(NULL);
   xSemaphoreGive(ctx->done);
   vTaskDelete(nullptr);
 }
@@ -1705,7 +1713,8 @@ static inline bool settings_load() {
     settings_sync_to_ssot();   /* factory g_settings → atomics → livePatch */
     /* [SAVE-FIX4] Never call settings_save_scoped from setup()/MIDI stacks (~8 KB);
      * route through the 16 KB NvsBlk worker (same as factory reset + runtime save). */
-    if (!settings_persist_blocking(ResetScope::FULL)) { /* first-boot persist failed */ }
+    const bool seeded = settings_persist_blocking(ResetScope::FULL);
+    Serial.printf("[NVS] first-boot factory seed %s\n", seeded ? "OK" : "FAILED");
     return true;
   }
   if (err != ESP_OK) return false;

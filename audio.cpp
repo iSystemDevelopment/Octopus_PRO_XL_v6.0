@@ -613,11 +613,12 @@ void settings_save_task(void* pvParameters) {
     g_persistScope.store((uint8_t)ResetScope::FULL, std::memory_order_relaxed);
     g_saveLastOk.store(ok, std::memory_order_release);
     if (!ok) {
-      Serial.println(F("[NVS] Save FAILED — check NVS partition size"));
+      /* settings_save_scoped() already printed the exact failing step + err. */
       g_saveFailFlashMs.store(millis() + 1500u, std::memory_order_relaxed);
       displayDirty.store(true, std::memory_order_relaxed);
       oledPersistRestore();
     } else {
+      Serial.printf("[NVS] save scope=%d OK\n", (int)scope);
       g_saveFailFlashMs.store(0u, std::memory_order_relaxed);
       /* Visible "DONE!" pill in every view for 1.2 s. */
       g_saveFlashMs.store(millis() + 1200u, std::memory_order_relaxed);
