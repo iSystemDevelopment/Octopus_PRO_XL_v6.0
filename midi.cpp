@@ -907,27 +907,25 @@ void handleSysexCommand(uint8_t cmd, uint16_t v14) {
       requestFullStateSync(true, true);
       break;
     case CMD_SESSION_SAVE:
+      /* App encodes scope as v14 = scope + 1  (FULL=1 BANKS=2 MOTION=3 SETTINGS=4).
+       * v14=0 is the NACK echo; v14=16383 is the ACK echo.  Using scope+1 avoids
+       * the collision between FULL scope (0) and the NACK sentinel (0) that was
+       * silently dropping every FULL-scope save request. */
       if (v14 == 16383u) break; /* ACK echo — ignore */
-      if (v14 == 0u)     break; /* NACK echo — ignore */
-      /* [FIX-H1] requestScopedSave now returns bool; send NACK 0 to App if a save
-       * is already in flight so it doesn't silently lose the request.
-       * [FIX-H4] Removed dead settings_mark_dirty() — g_saveRequest already armed. */
-      if (!requestScopedSave((uint8_t)(v14 & 3u)))
+      if (v14 < 1u || v14 > 4u) break; /* NACK echo (0) or out-of-range */
+      if (!requestScopedSave((uint8_t)((v14 - 1u) & 3u)))
         txSysex(CMD_SESSION_SAVE, 0u); /* NACK — save already in flight */
       break;
     case CMD_SESSION_LOAD:
       if (v14 == 16383u) break; /* ACK echo — ignore */
-      if (v14 == 0u)     break; /* NACK echo — ignore */
+      if (v14 < 1u || v14 > 4u) break; /* NACK echo (0) or out-of-range */
       if (saveInProgress() || g_resetInProgress.load(std::memory_order_acquire)) {
         txSysex(CMD_SESSION_LOAD, 0u); /* NACK — persist op in flight */
         break;
       }
-      /* [FIX-C1] Dispatch LOAD to a 16 KB task — MidiUsbRx has only 8 KB which
-       * is too shallow for the full NVS blob read + patterns array.
-       * [FIX-C3] ACK/NACK sent from the task after verifying success.
-       * [FIX-H2] DAC thresholds recomputed inside the task (was missing). */
+      /* [FIX-C1] Dispatch LOAD to a 16 KB task — MidiUsbRx has only 8 KB. */
       {
-        NvsLoadCtx* ctx = new NvsLoadCtx{ (uint8_t)(v14 & 3u) };
+        NvsLoadCtx* ctx = new NvsLoadCtx{ (uint8_t)((v14 - 1u) & 3u) };
         if (xTaskCreatePinnedToCore(nvs_load_task, "NvsLoad", 16384,
                                     ctx, 3, nullptr, 1) != pdPASS) {
           delete ctx;
@@ -936,13 +934,10 @@ void handleSysexCommand(uint8_t cmd, uint16_t v14) {
       }
       break;
     case CMD_SCOPED_RESET:
-      /* [RESET v2] App-driven scoped reset (RAM wipe + persist + reboot).  The
-       * App owns its own YES/NO confirm; the device just executes.              */
+      /* App encodes scope as v14 = scope + 1 (same convention as SESSION_SAVE). */
       if (v14 == 16383u) break; /* ACK echo — ignore */
-      if (v14 == 0u)     break; /* NACK echo — ignore (prevents accidental FULL
-                                 * reset when the device's own NACK is echoed
-                                 * back via the USB MIDI loopback path)         */
-      handleScopedReset((ResetScope)(v14 & 3u)); break;
+      if (v14 < 1u || v14 > 4u) break; /* NACK echo (0) or out-of-range */
+      handleScopedReset((ResetScope)((v14 - 1u) & 3u)); break;
     case CMD_SEQ_CLEAR:
       /* [CLEAR] Mirror of hardware SEQ SETUP → Clear (active grid + sounds→0). */
       if (v14 == 16383u) break;
