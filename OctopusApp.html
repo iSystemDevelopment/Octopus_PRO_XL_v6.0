@@ -855,31 +855,24 @@
             position: relative
         }
 
-        /* [PLAYHEAD-ISOLATED] Absolute overlay — fully detached from grid DOM flow.
-         * Position is written by _pllPositionTick() every rAF frame via transform;
-         * will-change promotes it to its own compositor layer so grid cell paints
-         * (classList.toggle on 256 cells) never block the playhead composite step.
-         * NO transform transition — the PLL already provides 60 fps sub-step glide;
-         * a CSS transition would add latency and fight the JS on page-snap frames. */
+        /* Playhead = grid item spanning all 16 rows in the active step column.
+         * grid-column is set by JS (cols 2–17 = steps 0–15). No absolute coords. */
         #seq-playhead {
-            position: absolute;
-            top: 0;
-            left: 0;
+            display: none;
+            grid-row: 1 / span 16;
             pointer-events: none;
-            z-index: 8;
+            z-index: 5;
+            margin: 0;
             border-radius: 3px;
             border: 1px solid rgba(207, 255, 255, 0.9);
             box-shadow: 0 0 8px rgba(6, 182, 212, 0.55), inset 0 0 8px rgba(6, 182, 212, 0.3);
             background: linear-gradient(180deg, rgba(120, 224, 255, 0.34), rgba(6, 182, 212, 0.10));
-            visibility: hidden;
-            opacity: 1;
-            transform: translate3d(0, 0, 0);
-            will-change: transform;
-            box-sizing: border-box
+            box-sizing: border-box;
+            will-change: transform
         }
 
         #seq-playhead.ph-visible {
-            visibility: visible
+            display: block
         }
 
         .seq-row-label {
@@ -3171,9 +3164,7 @@
             _playBeat: -1,
             _playAbsStep: -1, // absolute step index for wrap detection
             _playheadEl: null, // single grid overlay — zero per-cell class toggles
-            _phPendingStep: -1,
-            _phForceRemeasure: false,
-            _phGeo: null,
+            _phPendingStep: -1,     // deferred paint when sequencer tab hidden
             // [v6.0.01 PLL] phase-locked local tick clock — hardware anchors, App interpolates
             _pllAnchorStep: -1,  // hardware step received on last STEP_SYNC
             _pllAnchorTime: -1,  // performance.now() at that STEP_SYNC
@@ -3188,8 +3179,7 @@
             _syncBurstExpected: false, // connect / resync — grid model-only until queue drains
             _syncBurstActive: false,
             _gridModelDirty: false,
-            _phRemeasureRaf: 0,     // coalesced playhead geometry remeasure (not every rAF)
-            _phStoppedPaint: false, // retry static playhead paint until visible when stopped
+            _phRemeasureRaf: 0,
             _lastDeviceRxMs: 0,   // last 0x7C echo from firmware (link verify)
             _lastBpmRxMs: 0,      // [LINK-HEAL] transport watchdog timestamps
             _lastTransportRxMs: 0,
@@ -3339,7 +3329,7 @@
                 this._syncBurstExpected = true;
                 this._syncBurstActive = false;
                 this._phPendingStep = this.visStep | 0;
-                this._phForceRemeasure = true;
+                this._paintPlayhead(this.visStep | 0);
                 if (this.midiOut && this._portLive(this.midiOut)) {
                     for (let i = 0; i < 3; i++) {
                         this.txSysex(CMD.PING, 0);
@@ -3477,12 +3467,10 @@
                 if (this._phRemeasureRaf) return;
                 this._phRemeasureRaf = requestAnimationFrame(() => {
                     this._phRemeasureRaf = 0;
-                    if (!this._seqGridVisible()) return;
-                    if (!this._phForceRemeasure && !this.isPlaying && !this._phStoppedPaint) return;
-                    this.advancePlayhead(this.visStep | 0);
+                    this._paintPlayhead(this.visStep | 0);
                 });
             },
-            /** True when the pattern grid is on-screen and measurable (not song editor). */
+            /** True when the pattern grid is on-screen (SEQUENCER tab, not song editor). */
             _seqGridVisible() {
                 const v = document.getElementById('view-seq');
                 if (!v || !v.classList.contains('active')) return false;
@@ -3491,13 +3479,45 @@
                 if (!wrap || wrap.style.display === 'none') return false;
                 return true;
             },
-            _showPlayheadEl(ph) {
+            /** Single playhead paint — grid-column placement, works running or stopped. */
+            _paintPlayhead(s) {
+                const ph = this._playheadEl;
+                const len = Math.max(1, this.seqLen | 0);
+                s = Math.max(0, Math.min(len - 1, s | 0));
+                const page = (s >> 4) & 3;
+                const col = s & 15;
+
+                this._playCol = col;
+                this._playPage = page;
+                this._playAbsStep = s;
+                this._playLast = s;
+
                 if (!ph) return;
+
+                if (!this._seqGridVisible()) {
+                    this._phPendingStep = s;
+                    return;
+                }
+
+                if (page !== this.gridPageIdx) {
+                    this.setGridPage(page, true);
+                    requestAnimationFrame(() => this._paintPlayhead(s));
+                    return;
+                }
+
+                ph.style.gridColumn = String(col + 2);
+                ph.style.gridRow = '1 / span 16';
                 ph.classList.add('ph-visible');
-            },
-            _hidePlayheadEl(ph) {
-                if (!ph) return;
-                ph.classList.remove('ph-visible');
+                this._phPendingStep = -1;
+
+                if (this.isPlaying) {
+                    this._pllAnchorStep = s;
+                    this._pllAnchorTime = performance.now();
+                    this._updateBeatLeds(col);
+                } else {
+                    this._pllAnchorStep = -1;
+                    ph.style.transform = 'translate3d(0,0,0)';
+                }
             },
             async init() {
                 this.populateDropdowns();
@@ -3515,9 +3535,8 @@
                 await this.setupMIDI();
                 this.animateVU();
                 /* Idle stopped state: show playhead at step 0 (matches hardware boot). */
+                this.visStep = 0;
                 this._phPendingStep = 0;
-                this._phForceRemeasure = true;
-                this._phStoppedPaint = true;
                 // [LIVE-PERF] Background/foreground handling.  When the tab is hidden
                 // mid-show we KEEP the link alive (audio keep-alive + worker
                 // heartbeat already running).  When it returns to the foreground we
@@ -4235,8 +4254,7 @@
                         this._updatePageButtons();
                         const s = Math.min(this.visStep | 0, this.seqLen - 1);
                         this.visStep = s;
-                        this._phForceRemeasure = true;
-                        this._phPendingStep = s;
+                        this._paintPlayhead(s);
                     },
                     [CMD.TRANSPOSE]: v14 => {
                         const t = (v14 <= 24) ? Math.max(-12, Math.min(12, v14 - 12)) : Math.max(-12, Math.min(12, Math.round((v14 / 16383) * 24 - 12)));
@@ -4301,16 +4319,7 @@
                         if (s < 0) s = 0;
                         if (s >= len) s = len - 1;
                         this.visStep = s;
-                        /* Always repaint playhead — running or stopped (hardware bar stays). */
-                        if (this.isPlaying) {
-                            this._pllAnchorStep = s;
-                            this._pllAnchorTime = performance.now();
-                            this._updateBeatLeds(s & 15);
-                        } else {
-                            this._phStoppedPaint = true;
-                        }
-                        this._phPendingStep = s;
-                        this._phForceRemeasure = true;
+                        this._paintPlayhead(s);
                     },
                     // [SUBSTEP] Sub-step phase refinement (CMD_STEP_PHASE, ~20 Hz).
                     // Pure refinement: it ONLY nudges _pllAnchorTime within the CURRENT
@@ -4394,24 +4403,13 @@
                 document.getElementById('btnStop') ?.classList.toggle('active-green', !playing);
                 document.getElementById('btnRec') ?.classList.toggle('active-red', recording);
                 if (!playing) {
-                    /* Stopped: freeze playhead at last step (hardware keeps seqCurrentStep).
-                     * Do NOT reset to step 0 — that happens only on the next seq_start(). */
                     this._pllAnchorStep = -1;
                     this._pllAnchorTime = -1;
-                    this._phPendingStep = this.visStep | 0;
-                    this._phForceRemeasure = true;
-                    this._phStoppedPaint = true;
-                    /* Beat LEDs are play-only — clear when stopped. */
                     for (let i = 0; i < 4; i++)
-                        document.getElementById('led-' + i) ?.classList.remove('active');
+                        document.getElementById('led-' + i)?.classList.remove('active');
                     this._playBeat = -1;
+                    this._paintPlayhead(this.visStep | 0);
                 } else if (!wasPlaying) {
-                    /* seq_start() resets counter → STEP_SYNC(0) follows immediately. */
-                    this._playCol = -1;
-                    this._playPage = -1;
-                    this._playAbsStep = -1;
-                    this._playLast = -1;
-                    this._phForceRemeasure = true;
                     this._pllAnchorStep = -1;
                     this._pllAnchorTime = -1;
                 }
@@ -4789,8 +4787,7 @@
                 /* Length change can invalidate wrap/playhead state — re-sync always. */
                 const s = Math.min(this.visStep | 0, this.seqLen - 1);
                 this.visStep = s;
-                this._phForceRemeasure = true;
-                this._phPendingStep = s;
+                this._paintPlayhead(s);
             },
             // P1–P4: each page shows 16 columns of the 64-step pattern for the active bank.
             setGridPage(p, repaint = true) {
@@ -4861,17 +4858,7 @@
                 const wrap = document.getElementById('seq-grid-wrap');
                 if (wrap) wrap.style.display = this.showSongEditor ? 'none' : '';
                 if (!this.showSongEditor) {
-                    this._phGeo = null;
-                    this._phForceRemeasure = true;
-                    this._phPendingStep = this.visStep | 0;
-                    this._phStoppedPaint = !this.isPlaying;
-                    requestAnimationFrame(() => requestAnimationFrame(() => {
-                        if (!this._seqGridVisible()) return;
-                        this._phGeo = null;
-                        this._phForceRemeasure = true;
-                        if (!this.isPlaying) this._positionPlayheadStatic(this.visStep | 0);
-                        else this.advancePlayhead(this.visStep | 0);
-                    }));
+                    requestAnimationFrame(() => this._paintPlayhead(this.visStep | 0));
                 }
                 this._updateSeqModeBtn();
                 if (autoSwitchTab && this.showSongEditor) this.switchView(3);
@@ -5080,7 +5067,6 @@
             },
 
             // ── Playhead ────────────────────────────────────────────────────────────────
-            // [CLOCK-AUTHORITY] Driven exclusively by CMD.STEP_SYNC → _phPendingStep → rAF.
             _updateBeatLeds(col) {
                 col = Math.max(0, (col | 0) & 15);
                 const beat = col >> 2;
@@ -5091,210 +5077,35 @@
                 }
                 this._playBeat = beat;
             },
-            _measurePlayheadGeo() {
-                if (!this._seqGridVisible()) return null;
-                const wrap = document.getElementById('seq-grid-wrap');
-                const grid = document.getElementById('seq-grid');
-                const c0 = this._domGridCache?.[0]?.[0];
-                const c1 = this._domGridCache?.[0]?.[1];
-                if (!wrap || !grid || !c0) return null;
-                const wr = wrap.getBoundingClientRect();
-                const r0 = c0.getBoundingClientRect();
-                const r1 = c1 ? c1.getBoundingClientRect() : null;
-                const pitch = r1 ? (r1.left - r0.left) : (r0.width + 2);
-                if (!(pitch > 0) || !(r0.width > 0) || !(wr.height > 0)) return null;
-                return {
-                    x0: r0.left - wr.left,
-                    y0: r0.top - wr.top,
-                    pitch,
-                    width: r0.width,
-                    height: wr.height
-                };
-            },
-            advancePlayhead(s) {
-                s = (s | 0);
-                const ph = this._playheadEl;
-
-                const len = Math.max(1, this.seqLen | 0);
-                const lastIdx = len - 1;
-                if (s < 0) s = 0;
-                if (s > lastIdx) s = lastIdx;
-
-                const page = (s >> 4) & 3;
-                const col = s & 15;
-                const prevAbs = this._playAbsStep;
-
-                /* Beat LEDs only while running — frozen playhead still visible when stopped. */
-                if (this.isPlaying) this._updateBeatLeds(col);
-
-                if (!ph) {
-                    this._playCol = col;
-                    this._playPage = page;
-                    this._playAbsStep = s;
-                    this._playLast = s;
-                    return;
-                }
-
-                /* Same step, geometry stable — skip redundant DOM work (common on LEN=1).
-                 * When stopped, never skip if the bar is not yet visible. */
-                if (s === this._playLast && prevAbs === s && !this._phForceRemeasure) {
-                    if (this.isPlaying || (ph.classList.contains('ph-visible') && this._phGeo)) return;
-                }
-
-                if (page !== this.gridPageIdx) {
-                    this.setGridPage(page, true);
-                    this._phPendingStep = s;
-                    this._phForceRemeasure = true;
-                    return;
-                }
-
-                if (this._phForceRemeasure || !this._phGeo)
-                    this._phGeo = this._measurePlayheadGeo();
-                const geo = this._phGeo || this._measurePlayheadGeo();
-                if (!geo) {
-                    this._phForceRemeasure = true;
-                    this._phStoppedPaint = !this.isPlaying;
-                    this._playCol = col;
-                    this._playPage = page;
-                    this._playAbsStep = s;
-                    this._playLast = s;
-                    return;
-                }
-
-                const stepDelta = (prevAbs >= 0) ? (s - prevAbs) : 0;
-                /* Pattern wrap = last step → 0 only (not LEN=1 where lastIdx is 0). */
-                const patternWrap = prevAbs >= 0 && lastIdx > 0 && prevAbs === lastIdx && s === 0;
-                const pageWrap = this._playPage >= 0 && page !== this._playPage;
-                /* Hardware STEP_SYNC is authoritative — snap on every new step. */
-                const snapped = pageWrap || patternWrap || this._playCol < 0
-                    || stepDelta !== 0;
-
-                // [PLAYHEAD-DETACH] advancePlayhead owns ONLY size + opacity + geo.
-                // _pllPositionTick() owns ALL transform positioning (runs first each rAF).
-                // No inline transition override — CSS has `transition: opacity 80ms` only;
-                // removing the old inline set eliminates a style recalc every STEP_SYNC.
-                ph.style.width  = geo.width  + 'px';
-                ph.style.height = geo.height + 'px';
-                ph.style.top    = (geo.y0 || 0) + 'px';
-                this._showPlayheadEl(ph);
-                this._phStoppedPaint = false;
-                if (this.isPlaying) {
-                    if (snapped) {
-                        this._pllAnchorStep = s;
-                        this._pllAnchorTime = performance.now();
-                    }
-                } else {
-                    /* Stopped: static column — no PLL glide (matches hardware bar). */
-                    ph.style.transform = 'translate3d(' + (geo.x0 + col * geo.pitch).toFixed(1) + 'px, 0, 0)';
-                }
-                this._playCol = col;
-                this._playPage = page;
-                this._playAbsStep = s;
-                this._playLast = s;
-                this._phForceRemeasure = false;
-            },
-            _hidePlayhead() {
-                this._playCol = -1;
-                this._playPage = -1;
-                this._playBeat = -1;
-                this._playAbsStep = -1;
-                this._playLast = -1;
-                this._hidePlayheadEl(this._playheadEl);
-                for (let i = 0; i < 4; i++) document.getElementById('led-' + i) ?.classList.remove('active');
-            },
-            /** Stopped playhead — fixed at column, no PLL (hardware idle bar). */
-            _positionPlayheadStatic(s) {
-                const ph = this._playheadEl;
-                if (!ph) return false;
-                s = Math.max(0, s | 0);
-                const len = Math.max(1, this.seqLen | 0);
-                if (s >= len) s = len - 1;
-                const page = (s >> 4) & 3;
-                if (page !== this.gridPageIdx) {
-                    this.setGridPage(page, true);
-                    this._phPendingStep = s;
-                    this._phForceRemeasure = true;
-                    return false;
-                }
-                if (this._phForceRemeasure || !this._phGeo)
-                    this._phGeo = this._measurePlayheadGeo();
-                const geo = this._phGeo || this._measurePlayheadGeo();
-                if (!geo) {
-                    this._phForceRemeasure = true;
-                    return false;
-                }
-                const col = s & 15;
-                ph.style.width = geo.width + 'px';
-                ph.style.height = geo.height + 'px';
-                ph.style.top = (geo.y0 || 0) + 'px';
-                ph.style.transform = 'translate3d(' + (geo.x0 + col * geo.pitch).toFixed(1) + 'px, 0, 0)';
-                this._showPlayheadEl(ph);
-                this._playCol = col;
-                this._playPage = page;
-                this._playAbsStep = s;
-                this._playLast = s;
-                this._phForceRemeasure = false;
-                this._phStoppedPaint = false;
-                return true;
-            },
-
-            // ── PLL playhead interpolation ────────────────────────────────────────────
-            // Called FIRST in every rAF frame (animateVU).  Hardware STEP_SYNC events
-            // set _pllAnchorStep + _pllAnchorTime; we extrapolate the fractional column
-            // position using performance.now() and the live BPM stepMs so the playhead
-            // glides at 60 fps between ticks regardless of USB batching or jitter.
-            //
-            // Sync accuracy is bounded by the USB one-way latency (~2–20 ms) between
-            // the hardware firing a step and the JS event loop receiving the STEP_SYNC.
-            // This is the physical limit for a USB connection — the PLL eliminates all
-            // software-layer jitter on top of that unavoidable hardware delay.
             _pllPositionTick() {
                 if (!this.isPlaying || this._pllAnchorStep < 0) return;
                 const ph = this._playheadEl;
                 if (!ph || !ph.classList.contains('ph-visible')) return;
-                const geo = this._phGeo;
-                if (!geo) return;
-
                 const anchorStep = this._pllAnchorStep | 0;
-                const anchorPage = (anchorStep >> 4) & 3;
-                /* Never draw on the wrong P-page — page follow snaps via advancePlayhead. */
-                if (anchorPage !== (this.gridPageIdx | 0)) return;
-
-                const now = performance.now();
-                const bpm = Math.max(40, this.bpm || 120);
-                const stepMs = 60000 / bpm / 4;   // 16th-note duration in ms (40–240 BPM)
-
-                // Fractional steps elapsed since last hardware anchor.
-                // • Lower bound 0: can't go before the anchor (clock hasn't gone backward).
-                // • Upper bound 0.98: never visually jump past the next column before its
-                //   STEP_SYNC arrives — the 2% dead-zone is ~1.25 ms at 120 BPM, invisible.
-                //   Also guards against USB stalls (very large elapsed times are clamped).
-                const elapsed = Math.max(0, now - this._pllAnchorTime);
-                const frac = Math.min(0.98, Math.max(0, elapsed / stepMs));
-
-                // Column position on the CURRENT PAGE only (0–15).
-                const col  = anchorStep & 15;
-                const colF = Math.min(15, col + frac);
-
-                ph.style.transform = 'translate3d(' + (geo.x0 + colF * geo.pitch).toFixed(1) + 'px, 0, 0)';
+                if (((anchorStep >> 4) & 3) !== (this.gridPageIdx | 0)) return;
+                const col = anchorStep & 15;
+                ph.style.gridColumn = String(col + 2);
+                const cell = this._domGridCache[0][col];
+                const w = ph.offsetWidth || (cell ? cell.offsetWidth : 0);
+                if (!(w > 0)) return;
+                const stepMs = 60000 / Math.max(40, this.bpm || 120) / 4;
+                const frac = Math.min(0.98, Math.max(0, (performance.now() - this._pllAnchorTime) / stepMs));
+                ph.style.transform = 'translate3d(' + (frac * w).toFixed(1) + 'px,0,0)';
             },
 
             // ── Build sequencer grid ──────────────────────────────────────────────────
             buildSequencer() {
                 const g = document.getElementById('seq-grid');
-                const wrap = document.getElementById('seq-grid-wrap');
-                if (!g || !wrap) return;
+                if (!g) return;
 
                 const savedPh = this._playheadEl;
-                if (savedPh && savedPh.parentNode) savedPh.parentNode.removeChild(savedPh);
+                if (savedPh && savedPh.parentNode === g) g.removeChild(savedPh);
 
                 g.innerHTML = '';
                 this._playCol = -1;
                 this._playPage = -1;
                 this._playAbsStep = -1;
                 this._playLast = -1;
-                this._phPendingStep = this.visStep | 0;
-                this._phForceRemeasure = true;
 
                 // Row 0 = top = highest note (firmware row0 = +12 st via kRowSemitone), row7 = root.
                 const synthLabels = ['C5', 'B4', 'A4', 'G4', 'F4', 'E4', 'D4', 'C4'];
@@ -5330,19 +5141,15 @@
                     ph.setAttribute('aria-hidden', 'true');
                     this._playheadEl = ph;
                 }
-                wrap.appendChild(ph);
+                g.appendChild(ph);
 
                 if (typeof ResizeObserver !== 'undefined') {
                     if (this._phResizeOb) this._phResizeOb.disconnect();
-                    this._phResizeOb = new ResizeObserver(() => {
-                        this._phGeo = null;
-                        this._phForceRemeasure = true;
-                        this._phStoppedPaint = !this.isPlaying;
-                        this._schedulePlayheadRemeasure();
-                    });
-                    this._phResizeOb.observe(wrap);
+                    this._phResizeOb = new ResizeObserver(() => this._paintPlayhead(this.visStep | 0));
+                    this._phResizeOb.observe(g);
                 }
                 this.repaintGrid();
+                this._paintPlayhead(this.visStep | 0);
             },
 
             // ── Grid model helpers (per-bank source of truth) ─────────────────────────
@@ -5406,9 +5213,7 @@
                         }
                     }
                 /* Defer playhead paint — grid DOM must settle first. */
-                this._phForceRemeasure = true;
                 this._schedulePlayheadRemeasure();
-                this._phPendingStep = this.visStep | 0;
             },
 
             // ── Build knobs ───────────────────────────────────────────────────────────
@@ -5693,19 +5498,7 @@
                     document.getElementById('tab' + (i + 1)) ?.classList.toggle('active', i === id - 1);
                 });
                 if (id === 3) {
-                    this._phGeo = null;
-                    this._phForceRemeasure = true;
-                    this._phPendingStep = this.visStep | 0;
-                    this._phStoppedPaint = !this.isPlaying;
-                    /* Grid was display:none — measure only after layout paints. */
-                    requestAnimationFrame(() => requestAnimationFrame(() => {
-                        if (!this._seqGridVisible()) return;
-                        this._phGeo = null;
-                        this._phForceRemeasure = true;
-                        this._phPendingStep = this.visStep | 0;
-                        if (!this.isPlaying) this._positionPlayheadStatic(this.visStep | 0);
-                        else this.advancePlayhead(this.visStep | 0);
-                    }));
+                    requestAnimationFrame(() => this._paintPlayhead(this.visStep | 0));
                 }
             },
 
@@ -5791,17 +5584,13 @@
                 // │  compositor layer so grid cell paints never block this update.       │
                 // └─────────────────────────────────────────────────────────────────────┘
                 if (this.isPlaying) this._pllPositionTick();
-
-                /* Repaint playhead when STEP_SYNC arrives or geometry needs refresh. */
-                if (this._phPendingStep >= 0) {
+                if (this._phPendingStep >= 0 && this._seqGridVisible()) {
                     const step = this._phPendingStep;
                     this._phPendingStep = -1;
-                    if (this._seqGridVisible()) this.advancePlayhead(step);
-                    else this._phStoppedPaint = true;
-                } else if (!this.isPlaying && this._playheadEl && this._seqGridVisible()) {
-                    const step = this._playAbsStep >= 0 ? this._playAbsStep : (this.visStep | 0);
-                    if (this._phStoppedPaint || !this._playheadEl.classList.contains('ph-visible'))
-                        this._positionPlayheadStatic(step);
+                    this._paintPlayhead(step);
+                } else if (!this.isPlaying && this._playheadEl && this._seqGridVisible()
+                    && !this._playheadEl.classList.contains('ph-visible')) {
+                    this._paintPlayhead(this.visStep | 0);
                 }
 
                 // [PLAYHEAD-DETACH] Song editor rebuild is coalesced AND deferred to its

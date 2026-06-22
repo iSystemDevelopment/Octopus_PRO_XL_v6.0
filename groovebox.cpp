@@ -279,11 +279,13 @@ static void seq_ext_drain_hi_slot(std::atomic<bool>& pending, uint8_t cmd,
 
 static void seq_ext_drain_critical() {
   seq_ext_drain_hi_slot(seq_hi_bpm_pending, CMD_BPM, seq_hi_bpm_val);
+  /* STEP_SYNC before TRANSPORT — stop burst must paint step before play-off or
+   * the App freezes the playhead at the wrong column / hides it on stop.        */
+  seq_ext_drain_hi_slot(seq_hi_step_pending, CMD_STEP_SYNC, seq_hi_step_val);
   seq_ext_drain_hi_slot(seq_hi_transport_play_pending, CMD_TRANSPORT,
                         seq_hi_transport_play_val);
   seq_ext_drain_hi_slot(seq_hi_transport_rec_pending, CMD_TRANSPORT,
                         seq_hi_transport_rec_val);
-  seq_ext_drain_hi_slot(seq_hi_step_pending, CMD_STEP_SYNC, seq_hi_step_val);
 }
 
 /* ── 3. Step-position helper ──────────────────────────────────────────────── */
