@@ -1138,8 +1138,13 @@ static inline esp_err_t banks_save_h(nvs_handle_t h) {
   }
   b->harpCount = hc;
   b->seqCount  = sc;
-  b->crc32     = crc32_buf((const uint8_t*)b, sizeof(BanksBlob)); /* crc field is 0 here */
-  esp_err_t err = nvs_set_blob(h, "banks", b, sizeof(BanksBlob));
+  /* [NVS-TRIM] harp[] stays at its fixed offset (full MAX_BANK_OVR span, unused
+   * slots zeroed); trim only the trailing unused part of seq[].  seq[] is the
+   * last member, so writing up to seq[sc] keeps every entry at its normal offset
+   * — no layout change, struct cast on load stays valid. */
+  const size_t used = offsetof(BanksBlob, seq) + (size_t)sc * sizeof(BankOverride);
+  b->crc32     = crc32_buf((const uint8_t*)b, used); /* crc field is 0 here */
+  esp_err_t err = nvs_set_blob(h, "banks", b, used);
   heap_caps_free(b);
   return err;
 }
@@ -1148,11 +1153,15 @@ static inline esp_err_t banks_load_h(nvs_handle_t h) {
   size_t sz = sizeof(BanksBlob);
   BanksBlob* b = (BanksBlob*)nvsBlobAlloc(sz);
   if (!b) return ESP_ERR_NO_MEM;
+  memset(b, 0, sizeof(BanksBlob));
   esp_err_t err = nvs_get_blob(h, "banks", b, &sz);
-  if (err == ESP_OK && sz == sizeof(BanksBlob) && b->version == BANKS_VERSION) {
+  const size_t expect = (err == ESP_OK && b->seqCount <= MAX_BANK_OVR)
+      ? offsetof(BanksBlob, seq) + (size_t)b->seqCount * sizeof(BankOverride) : 0u;
+  if (err == ESP_OK && b->version == BANKS_VERSION &&
+      b->harpCount <= MAX_BANK_OVR && b->seqCount <= MAX_BANK_OVR && sz == expect) {
     const uint32_t stored = b->crc32;
     b->crc32 = 0;
-    if (crc32_buf((const uint8_t*)b, sizeof(BanksBlob)) == stored) {
+    if (crc32_buf((const uint8_t*)b, sz) == stored) {
       const size_t   rowBytes = PARAMS_PER_PRESET * sizeof(uint16_t);
       const uint16_t hc  = std::min<uint16_t>(b->harpCount, MAX_BANK_OVR);
       const uint16_t scn = std::min<uint16_t>(b->seqCount,  MAX_BANK_OVR);
@@ -1195,8 +1204,10 @@ static inline esp_err_t usrnames_save_h(nvs_handle_t h) {
   }
   b->harpCount = hc;
   b->seqCount  = sc;
-  b->crc32     = crc32_buf((const uint8_t*)b, sizeof(UserNamesBlob));
-  esp_err_t err = nvs_set_blob(h, "usrnames", b, sizeof(UserNamesBlob));
+  /* [NVS-TRIM] harp[] full at fixed offset; trim trailing unused seq[]. */
+  const size_t used = offsetof(UserNamesBlob, seq) + (size_t)sc * sizeof(NameOverride);
+  b->crc32     = crc32_buf((const uint8_t*)b, used);
+  esp_err_t err = nvs_set_blob(h, "usrnames", b, used);
   heap_caps_free(b);
   return err;
 }
@@ -1205,11 +1216,15 @@ static inline esp_err_t usrnames_load_h(nvs_handle_t h) {
   size_t sz = sizeof(UserNamesBlob);
   UserNamesBlob* b = (UserNamesBlob*)nvsBlobAlloc(sz);
   if (!b) return ESP_ERR_NO_MEM;
+  memset(b, 0, sizeof(UserNamesBlob));
   esp_err_t err = nvs_get_blob(h, "usrnames", b, &sz);
-  if (err == ESP_OK && sz == sizeof(UserNamesBlob) && b->version == USRNAMES_VERSION) {
+  const size_t expect = (err == ESP_OK && b->seqCount <= NUM_USER_SLOTS)
+      ? offsetof(UserNamesBlob, seq) + (size_t)b->seqCount * sizeof(NameOverride) : 0u;
+  if (err == ESP_OK && b->version == USRNAMES_VERSION &&
+      b->harpCount <= NUM_USER_SLOTS && b->seqCount <= NUM_USER_SLOTS && sz == expect) {
     const uint32_t stored = b->crc32;
     b->crc32 = 0;
-    if (crc32_buf((const uint8_t*)b, sizeof(UserNamesBlob)) == stored) {
+    if (crc32_buf((const uint8_t*)b, sz) == stored) {
       const uint16_t hc  = std::min<uint16_t>(b->harpCount, NUM_USER_SLOTS);
       const uint16_t scn = std::min<uint16_t>(b->seqCount,  NUM_USER_SLOTS);
       for (uint16_t k = 0; k < hc; ++k) {
@@ -1255,8 +1270,10 @@ static inline esp_err_t usrpat_save_h(nvs_handle_t h) {
     ++n;
   }
   b->count = n;
-  b->crc32 = crc32_buf((const uint8_t*)b, sizeof(UserPatBlob));
-  esp_err_t err = nvs_set_blob(h, "usrpat", b, sizeof(UserPatBlob));
+  /* [NVS-TRIM] header + n used entries only (not the full 64-slot array). */
+  const size_t used = offsetof(UserPatBlob, entries) + (size_t)n * sizeof(UserPatOverride);
+  b->crc32 = crc32_buf((const uint8_t*)b, used);
+  esp_err_t err = nvs_set_blob(h, "usrpat", b, used);
   heap_caps_free(b);
   return err;
 }
@@ -1265,11 +1282,15 @@ static inline esp_err_t usrpat_load_h(nvs_handle_t h) {
   size_t sz = sizeof(UserPatBlob);
   UserPatBlob* b = (UserPatBlob*)nvsBlobAlloc(sz);
   if (!b) return ESP_ERR_NO_MEM;
+  memset(b, 0, sizeof(UserPatBlob));
   esp_err_t err = nvs_get_blob(h, "usrpat", b, &sz);
-  if (err == ESP_OK && sz == sizeof(UserPatBlob) && b->version == USRPAT_VERSION) {
+  const size_t expect = (err == ESP_OK)
+      ? offsetof(UserPatBlob, entries) + (size_t)b->count * sizeof(UserPatOverride) : 0u;
+  if (err == ESP_OK && b->version == USRPAT_VERSION &&
+      b->count <= MAX_USER_PAT_OVR && sz == expect) {
     const uint32_t stored = b->crc32;
     b->crc32 = 0;
-    if (crc32_buf((const uint8_t*)b, sizeof(UserPatBlob)) == stored) {
+    if (crc32_buf((const uint8_t*)b, sz) == stored) {
       memset(g_userPat, 0, sizeof(g_userPat));
       const uint16_t n = std::min<uint16_t>(b->count, MAX_USER_PAT_OVR);
       for (uint16_t k = 0; k < n; ++k) {
@@ -1304,8 +1325,10 @@ static inline esp_err_t usrpatnames_save_h(nvs_handle_t h) {
     ++n;
   }
   b->count = n;
-  b->crc32 = crc32_buf((const uint8_t*)b, sizeof(UserPatNamesBlob));
-  esp_err_t err = nvs_set_blob(h, "usrpatnames", b, sizeof(UserPatNamesBlob));
+  /* [NVS-TRIM] header + n used names only. */
+  const size_t used = offsetof(UserPatNamesBlob, names) + (size_t)n * sizeof(NameOverride);
+  b->crc32 = crc32_buf((const uint8_t*)b, used);
+  esp_err_t err = nvs_set_blob(h, "usrpatnames", b, used);
   heap_caps_free(b);
   return err;
 }
@@ -1314,11 +1337,15 @@ static inline esp_err_t usrpatnames_load_h(nvs_handle_t h) {
   size_t sz = sizeof(UserPatNamesBlob);
   UserPatNamesBlob* b = (UserPatNamesBlob*)nvsBlobAlloc(sz);
   if (!b) return ESP_ERR_NO_MEM;
+  memset(b, 0, sizeof(UserPatNamesBlob));
   esp_err_t err = nvs_get_blob(h, "usrpatnames", b, &sz);
-  if (err == ESP_OK && sz == sizeof(UserPatNamesBlob) && b->version == USRPATNAMES_VERSION) {
+  const size_t expect = (err == ESP_OK)
+      ? offsetof(UserPatNamesBlob, names) + (size_t)b->count * sizeof(NameOverride) : 0u;
+  if (err == ESP_OK && b->version == USRPATNAMES_VERSION &&
+      b->count <= MAX_USER_PAT_OVR && sz == expect) {
     const uint32_t stored = b->crc32;
     b->crc32 = 0;
-    if (crc32_buf((const uint8_t*)b, sizeof(UserPatNamesBlob)) == stored) {
+    if (crc32_buf((const uint8_t*)b, sz) == stored) {
       const uint16_t n = std::min<uint16_t>(b->count, MAX_USER_PAT_OVR);
       for (uint16_t k = 0; k < n; ++k) {
         const uint16_t s = b->names[k].slot;
@@ -1364,8 +1391,12 @@ static inline esp_err_t motion_save_h(nvs_handle_t h) {
     }
   }
   b->count = n;
-  b->crc32 = crc32_buf((const uint8_t*)b, sizeof(MotionBlob)); /* crc field is 0 */
-  esp_err_t err = nvs_set_blob(h, "motion", b, sizeof(MotionBlob));
+  /* [NVS-TRIM] Write only header + the n used lanes (not the full 128-lane
+   * fixed array).  Empty motion → ~8 bytes instead of ~17 KB, so a FULL save
+   * fits even a 20 KB nvs partition.  CRC covers exactly the bytes written. */
+  const size_t used = offsetof(MotionBlob, lanes) + (size_t)n * sizeof(MotionLaneOverride);
+  b->crc32 = crc32_buf((const uint8_t*)b, used); /* crc field is 0 */
+  esp_err_t err = nvs_set_blob(h, "motion", b, used);
   heap_caps_free(b);
   return err;
 }
@@ -1374,11 +1405,15 @@ static inline esp_err_t motion_load_h(nvs_handle_t h) {
   size_t sz = sizeof(MotionBlob);
   MotionBlob* b = (MotionBlob*)nvsBlobAlloc(sz);
   if (!b) return ESP_ERR_NO_MEM;
+  memset(b, 0, sizeof(MotionBlob));
   esp_err_t err = nvs_get_blob(h, "motion", b, &sz);
-  if (err == ESP_OK && sz == sizeof(MotionBlob) && b->version == MOTION_VERSION) {
+  const size_t expect = (err == ESP_OK)
+      ? offsetof(MotionBlob, lanes) + (size_t)b->count * sizeof(MotionLaneOverride) : 0u;
+  if (err == ESP_OK && b->version == MOTION_VERSION &&
+      b->count <= MAX_MOTION_LANES && sz == expect) {
     const uint32_t stored = b->crc32;
     b->crc32 = 0;
-    if (crc32_buf((const uint8_t*)b, sizeof(MotionBlob)) == stored) {
+    if (crc32_buf((const uint8_t*)b, sz) == stored) {
       /* Base is already cleared to sentinels by persisted_extras_load(); just
        * overlay the saved lanes.                                               */
       const uint16_t cnt = std::min<uint16_t>(b->count, MAX_MOTION_LANES);
@@ -1774,6 +1809,28 @@ static inline bool settings_load() {
 
 /** Load from NVS and push to SSOT.  Returns true if stored data was valid. */
 static inline bool loadSettings() {
+  /* [DIAG] Print the ACTUAL nvs partition capacity in the BOOT log, where it is
+   * easy to capture.  total_entries reveals the real partition size regardless
+   * of the IDE Partition Scheme menu or partitions.csv:
+   *   ~630   → 20 KB nvs (stock/FATFS scheme) — TOO SMALL, FULL save (~50 KB)
+   *            cannot fit → every SAVE/RESET returns FAILED.
+   *   ~8000  → 256 KB nvs (bundled partitions.csv) — correct.
+   * The ~50 KB of blobs need ≈1600 entries, so anything under ~2000 total will
+   * fail a FULL save no matter how correct the code is.                       */
+  {
+    nvs_stats_t st;
+    const esp_err_t se = nvs_get_stats(NULL, &st);
+    if (se == ESP_OK)
+      Serial.printf("[NVS] partition: total=%u used=%u free=%u  -> %s\n",
+                    (unsigned)st.total_entries, (unsigned)st.used_entries,
+                    (unsigned)st.free_entries,
+                    st.total_entries < 2000u
+                        ? "TOO SMALL for FULL save (need ~1600) — fix partition!"
+                        : "OK for full session save");
+    else
+      Serial.printf("[NVS] nvs_get_stats err=%d (%s)\n", (int)se, esp_err_to_name(se));
+  }
+
   seedFactoryBanks();          /* RAM userBank/seqBank ← PROGMEM SOUND_BANK */
   const bool ok = settings_load();
   /* [SET-OPT3] settings_load() already syncs on first-boot / corrupt paths;
