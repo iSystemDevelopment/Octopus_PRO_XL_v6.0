@@ -3138,6 +3138,12 @@
             _songEditorDirty: false,  // [FIX-SONG] deferred buildSongEditor to rAF
             _debounceTimers: null,    // [THROTTLE] per-cmd timers for txSysexSoon
             _sxRxBuf: null, // reassemble split inbound SysEx (some USB stacks fragment frames)
+            _rxQueue: [],           // [RENDER-FIX] deferred inbound — drained across rAF ticks
+            _rxDrainScheduled: false,
+            _syncBurstExpected: false, // connect / resync — grid model-only until queue drains
+            _syncBurstActive: false,
+            _gridModelDirty: false,
+            _phRemeasureRaf: 0,     // coalesced playhead geometry remeasure (not every rAF)
             _lastDeviceRxMs: 0,   // last 0x7C echo from firmware (link verify)
             _lastBpmRxMs: 0,      // [LINK-HEAL] transport watchdog timestamps
             _lastTransportRxMs: 0,
@@ -3146,7 +3152,8 @@
             _linkGraceUntil: 0,   // ms — allow boot/sync before declaring dead link
             _connOnline: false,   // true once device echo seen this session
             _linkWarned: false,   // one-shot hint when no 0x7C echo after connect
-            _ringDropWarned: false, // one-shot when bulk ring drop counter > 0
+            _ringDropWarned: false, // one-shot when bulk ring drop counter rises
+            _lastRingDrops: 0,
 
             // Match Octopus USB MIDI ports (Windows names vary wildly).
             _isOctopusPortName(name) {
@@ -3201,25 +3208,80 @@
                 else if (kind === 'transport') this._lastTransportRxMs = now;
                 else if (kind === 'step') this._lastStepSyncRxMs = now;
             },
-            // [LINK-HEAL] Detect partial outbound failure: PING may still work while
-            // BPM/transport/playhead echoes stall.  Auto-request full sync (no refresh).
+            // [LINK-HEAL] Detect partial outbound failure.  While playing, never fire a
+            // full APP_SYNC_REQ (256 grid rows + 140 knobs stalls the playhead for 100–500 ms).
             _checkTransportHealth(now) {
                 if (!this._connOnline || !this.midiOut || now <= this._linkGraceUntil) return;
                 if (now < this._linkDegradedUntil) return;
                 const staleMs = 1500;
+                if (this.isPlaying) {
+                    const phStale = !this._lastStepSyncRxMs || (now - this._lastStepSyncRxMs) > 4000;
+                    if (phStale) {
+                        this.log('Playhead stale — requesting device resync…');
+                        this._syncBurstExpected = true;
+                        this.txSysex(CMD.APP_SYNC_REQ, 0);
+                        this._linkDegradedUntil = now + 8000;
+                    }
+                    return;
+                }
                 const bpmStale = !this._lastBpmRxMs || (now - this._lastBpmRxMs) > staleMs;
                 const trStale = !this._lastTransportRxMs || (now - this._lastTransportRxMs) > staleMs;
-                const phStale = this.isPlaying &&
-                    (!this._lastStepSyncRxMs || (now - this._lastStepSyncRxMs) > staleMs);
-                if (bpmStale || trStale || phStale) {
+                if (bpmStale || trStale) {
                     this.log('Link degraded — requesting device resync…');
+                    this._syncBurstExpected = true;
                     this.txSysex(CMD.APP_SYNC_REQ, 0);
                     const t = Date.now();
                     this._lastBpmRxMs = t;
                     this._lastTransportRxMs = t;
-                    this._lastStepSyncRxMs = t;
-                    this._linkDegradedUntil = t + 3000;
+                    this._linkDegradedUntil = t + 5000;
                 }
+            },
+            // Transport + playhead bypass the deferred queue — everything else is budgeted.
+            _rxIsPriority(cmd) {
+                return cmd === CMD.STEP_SYNC || cmd === CMD.TRANSPORT || cmd === CMD.TRIG_MODE
+                    || cmd === CMD.BPM || cmd === CMD.SONG_POS;
+            },
+            _enqueueIncoming(cmd, v14) {
+                if (this._rxIsPriority(cmd)) {
+                    this.applyIncoming(cmd, v14);
+                    return;
+                }
+                this._rxQueue.push({ c: cmd, v: v14 });
+                if (this._rxQueue.length > 20) this._syncBurstActive = true;
+                this._scheduleRxDrain();
+            },
+            _scheduleRxDrain() {
+                if (this._rxDrainScheduled) return;
+                this._rxDrainScheduled = true;
+                requestAnimationFrame(() => this._drainRxQueue());
+            },
+            _drainRxQueue() {
+                this._rxDrainScheduled = false;
+                const budget = this.isPlaying ? 18 : 40;
+                let n = 0;
+                while (n < budget && this._rxQueue.length) {
+                    const item = this._rxQueue.shift();
+                    this.applyIncoming(item.c, item.v);
+                    n++;
+                }
+                if (this._rxQueue.length) {
+                    this._scheduleRxDrain();
+                    return;
+                }
+                if (this._gridModelDirty) {
+                    this._gridModelDirty = false;
+                    this.repaintGrid();
+                }
+                this._syncBurstExpected = false;
+                this._syncBurstActive = false;
+            },
+            _schedulePlayheadRemeasure() {
+                if (this._phRemeasureRaf) return;
+                this._phRemeasureRaf = requestAnimationFrame(() => {
+                    this._phRemeasureRaf = 0;
+                    if (!this._phForceRemeasure && !this.isPlaying) return;
+                    this.advancePlayhead(this.isPlaying ? (this.visStep | 0) : 0);
+                });
             },
             async init() {
                 this.populateDropdowns();
@@ -3247,6 +3309,7 @@
                     } else {
                         this._audioKeepAlive();
                         if (this.midiOut) {
+                            this._syncBurstExpected = true;
                             this.txSysex(CMD.PING, 0);
                             this.txSysex(CMD.APP_SYNC_REQ, 0);
                         }
@@ -3349,8 +3412,9 @@
                     const page = data[4] & 3;
                     const lo   = (data[5] & 0xF) | ((data[6] & 0xF) << 4);
                     const hi   = (data[7] & 0xF) | ((data[8] & 0xF) << 4);
-                    this._applyGridRowHalf(bank, row, lo, false, page);
-                    this._applyGridRowHalf(bank, row, hi, true,  page);
+                    const bulk = this._syncBurstExpected || this._syncBurstActive;
+                    this._applyGridRowHalf(bank, row, lo, false, page, bulk);
+                    this._applyGridRowHalf(bank, row, hi, true,  page, bulk);
                     return;
                 }
                 if (sub === 0x02) {
@@ -3359,7 +3423,7 @@
                     for (let i = 0; i < n; i++) {
                         const v = ((data[4 + i * 2] & 0x7F) << 7) | (data[5 + i * 2] & 0x7F);
                         this.monSysex('←', base + i, v);
-                        this.applyIncoming(base + i, v);
+                        this._enqueueIncoming(base + i, v);
                     }
                     return;
                 }
@@ -3396,7 +3460,7 @@
                 else return;
                 const v14 = ((data[4] & 0x7F) << 7) | (data[5] & 0x7F);
                 this.monSysex('←', cmd, v14);
-                this.applyIncoming(cmd, v14);
+                this._enqueueIncoming(cmd, v14);
             },
             // Some Windows USB-MIDI stacks deliver SysEx in multiple chunks — reassemble.
             _handleMidiIn(e) {
@@ -3541,6 +3605,11 @@
                 this._lastStepSyncRxMs = 0;
                 this._linkDegradedUntil = 0;
                 this._ringDropWarned = false;
+                this._rxQueue.length = 0;
+                this._rxDrainScheduled = false;
+                this._syncBurstExpected = true;
+                this._syncBurstActive = false;
+                this._gridModelDirty = false;
                 this._linkGraceUntil = Date.now() + 4000;
                 this.updateConnBadge('linking');
                 if (this.midiOut) await this._openMidiPort(this.midiOut);
@@ -3946,16 +4015,25 @@
                         if (v) v.innerText = pct + '%' + (drops ? ' ⚠' : '');
                         if (box) {
                             box.classList.toggle('warn', pct >= 75 && pct < 90);
-                            box.classList.toggle('crit', pct >= 90 || drops > 0);
+                            box.classList.toggle('crit', pct >= 90);
                         }
-                        if (drops && !this._ringDropWarned) {
-                            this._ringDropWarned = true;
-                            this.log('MIDI out-ring drops: ' + drops + ' (motion echoes trimmed — transport uses priority path)');
+                        if (drops > (this._lastRingDrops | 0)) {
+                            this._lastRingDrops = drops;
+                            if (!this._ringDropWarned) {
+                                this._ringDropWarned = true;
+                                this.log('MIDI out-ring drops: ' + drops + ' (motion echoes trimmed — transport uses priority path)');
+                            }
                         }
                     },
                     // [G2] Grid rows: separate entries for lo/hi so each is a direct lookup.
-                    [CMD.GRID_ROW_LO]: v14 => { this._applyGridRowHalf((v14 >> 12) & 3, (v14 >> 8) & 15, v14 & 0xFF, false, (v14 >> 4) & 3); },
-                    [CMD.GRID_ROW_HI]: v14 => { this._applyGridRowHalf((v14 >> 12) & 3, (v14 >> 8) & 15, v14 & 0xFF, true,  (v14 >> 4) & 3); },
+                    [CMD.GRID_ROW_LO]: v14 => {
+                        const bulk = this._syncBurstExpected || this._syncBurstActive;
+                        this._applyGridRowHalf((v14 >> 12) & 3, (v14 >> 8) & 15, v14 & 0xFF, false, (v14 >> 4) & 3, bulk);
+                    },
+                    [CMD.GRID_ROW_HI]: v14 => {
+                        const bulk = this._syncBurstExpected || this._syncBurstActive;
+                        this._applyGridRowHalf((v14 >> 12) & 3, (v14 >> 8) & 15, v14 & 0xFF, true,  (v14 >> 4) & 3, bulk);
+                    },
                 };
             },
             applyIncoming(cmd, v14) {
@@ -3964,8 +4042,6 @@
                     if (!this._dispatch) this._dispatch = this._buildDispatch();
                     const fn = this._dispatch[cmd];
                     if (fn) fn(v14);
-                    // Catch-all: knob widget update — still fires even if a specific handler
-                    // already ran above (e.g. H_WAVE sets the select AND updates the knob arc).
                     if (this.knobStates[cmd]) this._setKnob(cmd, v14);
                 } catch (e) {}
                 this._suppressTx = false;
@@ -4865,7 +4941,10 @@
                     // another observer watching the same element, causing a memory leak and
                     // redundant _phForceRemeasure callbacks.
                     if (this._phResizeOb) this._phResizeOb.disconnect();
-                    this._phResizeOb = new ResizeObserver(() => { this._phForceRemeasure = true; });
+                    this._phResizeOb = new ResizeObserver(() => {
+                        this._phForceRemeasure = true;
+                        this._schedulePlayheadRemeasure();
+                    });
                     this._phResizeOb.observe(g);
                 }
                 this.repaintGrid();
@@ -4890,16 +4969,23 @@
             },
             // [G2] Apply an absolute half-row from firmware.  page 0–3 selects steps
             // page*16+0..15; high=false → lower 8 of that page, high=true → upper 8.
-            _applyGridRowHalf(bank, row, byteVal, high, page) {
+            // modelOnly=true during connect/resync bursts — updates gridData only, one
+            // repaintGrid() when the inbound queue drains (avoids 256 classList toggles).
+            _applyGridRowHalf(bank, row, byteVal, high, page, modelOnly) {
                 if (bank < 0 || bank > 3 || row < 0 || row > 15) return;
                 page = (page | 0) & 3;
                 const base = page * 16 + (high ? 8 : 0);
                 const g = this.gridData[bank][row];
-                const visible = (bank === this.bankIdx && page === this.gridPageIdx);
+                const bulk = modelOnly || this._syncBurstExpected || this._syncBurstActive;
+                const visible = !bulk && (bank === this.bankIdx && page === this.gridPageIdx);
                 for (let i = 0; i < 8; i++) {
                     const c = base + i,
                         on = !!((byteVal >> i) & 1);
                     g[c] = on;
+                    if (bulk) {
+                        if (bank === this.bankIdx) this._gridModelDirty = true;
+                        continue;
+                    }
                     if (visible) {
                         const col = c - base + (high ? 8 : 0);
                         const cell = this._domGridCache[row][col];
@@ -4924,8 +5010,9 @@
                             cell.classList.toggle('active', on);
                         }
                     }
-                /* Defer playhead paint to rAF — grid DOM must settle first. */
+                /* Defer playhead paint — grid DOM must settle first. */
                 this._phForceRemeasure = true;
+                this._schedulePlayheadRemeasure();
                 if (this.isPlaying) this._phPendingStep = this.visStep;
             },
 
@@ -5307,8 +5394,6 @@
                         const step = this._phPendingStep;
                         this._phPendingStep = -1;
                         this.advancePlayhead(step); // page-follow, LED, geometry
-                    } else if (this._phForceRemeasure) {
-                        this.advancePlayhead(this.visStep);
                     }
                 }
 
