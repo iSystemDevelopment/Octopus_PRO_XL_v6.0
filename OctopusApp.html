@@ -1590,6 +1590,13 @@
         </div>
     </div>
 
+    <!-- ── Unified DONE / FAILED popup (save / reset / load complete) ─────────── -->
+    <div class="modal" id="doneModal">
+        <div class="modal-content" style="width:340px;text-align:center;padding:24px 16px">
+            <h3 id="doneModalTitle" style="margin:0;font-size:14px;color:var(--green);font-family:'Orbitron',sans-serif;letter-spacing:2px">DONE!</h3>
+        </div>
+    </div>
+
     <!-- ── SLOTS popup: user sound + pattern library (mirrors hardware Save/Load Slot) ── -->
     <div class="modal" id="slotsModal">
         <div class="modal-content" style="width:520px;height:480px">
@@ -1761,7 +1768,7 @@
             LSR_ANIM: 167,
             LSR_DRUMFLASH: 168,
             // [SAVE/LOAD/RESET v2] App↔device parity for the scoped persistence menus
-            SCOPED_RESET: 169,  // v14 = ResetScope; device wipes RAM + persists + reboots
+            SCOPED_RESET: 169,  // v14 = ResetScope + 1 (0 = NACK, 16383 = ACK)
             SEQ_CLEAR: 170,     // clear active grid + P-locks + reset both sounds to preset 0
             SOFT_RESET: 171,    // CLEAR extended: sounds + nav working image → initial (RAM-only)
             USR_SOUND_SAVE: 172, // v14 = (engine<<13)|slot 0..63
@@ -3235,26 +3242,58 @@
                  * stuck in the wait modal forever.  onConnect() also clears on reconnect. */
                 if (this._persistTimeoutId) clearTimeout(this._persistTimeoutId);
                 this._persistTimeoutId = setTimeout(() => {
-                    if (this._persistBusy) {
-                        this.log(kind.toUpperCase() + ' timed out — no ACK from device after 60 s. Clearing wait state.');
-                        this._clearPersist(null);
-                    }
+                    if (this._persistBusy) this._persistFinished(false, false);
                 }, 60000);
                 return true;
             },
-            _clearPersist(msg) {
+            /** Firmware encodes scope as v14 = ResetScope + 1 (0 reserved for NACK). */
+            _encodePersistScope(scope) {
+                return ((+scope) & 3) + 1;
+            },
+            _persistFinished(ok, reboot) {
+                this._hidePersistWait();
+                if (this._persistTimeoutId) { clearTimeout(this._persistTimeoutId); this._persistTimeoutId = null; }
+                this._persistBusy = false;
+                this._persistKind = '';
+                this._persistSince = 0;
+                this.closeSaveModal();
+                this.closeResetModal();
+                this.closeLoadModal();
+                const title = document.getElementById('doneModalTitle');
+                const el = document.getElementById('doneModal');
+                if (title) {
+                    title.textContent = ok ? 'DONE!' : 'FAILED!';
+                    title.style.color = ok ? 'var(--green)' : 'var(--red)';
+                }
+                if (el) el.style.display = 'flex';
+                setTimeout(() => {
+                    if (el) el.style.display = 'none';
+                    if (ok) {
+                        if (reboot) {
+                            this._prepareForDeviceReboot();
+                        } else {
+                            this._syncBurstExpected = true;
+                            if (this.midiOut) this.txSysex(CMD.APP_SYNC_REQ, 0);
+                        }
+                    }
+                }, 1500);
+            },
+            _clearPersist() {
                 this._persistBusy = false;
                 this._persistKind = '';
                 this._persistSince = 0;
                 if (this._persistTimeoutId) { clearTimeout(this._persistTimeoutId); this._persistTimeoutId = null; }
                 this.closeAllPersistModals();
-                if (msg) this.log(msg);
+                const el = document.getElementById('doneModal');
+                if (el) el.style.display = 'none';
             },
             closeAllPersistModals() {
                 this.closeSaveModal();
                 this.closeResetModal();
                 this.closeLoadModal();
                 this._hidePersistWait();
+                const el = document.getElementById('doneModal');
+                if (el) el.style.display = 'none';
             },
             _showPersistWait(kind, scope) {
                 this.closeSaveModal();
@@ -3262,15 +3301,8 @@
                 this.closeLoadModal();
                 const title = document.getElementById('persistWaitTitle');
                 const msg = document.getElementById('persistWaitMsg');
-                const labels = { save: 'SAVING', reset: 'RESETTING', load: 'LOADING' };
-                const scopeLabel = (kind === 'load' || kind === 'save' || kind === 'reset')
-                    ? this._scopeName(scope) : '';
-                if (title) title.textContent = (labels[kind] || 'PLEASE WAIT') + (scopeLabel ? ' — ' + scopeLabel : '');
-                if (msg) {
-                    if (kind === 'load') msg.textContent = 'Reloading from NVS…';
-                    else if (kind === 'reset' || kind === 'save') msg.textContent = 'Writing NVS — device will reboot when done…';
-                    else msg.textContent = 'Device is working…';
-                }
+                if (title) title.textContent = 'PLEASE WAIT';
+                if (msg) msg.textContent = 'Device is working…';
                 const el = document.getElementById('persistWaitModal');
                 if (el) el.style.display = 'flex';
             },
@@ -3684,6 +3716,8 @@
             },
             async onConnect() {
                 // [SYNC] NON-DESTRUCTIVE connect — never touches transport or bank.
+                const wasRebootPersist = this._persistBusy &&
+                    (this._persistKind === 'save' || this._persistKind === 'reset');
                 this._stopReconnectPoll();
                 this._loadSlotMeta();
                 this._sxRxBuf = null;
@@ -3696,10 +3730,12 @@
                 this._linkDegradedUntil = 0;
                 this._ringDropWarned = false;
                 this._plockStealWarned = false;
-                this._persistBusy = false;
-                this._persistKind = '';
-                if (this._persistTimeoutId) { clearTimeout(this._persistTimeoutId); this._persistTimeoutId = null; }
-                this.closeAllPersistModals();
+                if (!wasRebootPersist) {
+                    this._persistBusy = false;
+                    this._persistKind = '';
+                    if (this._persistTimeoutId) { clearTimeout(this._persistTimeoutId); this._persistTimeoutId = null; }
+                    this.closeAllPersistModals();
+                }
                 this._rxQueue.length = 0;
                 this._rxDrainScheduled = false;
                 this._syncBurstExpected = true;
@@ -3722,6 +3758,7 @@
                 this.txSysex(CMD.APP_SYNC_REQ, 0);
                 this.startHeartbeat();
                 this.log('Connecting to ' + (this.midiOut.name || 'MIDI') + '…');
+                if (wasRebootPersist) this._persistFinished(true, false);
             },
             // Periodic heartbeat: the firmware marks the link "connected" only while it
             // keeps receiving App sysex (CMD.PING refreshes lastWebSysexMs).  Sending a
@@ -3773,10 +3810,14 @@
                 const beat = () => {
                     if (!this.midiOut || !this._portLive(this.midiOut)) {
                         if (this._persistBusy && (this._persistKind === 'save' || this._persistKind === 'reset')) {
-                            this._clearPersist(null);
-                        } else {
-                            this.closeAllPersistModals();
+                            /* Expected USB drop while the device reboots after SAVE/RESET. */
+                            this.stopHeartbeat();
+                            this._connOnline = false;
+                            this.updateConnBadge(false);
+                            if (!this._userDisconnected) this._startReconnectPoll();
+                            return;
                         }
+                        this.closeAllPersistModals();
                         this.stopHeartbeat();
                         this._connOnline = false;
                         this.updateConnBadge(false);
@@ -3787,7 +3828,7 @@
                     const now = Date.now();
                     if (this._persistBusy && this._persistSince &&
                         (now - this._persistSince) > 45000) {
-                        this._clearPersist(this._persistKind.toUpperCase() + ' timed out — try again.');
+                        this._persistFinished(false, false);
                     }
                     if (now > this._linkGraceUntil) {
                         const stale = !this._lastDeviceRxMs || (now - this._lastDeviceRxMs) > 4500;
@@ -4008,34 +4049,19 @@
                     [CMD.LOAD_PAT_S]: v14 => { const e = document.getElementById('synthPat'); if (e && v14 < SYNTH_PATTERNS.length) e.value = String(v14); },
                     [CMD.LOAD_PAT_D]: v14 => { const e = document.getElementById('drumPat');  if (e && v14 < DRUM_PATTERNS.length)  e.value = String(v14); },
                     [CMD.SESSION_SAVE]: v14 => {
-                        if (v14 === 16383) {
-                            this._clearPersist(null);
-                            this.log('NVS save complete — device rebooting…');
-                            this._prepareForDeviceReboot();
-                        } else if (v14 === 0) {
-                            /* v14=0 is sent for two conditions:
-                             *   1. Device busy (save/reset already in flight) — requestScopedSave rejected
-                             *   2. NVS write failed — settings_save_scoped returned false
-                             * The device OLED shows "FAIL!" toast in case 2.  Both require retry. */
-                            this._clearPersist('SAVE failed — device was busy or NVS write error. Check the device display and try again.');
-                        }
+                        if (v14 === 16383) this._persistFinished(true, true);
+                        else if (v14 === 0) this._persistFinished(false, false);
                     },
                     [CMD.SESSION_LOAD]: v14 => {
-                        if (v14 === 16383) {
-                            this._syncBurstExpected = true;
-                            this._clearPersist('Session loaded — state synced.');
-                        } else if (v14 === 0) {
-                            this._clearPersist('LOAD rejected — device busy or nothing saved for that scope.');
-                        }
+                        if (v14 === 16383) this._persistFinished(true, false);
+                        else if (v14 === 0) this._persistFinished(false, false);
                     },
                     [CMD.SCOPED_RESET]: v14 => {
-                        if (v14 === 16383) {
-                            this._clearPersist(null);
-                            this.log('Reset complete — device rebooting…');
-                            this._prepareForDeviceReboot();
-                        } else if (v14 === 0) {
-                            this._clearPersist('RESET rejected — device busy (save or reset in progress). Try again.');
-                        }
+                        if (v14 === 16383) this._persistFinished(true, true);
+                        else if (v14 === 0) this._persistFinished(false, false);
+                    },
+                    [CMD.SOFT_RESET]: v14 => {
+                        if (v14 === 16383) this._persistFinished(true, false);
                     },
                     [CMD.USR_SOUND_SAVE]: v14 => {
                         const eng = (v14 >> 13) & 1, slot = v14 & 63;
@@ -4305,9 +4331,7 @@
             // ── Session save/load ─────────────────────────────────────────────────────
             /** scope: 0=FULL 1=BANKS_PATTERNS 2=MOTION 3=SETTINGS (ResetScope). */
             sessionSave(scope = 0) {
-                const s = (+scope) & 3;
-                this.txSysex(CMD.SESSION_SAVE, s);
-                this.log('NVS save requested (scope ' + s + ')');
+                this.txSysex(CMD.SESSION_SAVE, this._encodePersistScope(scope));
             },
             // Scope labels shared by SAVE / LOAD / RESET popups (ResetScope order).
             _scopeName(scope) {
@@ -4320,17 +4344,18 @@
                 document.getElementById('saveModal').style.display = 'none';
             },
             saveScoped(scope) {
+                const name = this._scopeName(scope);
+                if (!confirm('SAVE ' + name + '\nWrite to NVS and reboot?')) return;
                 if (!this._armPersist('save')) return;
                 this._showPersistWait('save', scope);
                 this.sessionSave(scope);
-                this.log('SAVE requested (scope ' + this._scopeName(scope) + ') — waiting for ACK…');
             },
             sessionLoad(scope = 0) {
-                const s = (+scope) & 3;
-                this.txSysex(CMD.SESSION_LOAD, s);
-                this.log('NVS load requested (scope ' + s + ')');
+                this.txSysex(CMD.SESSION_LOAD, this._encodePersistScope(scope));
             },
             loadScoped(scope) {
+                const name = this._scopeName(scope);
+                if (!confirm('LOAD ' + name + '\nReload from NVS?')) return;
                 if (!this._armPersist('load')) return;
                 this._showPersistWait('load', scope);
                 this.sessionLoad(scope);
@@ -4344,15 +4369,18 @@
                 document.getElementById('resetModal').style.display = 'none';
             },
             resetScoped(scope) {
+                const name = this._scopeName(scope);
+                if (!confirm('RESET ' + name + '\nWipe RAM, persist, and reboot?')) return;
                 if (!this._armPersist('reset')) return;
                 this._showPersistWait('reset', scope);
-                this.txSysex(CMD.SCOPED_RESET, (+scope) & 3);
-                this.log('RESET requested (scope ' + this._scopeName(scope) + ') — waiting for device ACK…');
+                this.txSysex(CMD.SCOPED_RESET, this._encodePersistScope(scope));
             },
             softReset() {
+                if (!confirm('SOFT RESET\nRestore initial working image (RAM-only, no reboot)?')) return;
+                if (!this._armPersist('soft')) return;
+                this._showPersistWait('soft', 0);
+                this.closeResetModal();
                 this.txSysex(CMD.SOFT_RESET, 0);
-                this.log('Soft reset requested (RAM-only: sounds + nav working image → initial, patterns kept)');
-                this.closeAllPersistModals();
             },
 
             // ── SLOTS popup (user sound + pattern library, 1:1 with hardware) ─────────

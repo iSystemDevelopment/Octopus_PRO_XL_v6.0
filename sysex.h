@@ -212,13 +212,15 @@ static constexpr uint8_t CMD_H_PITCH = 166;
 static constexpr uint8_t CMD_LSR_ANIM = 167;
 static constexpr uint8_t CMD_LSR_DRUMFLASH = 168;
 /* [SAVE/LOAD/RESET v2] App↔device parity for the scoped persistence menus.
- *   CMD_SCOPED_RESET — v14 = ResetScope (0 FULL / 1 BANKS_PATTERNS / 2 MOTION /
- *                      3 SETTINGS).  Device wipes RAM + persists + reboots.
+ *   CMD_SESSION_SAVE / CMD_SESSION_LOAD / CMD_SCOPED_RESET encode scope as
+ *   v14 = ResetScope + 1  (FULL=1, BANKS_PATTERNS=2, MOTION=3, SETTINGS=4).
+ *   v14 = 0 is NACK; v14 = 16383 is ACK echo (ignored on RX).  Using scope+1
+ *   avoids colliding FULL scope (0) with the NACK sentinel (0).
+ *   CMD_SCOPED_RESET — device wipes RAM + persists + reboots.
  *   CMD_SEQ_CLEAR    — clear active pattern grid + P-locks + reset both sounds
  *                      to preset 0 (mirror of hardware SEQ SETUP → Clear).
  *   CMD_SOFT_RESET   — CLEAR extended: sounds + nav working image → initial
- *                      (RAM-only, no NVS, no reboot).
- * CMD_SESSION_LOAD now also carries the scope in v14 (0 = FULL, back-compatible).*/
+ *                      (RAM-only, no NVS, no reboot); ACK = 16383 when complete.*/
 static constexpr uint8_t CMD_SCOPED_RESET = 169;
 static constexpr uint8_t CMD_SEQ_CLEAR    = 170;
 static constexpr uint8_t CMD_SOFT_RESET   = 171;

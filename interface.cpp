@@ -752,7 +752,10 @@ static void confirmDispatch(ConfirmAction a, uint8_t arg) {
     case ConfirmAction::SAVE:       handleScopedSave ((ResetScope)(arg & 3u));   break;
     case ConfirmAction::RESET:      handleScopedReset((ResetScope)(arg & 3u));   break;
     case ConfirmAction::LOAD:       handleScopedLoad ((ResetScope)(arg & 3u));   break;
-    case ConfirmAction::SOFT_RESET: seqSoftResetWorkingImage();                  break;
+    case ConfirmAction::SOFT_RESET:
+      seqSoftResetWorkingImage();
+      oledPersistDone(true);
+      break;
     case ConfirmAction::USR_SOUND_SAVE:                                          /* [USER-SLOTS] */
       if (saveLiveToUserSlot((uint8_t)((arg >> 6) & 1u), (uint8_t)(arg & 63u)) && isAppConnected())
         txSysex(CMD_USR_SOUND_SAVE, (uint16_t)(arg & 0x3FFFu));
@@ -1309,6 +1312,23 @@ static void oledStatusRestoreNow() {
   displayDirty.store(true, std::memory_order_relaxed);
 }
 
+/* [PERSIST-UI] Unified OLED feedback for SAVE / LOAD / RESET (hardware + App). */
+void oledPersistWorking() {
+  oledStatusHold("PLEASE WAIT", nullptr, 60000u);
+}
+
+void oledPersistDone(bool ok) {
+  oledStatusHold(ok ? "DONE!" : "FAILED!", nullptr, 1200u);
+}
+
+bool scopedLoadExecute(ResetScope scope) {
+  const bool ok = settings_load_scoped(scope);
+  if (ok)
+    for (int i = 0; i < MAX_STRINGS; ++i)
+      computeHardwareDACThreshold(i, 0.f);
+  return ok;
+}
+
 /* applyResetScope() already ran — reload the matching NVS scope back into RAM. */
 static void rollbackResetRam(ResetScope scope) {
   (void)settings_load_scoped(scope);
@@ -1352,8 +1372,8 @@ static void reset_persist_task(void*) {
      * of whether the connection was reported as live at this exact moment. */
     txSysex(CMD_SCOPED_RESET, 0u);
     g_resetInProgress.store(false, std::memory_order_release);
-    oledStatusHold("RESET FAILED", "RESTORED RAM", 2000u);
-    vTaskDelay(pdMS_TO_TICKS(2100));
+    oledPersistDone(false);
+    vTaskDelay(pdMS_TO_TICKS(1300));
     oledStatusRestoreNow();
   }
   /* On success NvsWorker calls esp_restart() — this task never returns. */
@@ -1364,25 +1384,18 @@ static void reset_persist_task(void*) {
  * Boot OC+SCALE combo: blocking 16 KB save task (NvsWorker not running yet). */
 void handleScopedReset(ResetScope scope) {
   if (g_resetInProgress.exchange(true, std::memory_order_acq_rel)) {
-    oledStatusHold("RESET BUSY", nullptr, 1500u);
+    oledPersistDone(false);
     if (isAppConnected()) txSysex(CMD_SCOPED_RESET, 0u);
     return;
   }
   if (saveInProgress()) {
     g_resetInProgress.store(false, std::memory_order_release);
-    oledStatusHold("SAVE BUSY", nullptr, 1500u);
+    oledPersistDone(false);
     if (isAppConnected()) txSysex(CMD_SCOPED_RESET, 0u);
     return;
   }
 
-  const char* line1 = "RESET";
-  switch (scope) {
-    case ResetScope::FULL:           line1 = "FULL RESET";    break;
-    case ResetScope::BANKS_PATTERNS: line1 = "BANKS+PATTERNS"; break;
-    case ResetScope::MOTION:         line1 = "MOTION CLEAR";  break;
-    case ResetScope::SETTINGS:       line1 = "SETTINGS RESET"; break;
-  }
-  oledStatusHold(line1, "PLEASE WAIT...", 60000u);
+  oledPersistWorking();
 
   /* [FIX-M3] Silence voices and stop the sequencer before wiping RAM. */
   allNotesOff();
@@ -1393,14 +1406,14 @@ void handleScopedReset(ResetScope scope) {
     if (!settings_persist_blocking(scope)) {
       g_resetInProgress.store(false, std::memory_order_release);
       rollbackResetRam(scope);
-      oledStatusHold("RESET FAILED", "RESTORED RAM", 2000u);
+      oledPersistDone(false);
       if (isAppConnected()) txSysex(CMD_SCOPED_RESET, 0u);
-      vTaskDelay(pdMS_TO_TICKS(2100));
+      vTaskDelay(pdMS_TO_TICKS(1300));
       oledStatusRestoreNow();
       return;
     }
     vTaskDelay(pdMS_TO_TICKS(300));
-    if (isAppConnected()) txSysex(CMD_SCOPED_RESET, 16383u);
+    txSysex(CMD_SCOPED_RESET, 16383u);
     esp_restart();
     return;
   }
@@ -1409,60 +1422,43 @@ void handleScopedReset(ResetScope scope) {
   if (xTaskCreatePinnedToCore(reset_persist_task, "RstSave", 8192, nullptr, 5,
                               nullptr, 1) != pdPASS) {
     g_resetInProgress.store(false, std::memory_order_release);
-    /* 2000 ms hold auto-expires via display_refresh_task; no vTaskDelay needed
-     * here (this runs on MidiUsbRx — blocking 2.1 s drops incoming MIDI). */
-    oledStatusHold("RESET FAILED", "TASK ERROR", 2000u);
+    oledPersistDone(false);
     if (isAppConnected()) txSysex(CMD_SCOPED_RESET, 0u);
+    vTaskDelay(pdMS_TO_TICKS(1300));
+    oledStatusRestoreNow();
   }
 }
 
 /* handleScopedSave — menu / App scoped save (no restart). */
 void handleScopedSave(ResetScope scope) {
   if (!requestScopedSave((uint8_t)scope))
-    oledStatusHold("SAVE BUSY", nullptr, 1500u);
+    oledPersistDone(false);
 }
 
 /* handleScopedLoad — menu / App scoped reload from NVS.  RAM-only (no flash
- * write) so there is NO reboot: the loaded state goes live immediately.
- * [FIX-L3] Sends sendFullStateSync() + ACK to App if connected — the comment
- * "only reachable while App is disconnected" was aspirational, not enforced;
- * if the App is connected it must receive the new state or stays stale.         */
+ * write) so there is NO reboot: the loaded state goes live immediately.         */
 void handleScopedLoad(ResetScope scope) {
   if (saveInProgress() || g_resetInProgress.load(std::memory_order_acquire)) {
-    oledStatusHold("BUSY", nullptr, 1500u);
+    oledPersistDone(false);
     if (isAppConnected()) txSysex(CMD_SESSION_LOAD, 0u);
     return;
   }
 
-  const char* line1 = "LOAD";
-  switch (scope) {
-    case ResetScope::FULL:           line1 = "FULL LOAD";     break;
-    case ResetScope::BANKS_PATTERNS: line1 = "BANKS+PATTERNS"; break;
-    case ResetScope::MOTION:         line1 = "MOTION LOAD";   break;
-    case ResetScope::SETTINGS:       line1 = "SETTINGS LOAD"; break;
-  }
-  oledStatusHold(line1, "PLEASE WAIT...", 60000u);
+  oledPersistWorking();
 
-  const bool ok = settings_load_scoped(scope);
+  const bool ok = scopedLoadExecute(scope);
 
-  /* Re-apply the bits hardware can't pick up from atomics on its own. */
-  for (int i = 0; i < MAX_STRINGS; ++i) computeHardwareDACThreshold(i, 0.f);
+  oledPersistDone(ok);
 
-  oledStatusHold(ok ? "LOAD OK" : "NOTHING SAVED", nullptr, 900u);
-
-  /* [FIX-L3] Re-sync the App if it is connected — previously skipped because the
-   * hardware LOAD was assumed to only run while the App is disconnected, but there
-   * is no gate enforcing that.  Without this echo the App shows stale state.    */
   if (ok && isAppConnected()) {
     sendFullStateSync();
     echoSongState();
-    txSysex(CMD_SESSION_LOAD, 16383u); /* ACK so App can log "load complete" */
+    txSysex(CMD_SESSION_LOAD, 16383u);
+  } else if (!ok && isAppConnected()) {
+    txSysex(CMD_SESSION_LOAD, 0u);
   }
 
-  /* [FIX-DELAY] Use vTaskDelay so Core-0 cooperative tasks run during the
-   * status-message hold window.  Arduino delay() delegates to vTaskDelay on
-   * ESP32 Arduino, but this makes the intent explicit and avoids confusion. */
-  vTaskDelay(pdMS_TO_TICKS(900));
+  vTaskDelay(pdMS_TO_TICKS(1200));
   oledStatusRestoreNow();
   menuState.store(MenuState::IDLE, std::memory_order_relaxed);
   displayDirty.store(true, std::memory_order_relaxed);

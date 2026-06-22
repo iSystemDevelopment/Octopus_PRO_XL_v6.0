@@ -495,6 +495,9 @@ void handleFactoryReset();
 void handleScopedReset(ResetScope scope); /* [I6] menu-driven scoped reset + restart */
 void handleScopedSave(ResetScope scope);  /* [WS10] menu/App scoped save (no restart) */
 void handleScopedLoad(ResetScope scope);  /* [LOAD-MENU] menu/App scoped reload (no reboot) */
+bool scopedLoadExecute(ResetScope scope); /* NVS reload + DAC thresholds; no SysEx/UI       */
+void oledPersistWorking();                /* unified "PLEASE WAIT" during persist ops     */
+void oledPersistDone(bool ok);            /* unified "DONE!" / "FAILED!" OLED toast       */
 void updateTaskStackStats();  /* sample uxTaskGetStackHighWaterMark → g_stackStats */
 void printInterfaceStats();   /* recurring Serial telemetry (stack + heap)       */
 

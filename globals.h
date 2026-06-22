@@ -1154,7 +1154,7 @@ inline std::atomic<bool> g_beamRecover{ false };
  * per-string physical-hold detection state (stringActive[] + counters + latch)
  * so a beam held across the change can't leave a stuck/silent "active" string. */
 inline std::atomic<bool> g_beamClearReq{ false };
-/* [SYNC-FIX] millis() until which the OLED shows a "SAVED" toast. Set by
+/* [PERSIST-UI] millis() until which the OLED shows a "DONE!" toast. Set by
  * settings_save_task on a SUCCESSFUL NVS write so the user gets confirmation in
  * ANY view — including the SEQ MATRIX grid, which previously stayed unchanged
  * after a long-press save and looked like it had done nothing. */

@@ -571,6 +571,6 @@ bool renderStepBarRegionIfVisible(); /* [PERF] partial step-bar redraw (display.
 bool renderDbeamBarIfVisible();      /* [PERF] partial D-BEAM bar redraw (display.cpp) */
 bool viewIsSeqMatrix();              /* [PERF] SEQ MATRIX grid on screen? (display.cpp)*/
 void displayFlushDiff();             /* [PERF] page-diff I2C flush (display.cpp)       */
-void drawSaveToastIfActive();        /* [SYNC-FIX] "SAVED" pill overlay (display.cpp)  */
+void drawSaveToastIfActive();        /* [PERSIST-UI] DONE!/FAILED!/WAIT pill (display.cpp) */
 
 #endif /* DISPLAY_H */

@@ -127,32 +127,28 @@ void displayFlushDiff() {
   s_oledShadowValid = true;
 }
 
-/* [SYNC-FIX] drawSaveToastIfActive — small "SAVED" pill, top-centre, drawn OVER
- * whatever view is on screen (dashboard, menu, SEQ MATRIX, app-connected splash)
- * for ~1.2 s after a successful NVS write.  This is the confirmation that was
- * missing: a long-press save in the matrix used to leave the grid unchanged, so
- * it looked like nothing happened.  Cheap inverted box + label; the page-diff
- * flush only pushes the ~2 pages it touches. */
+/* [PERSIST-UI] drawSaveToastIfActive — small persist pill, top-centre, drawn OVER
+ * whatever view is on screen for ~1.2 s after NVS save completes (or fails). */
 void drawSaveToastIfActive() {
-  /* [SAVE-FRAME] Three states share the same pill:
-   *   • g_saveRequest pending  → "SAVING…"
-   *   • g_saveFailFlashMs      → "FAIL!"   (~1.5 s after a failed commit)
-   *   • g_saveFlashMs active   → "SAVED"   (~1.2 s after success)
-   * SAVING takes precedence; FAIL shows only when not actively saving.       */
+  /* Three states share the same pill:
+   *   • g_saveRequest pending  → "WAIT…"
+   *   • g_saveFailFlashMs      → "FAILED!" (~1.5 s after a failed commit)
+   *   • g_saveFlashMs active   → "DONE!"   (~1.2 s after success)
+   * WAIT takes precedence; FAILED shows only when not actively saving.       */
   const bool saving = g_saveRequest.load(std::memory_order_acquire);
   const bool failed = !saving &&
       (int32_t)(g_saveFailFlashMs.load(std::memory_order_relaxed) - millis()) > 0;
-  const bool saved  = !saving && !failed &&
+  const bool done   = !saving && !failed &&
       (int32_t)(g_saveFlashMs.load(std::memory_order_relaxed) - millis()) > 0;
-  if (!saving && !saved && !failed) return;
+  if (!saving && !done && !failed) return;
 
-  const int16_t w = saving ? 54 : (failed ? 40 : 46), h = 13;
+  const int16_t w = saving ? 44 : (failed ? 52 : 46), h = 13;
   const int16_t x = (SCREEN_W - w) / 2, y = 1;
   display.fillRoundRect(x, y, w, h, 3, SH110X_WHITE);
   display.setTextColor(SH110X_BLACK);
   display.setTextSize(1);
-  display.setCursor(x + (failed ? 8 : 6), y + 3);
-  display.print(saving ? F("SAVING") : (failed ? F("FAIL!") : F("SAVED")));
+  display.setCursor(x + (failed ? 4 : (saving ? 8 : 6)), y + 3);
+  display.print(saving ? F("WAIT…") : (failed ? F("FAILED!") : F("DONE!")));
   display.setTextColor(SH110X_WHITE);
 }
 

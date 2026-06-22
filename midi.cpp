@@ -69,19 +69,17 @@
 #include "settings.h"     /* applyHarpParam, recallHarpPatch, …    */
 /* wires.h removed — authority logic absorbed into patches.h [R9] */
 
-/* [FIX-C1] Async LOAD task — runs on 16 KB stack so the full NVS blob read
- * (patterns + banks, 32+ KB data) does not overflow the 8 KB MidiUsbRx stack.
- * Mirrors the reset_persist_task pattern in interface.cpp.                    */
+/* [FIX-C1] Async LOAD task — runs on 16 KB stack (mirrors handleScopedLoad).  */
 struct NvsLoadCtx { uint8_t scope; };
 static void nvs_load_task(void* p) {
   auto* c = static_cast<NvsLoadCtx*>(p);
-  /* [FIX-C3] Check return value; send ACK 16383 or NACK 0 to the App.        */
-  const bool ok = settings_load_scoped((ResetScope)c->scope);
-  if (ok)
-    for (int i = 0; i < MAX_STRINGS; ++i)
-      computeHardwareDACThreshold(i, 0.f); /* [FIX-H2] recompute DAC after load */
-  sendFullStateSync();
-  echoSongState();
+  oledPersistWorking();
+  const bool ok = scopedLoadExecute((ResetScope)c->scope);
+  oledPersistDone(ok);
+  if (ok) {
+    sendFullStateSync();
+    echoSongState();
+  }
   txSysex(CMD_SESSION_LOAD, ok ? 16383u : 0u);
   delete c;
   vTaskDelete(nullptr);
@@ -945,7 +943,10 @@ void handleSysexCommand(uint8_t cmd, uint16_t v14) {
     case CMD_SOFT_RESET:
       /* [SOFT-RESET] CLEAR extended: all settings + sounds + nav → initial. */
       if (v14 == 16383u) break;
-      seqSoftResetWorkingImage(); break;
+      seqSoftResetWorkingImage();
+      oledPersistDone(true);
+      txSysex(CMD_SOFT_RESET, 16383u);
+      break;
     case CMD_SEQ_RESTART:
       /* [RND-RESTART] App sends this after RND-H/RND-D to restart playback
        * from step 0 so the new random pattern is heard from the beginning.

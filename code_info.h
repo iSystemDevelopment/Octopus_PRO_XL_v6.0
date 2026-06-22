@@ -359,7 +359,7 @@
  *   • All NVS writes must go through the save handshake (g_saveRequest flag).
  *   • [SAVE-FIX14] Every runtime save REBOOTS the device after a good commit
  *     (requestScopedSave sets g_restartAfterSave → settings_save_task ACKs the
- *     App + flashes the SAVED toast, then esp_restart() after 700 ms).  This is a
+ *     App + flashes the DONE! toast, then esp_restart() after 700 ms).  This is a
  *     workaround for the laser beams latching "broken" after an NVS flash write;
  *     the boot init reliably re-homes the beams and the just-saved settings
  *     reload from NVS.  If you ever need a no-reboot save, the root cause (likely
@@ -424,9 +424,10 @@
  *   • BPM, play state, and song/bank position remain visible on the splash.
  *
  *   SESSION SAVE/LOAD:
- *   • App sends CMD_SESSION_SAVE=156 → firmware triggers NVS save handshake.
- *   • App sends CMD_SESSION_LOAD=157 → firmware loads NVS, syncs atomics,
- *     echoes full state back to App.  App resync is automatic.
+ *   • App sends CMD_SESSION_SAVE=156 with v14 = ResetScope + 1 (FULL=1…SETTINGS=4).
+ *   • App sends CMD_SESSION_LOAD=157 with the same scope encoding.
+ *   • App sends CMD_SCOPED_RESET=169 with the same scope encoding.
+ *   • v14 = 0 is NACK; v14 = 16383 is ACK (ignored on RX as echo).
  *
  * ═══════════════════════════════════════════════════════════════════════════
  * 6. SONG MODE

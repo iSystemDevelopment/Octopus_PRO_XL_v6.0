@@ -437,7 +437,7 @@ void IRAM_ATTR display_refresh_task(void* pvParameters) {
      * was browsing, starving the control task.  The encoder / buttons now set
      * displayDirty on every change, so the screen still tracks scrolling (one
      * coalesced redraw per 30 Hz frame) but goes quiet the instant input stops. */
-    /* [SYNC-FIX] Keep redrawing while the SAVED toast is on screen, plus ONE frame
+    /* [PERSIST-UI] Keep redrawing while the DONE!/FAILED! toast is on screen, plus ONE frame
      * after it expires so the pill is cleanly erased (otherwise it would linger
      * until the next unrelated redraw). */
     static bool toastPrev = false;
@@ -493,7 +493,7 @@ void IRAM_ATTR display_refresh_task(void* pvParameters) {
         drawAppConnectedPage();   /* static splash [A5] — defined in display.cpp */
       else
         renderUIState();          /* full menu / dashboard rendering              */
-      drawSaveToastIfActive();    /* [SYNC-FIX] "SAVED" pill over any view         */
+      drawSaveToastIfActive();    /* [PERSIST-UI] DONE!/FAILED!/WAIT pill over any view */
       /* [PERF] Page-diff flush: only the framebuffer pages that actually changed
        * are pushed over I2C, so a full re-render of a mostly-static screen still
        * costs almost nothing on the bus.  This is what makes BPM/scale/preset/
@@ -611,7 +611,7 @@ void settings_save_task(void* pvParameters) {
       displayDirty.store(true, std::memory_order_relaxed);
     } else {
       g_saveFailFlashMs.store(0u, std::memory_order_relaxed);
-      /* Visible "SAVED" pill in every view for 1.2 s. */
+      /* Visible "DONE!" pill in every view for 1.2 s. */
       g_saveFlashMs.store(millis() + 1200u, std::memory_order_relaxed);
       displayDirty.store(true, std::memory_order_relaxed);
     }
@@ -648,8 +648,8 @@ void settings_save_task(void* pvParameters) {
      * modal must unblock regardless of the reported connection state. */
     const bool wasReset = g_resetAckPending.exchange(false, std::memory_order_acq_rel);
     if (ok) {
-      if (isAppConnected())
-        txSysex(wasReset ? CMD_SCOPED_RESET : CMD_SESSION_SAVE, 16383u);
+      /* ACK unconditionally — link may drop during a long NVS write. */
+      txSysex(wasReset ? CMD_SCOPED_RESET : CMD_SESSION_SAVE, 16383u);
     } else {
       /* Write failed — always NACK so the App closes the persist wait modal.
        * reset_persist_task also sends its own NACK; double-NACK is harmless
@@ -660,7 +660,7 @@ void settings_save_task(void* pvParameters) {
     /* [SAVE-FIX14] Restart after a good commit — used by the scoped RESET menu,
      * the async reset task, AND now every runtime save (requestScopedSave sets
      * g_restartAfterSave) so the laser beams re-init cleanly via the boot path.
-     * The 700 ms delay lets the "SAVED" OLED toast flash before the reboot. */
+     * The 700 ms delay lets the "DONE!" OLED toast flash before the reboot. */
     if (g_restartAfterSave.exchange(false, std::memory_order_acq_rel)) {
       if (ok) {
         delay(700);
