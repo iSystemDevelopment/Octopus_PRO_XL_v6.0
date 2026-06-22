@@ -790,15 +790,17 @@ void updateHardwareInterface() {
   static uint32_t s_saveStuckSince = 0u;
   if (saveInProgress()) {
     if (s_saveStuckSince == 0u) s_saveStuckSince = now;
-    /* FULL scoped reset can write ~37 KB — allow longer than a normal save. */
-    const uint32_t limitMs = g_resetInProgress.load(std::memory_order_relaxed)
-                                 ? 45000u : 25000u;
-    else if ((uint32_t)(now - s_saveStuckSince) > limitMs) {
-      saveForceUnlock();
-      s_saveStuckSince = 0u;
-      g_saveFailFlashMs.store(now + 1500u, std::memory_order_relaxed);
-      displayDirty.store(true, std::memory_order_relaxed);
-      Serial.println(F("[NVS] WARN: save handshake timeout — unlocked"));
+    else {
+      /* FULL scoped reset can write ~37 KB — allow longer than a normal save. */
+      const uint32_t limitMs = g_resetInProgress.load(std::memory_order_relaxed)
+                                   ? 45000u : 25000u;
+      if ((uint32_t)(now - s_saveStuckSince) > limitMs) {
+        saveForceUnlock();
+        s_saveStuckSince = 0u;
+        g_saveFailFlashMs.store(now + 1500u, std::memory_order_relaxed);
+        displayDirty.store(true, std::memory_order_relaxed);
+        Serial.println(F("[NVS] WARN: save handshake timeout — unlocked"));
+      }
     }
     return;
   }
