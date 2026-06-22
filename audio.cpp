@@ -656,14 +656,26 @@ void settings_save_task(void* pvParameters) {
      * NACK is sent unconditionally on failure — isAppConnected() can be
      * false if the NVS write took >4.5 s (MidiUsbRx is blocked during the
      * flash write, heartbeats pile up, the 4.5 s window expires).  The App
-     * modal must unblock regardless of the reported connection state. */
+     * modal must unblock regardless of the reported connection state.
+     *
+     * [SAVE-FIX16] Burst the ACK several times + longer USB drain — a single
+     * frame was often lost to the reboot/enumeration gap on Windows Web MIDI. */
     const bool wasReset = g_resetAckPending.exchange(false, std::memory_order_acq_rel);
     const uint8_t ackCmd = wasReset ? CMD_SCOPED_RESET : CMD_SESSION_SAVE;
-    txSysexPersistReply(ackCmd, ok ? 16383u : 0u);
+    const uint16_t ackVal = ok ? 16383u : 0u;
+    if (ok) {
+      for (int burst = 0; burst < 6; ++burst) {
+        txSysexPersistReply(ackCmd, ackVal);
+        midi_drain_tx_retry();
+        delay(25);
+      }
+    } else {
+      txSysexPersistReply(ackCmd, 0u);
+    }
 
     /* Drain any queued persist ACK before reboot so the App is not left on FAILED. */
     if (ok) {
-      for (int i = 0; i < 40; ++i) {
+      for (int i = 0; i < 60; ++i) {
         midi_drain_tx_retry();
         delay(15);
       }

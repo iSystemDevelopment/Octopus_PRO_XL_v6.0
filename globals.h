@@ -1217,6 +1217,13 @@ static inline bool requestScopedSave(uint8_t scope) {
       !g_saveArmed.load(std::memory_order_acquire)) {
     g_resetInProgress.store(false, std::memory_order_release);
   }
+  /* [SAVE-FIX15] Wedged g_saveArmed (crash/abort mid-write) makes saveInProgress()
+   * true forever → every SAVE/RESET gets instant NACK + FAILED toast. */
+  if (!g_saveRequest.load(std::memory_order_acquire) &&
+      g_saveArmed.load(std::memory_order_acquire)) {
+    g_saveArmed.store(false, std::memory_order_release);
+    g_loopParked.store(false, std::memory_order_release);
+  }
   if (g_resetInProgress.load(std::memory_order_acquire) ||
       g_saveRequest.load(std::memory_order_acquire) ||
       g_saveArmed.load(std::memory_order_acquire))

@@ -3195,6 +3195,7 @@
             _persistKind: '',         // 'save' | 'reset' | 'load'
             _persistSince: 0,
             _persistTimeoutId: null,  // auto-clear safety timeout handle
+            _persistAwaitReboot: false, // USB dropped mid save/reset — wait for reconnect
             _linkGraceUntil: 0,   // ms — allow boot/sync before declaring dead link
             _connOnline: false,   // true once device echo seen this session
             _linkWarned: false,   // one-shot hint when no 0x7C echo after connect
@@ -3263,13 +3264,15 @@
                 this._persistBusy = true;
                 this._persistKind = kind;
                 this._persistSince = Date.now();
-                /* Safety timeout: if no ACK/NACK arrives within 60 s (device crashed
+                /* Safety timeout: if no ACK/NACK arrives within 90 s (device crashed
                  * or rebooted before ACK was delivered), auto-clear so the UI is not
                  * stuck in the wait modal forever.  onConnect() also clears on reconnect. */
                 if (this._persistTimeoutId) clearTimeout(this._persistTimeoutId);
+                const timeoutMs = (kind === 'save' || kind === 'reset') ? 90000 : 30000;
                 this._persistTimeoutId = setTimeout(() => {
-                    if (this._persistBusy) this._persistFinished(false, false);
-                }, 25000);
+                    if (this._persistBusy && !this._persistAwaitReboot)
+                        this._persistFinished(false, false);
+                }, timeoutMs);
                 return true;
             },
             /** Firmware encodes scope as v14 = ResetScope + 1 (0 reserved for NACK). */
@@ -3288,6 +3291,7 @@
                 if (b) b.style.display = 'none';
             },
             _persistFinished(ok, reboot) {
+                this._persistAwaitReboot = false;
                 this._hidePersistWait();
                 if (this._persistTimeoutId) { clearTimeout(this._persistTimeoutId); this._persistTimeoutId = null; }
                 this._persistBusy = false;
@@ -3324,6 +3328,7 @@
                 this._persistBusy = false;
                 this._persistKind = '';
                 this._persistSince = 0;
+                this._persistAwaitReboot = false;
                 if (this._persistTimeoutId) { clearTimeout(this._persistTimeoutId); this._persistTimeoutId = null; }
                 this.closeAllPersistModals();
                 const el = document.getElementById('doneModal');
@@ -3766,6 +3771,7 @@
             async onConnect() {
                 const wasRebootPersist = this._persistBusy &&
                     (this._persistKind === 'save' || this._persistKind === 'reset');
+                const kind = this._persistKind;
                 this._stopReconnectPoll();
                 this._loadSlotMeta();
                 this._sxRxBuf = null;
@@ -3780,6 +3786,7 @@
                 this._plockStealWarned = false;
                 this._persistBusy = false;
                 this._persistKind = '';
+                this._persistAwaitReboot = false;
                 if (this._persistTimeoutId) { clearTimeout(this._persistTimeoutId); this._persistTimeoutId = null; }
                 this.closeAllPersistModals();
                 this._rxQueue.length = 0;
@@ -3805,8 +3812,19 @@
                 this.startHeartbeat();
                 this.log('Connecting to ' + (this.midiOut.name || 'MIDI') + '…');
                 if (wasRebootPersist) {
+                    const title = document.getElementById('doneModalTitle');
+                    const el = document.getElementById('doneModal');
+                    if (title) {
+                        title.textContent = 'DONE!';
+                        title.style.color = 'var(--green)';
+                    }
+                    if (el) el.style.display = 'flex';
                     this._persistBanner('DONE!', 'ok');
-                    setTimeout(() => this._hidePersistBanner(), 1500);
+                    setTimeout(() => {
+                        if (el) el.style.display = 'none';
+                        this._hidePersistBanner();
+                    }, 1500);
+                    this.log((kind === 'reset' ? 'RESET' : 'SAVE') + ' complete — device reconnected.');
                 }
             },
             // Periodic heartbeat: the firmware marks the link "connected" only while it
@@ -3860,6 +3878,11 @@
                     if (!this.midiOut || !this._portLive(this.midiOut)) {
                         if (this._persistBusy && (this._persistKind === 'save' || this._persistKind === 'reset')) {
                             /* Expected USB drop while the device reboots — wait for reconnect. */
+                            this._persistAwaitReboot = true;
+                            if (this._persistTimeoutId) {
+                                clearTimeout(this._persistTimeoutId);
+                                this._persistTimeoutId = null;
+                            }
                             this.stopHeartbeat();
                             this._connOnline = false;
                             this.updateConnBadge(false);
@@ -3876,7 +3899,7 @@
                     }
                     const now = Date.now();
                     if (this._persistBusy && this._persistSince &&
-                        (now - this._persistSince) > 45000) {
+                        (now - this._persistSince) > 90000) {
                         this._persistFinished(false, false);
                     }
                     if (now > this._linkGraceUntil) {
@@ -4098,23 +4121,34 @@
                     [CMD.LOAD_PAT_S]: v14 => { const e = document.getElementById('synthPat'); if (e && v14 < SYNTH_PATTERNS.length) e.value = String(v14); },
                     [CMD.LOAD_PAT_D]: v14 => { const e = document.getElementById('drumPat');  if (e && v14 < DRUM_PATTERNS.length)  e.value = String(v14); },
                     [CMD.SESSION_SAVE]: v14 => {
-                        if (!this._persistBusy) return;
-                        if (v14 === 16383) this._persistFinished(true, true);
-                        else if (v14 === 0) this._persistFinished(false, false);
+                        if (v14 === 16383) {
+                            if (this._persistBusy || this._persistKind === 'save')
+                                this._persistFinished(true, true);
+                        } else if (v14 === 0 && this._persistBusy) {
+                            this._persistFinished(false, false);
+                        }
                     },
                     [CMD.SESSION_LOAD]: v14 => {
-                        if (!this._persistBusy) return;
-                        if (v14 === 16383) this._persistFinished(true, false);
-                        else if (v14 === 0) this._persistFinished(false, false);
+                        if (v14 === 16383) {
+                            if (this._persistBusy || this._persistKind === 'load')
+                                this._persistFinished(true, false);
+                        } else if (v14 === 0 && this._persistBusy) {
+                            this._persistFinished(false, false);
+                        }
                     },
                     [CMD.SCOPED_RESET]: v14 => {
-                        if (!this._persistBusy) return;
-                        if (v14 === 16383) this._persistFinished(true, true);
-                        else if (v14 === 0) this._persistFinished(false, false);
+                        if (v14 === 16383) {
+                            if (this._persistBusy || this._persistKind === 'reset')
+                                this._persistFinished(true, true);
+                        } else if (v14 === 0 && this._persistBusy) {
+                            this._persistFinished(false, false);
+                        }
                     },
                     [CMD.SOFT_RESET]: v14 => {
-                        if (!this._persistBusy) return;
-                        if (v14 === 16383) this._persistFinished(true, false);
+                        if (v14 === 16383) {
+                            if (this._persistBusy || this._persistKind === 'soft')
+                                this._persistFinished(true, false);
+                        }
                     },
                     [CMD.USR_SOUND_SAVE]: v14 => {
                         const eng = (v14 >> 13) & 1, slot = v14 & 63;
@@ -4207,20 +4241,18 @@
                     [CMD.SONG_POS]: v14 => { this.songPlayStep = (v14 >> 4) & 0xF; this._highlightSongStep(); },
                     [CMD.STEP_SYNC]: v14 => {
                         this._touchTransportRx('step');
-                        const s = v14 | 0;
+                        const len = Math.max(1, this.seqLen | 0);
+                        let s = v14 | 0;
+                        if (s < 0) s = 0;
+                        if (s >= len) s = len - 1;
                         this.visStep = s;
                         if (this.isPlaying) {
                             const prev = this._playAbsStep;
-                            if (prev >= 0) {
-                                const len = Math.max(1, this.seqLen | 0);
-                                const lastIdx = len - 1;
-                                const patternWrap = lastIdx > 0 && prev === lastIdx && s === 0;
-                                /* Stale / duplicate echoes snap the PLL backward — ignore. */
-                                if (!patternWrap && s < prev) return;
-                                if (!patternWrap && s === prev) return;
-                            }
+                            /* Hardware is sole authority — only drop stale duplicate echoes. */
+                            if (prev >= 0 && s === prev) return;
                             this._pllAnchorStep = s;
                             this._pllAnchorTime = performance.now();
+                            this._updateBeatLeds(s & 15);
                             this._phPendingStep = s;
                         }
                     },
@@ -4978,6 +5010,16 @@
 
             // ── Playhead ────────────────────────────────────────────────────────────────
             // [CLOCK-AUTHORITY] Driven exclusively by CMD.STEP_SYNC → _phPendingStep → rAF.
+            _updateBeatLeds(col) {
+                col = Math.max(0, (col | 0) & 15);
+                const beat = col >> 2;
+                if (beat === this._playBeat) return;
+                for (let i = 0; i < 4; i++) {
+                    const el = document.getElementById('led-' + i);
+                    if (el) el.classList.toggle('active', i === beat);
+                }
+                this._playBeat = beat;
+            },
             _measurePlayheadGeo() {
                 const grid = document.getElementById('seq-grid');
                 const c0 = this._domGridCache?.[0]?.[0];
@@ -4998,16 +5040,26 @@
             advancePlayhead(s) {
                 s = (s | 0);
                 const ph = this._playheadEl;
-                if (!ph) return;
 
                 const len = Math.max(1, this.seqLen | 0);
                 const lastIdx = len - 1;
-                if (s > lastIdx) s = lastIdx;
                 if (s < 0) s = 0;
+                if (s > lastIdx) s = lastIdx;
 
                 const page = (s >> 4) & 3;
                 const col = s & 15;
                 const prevAbs = this._playAbsStep;
+
+                /* Beat LEDs always track hardware — even when song editor hides the grid. */
+                this._updateBeatLeds(col);
+
+                if (!ph) {
+                    this._playCol = col;
+                    this._playPage = page;
+                    this._playAbsStep = s;
+                    this._playLast = s;
+                    return;
+                }
 
                 /* Same step, geometry stable — skip redundant DOM work (common on LEN=1). */
                 if (s === this._playLast && prevAbs === s && !this._phForceRemeasure) return;
@@ -5024,6 +5076,10 @@
                 const geo = this._phGeo || this._measurePlayheadGeo();
                 if (!geo) {
                     this._phForceRemeasure = true;
+                    this._playCol = col;
+                    this._playPage = page;
+                    this._playAbsStep = s;
+                    this._playLast = s;
                     return;
                 }
 
@@ -5031,10 +5087,11 @@
                 /* Pattern wrap = last step → 0 only (not LEN=1 where lastIdx is 0). */
                 const patternWrap = prevAbs >= 0 && lastIdx > 0 && prevAbs === lastIdx && s === 0;
                 const pageWrap = this._playPage >= 0 && page !== this._playPage;
+                /* Hardware STEP_SYNC is authoritative — snap on every new step. */
                 const snapped = pageWrap || patternWrap || this._playCol < 0
-                    || stepDelta > 1 || stepDelta < 0;
+                    || stepDelta !== 0;
 
-                // [PLAYHEAD-DETACH] advancePlayhead owns ONLY size + opacity + LED + geo.
+                // [PLAYHEAD-DETACH] advancePlayhead owns ONLY size + opacity + geo.
                 // _pllPositionTick() owns ALL transform positioning (runs first each rAF).
                 // No inline transition override — CSS has `transition: opacity 80ms` only;
                 // removing the old inline set eliminates a style recalc every STEP_SYNC.
@@ -5052,15 +5109,6 @@
                 this._playAbsStep = s;
                 this._playLast = s;
                 this._phForceRemeasure = false;
-
-                const beat = col >> 2;
-                if (beat !== this._playBeat) {
-                    for (let i = 0; i < 4; i++) {
-                        const el = document.getElementById('led-' + i);
-                        if (el) el.classList.toggle('active', i === beat);
-                    }
-                    this._playBeat = beat;
-                }
             },
             _hidePlayhead() {
                 this._playCol = -1;
@@ -5092,6 +5140,11 @@
                 const geo = this._phGeo;
                 if (!geo) return;
 
+                const anchorStep = this._pllAnchorStep | 0;
+                const anchorPage = (anchorStep >> 4) & 3;
+                /* Never draw on the wrong P-page — page follow snaps via advancePlayhead. */
+                if (anchorPage !== (this.gridPageIdx | 0)) return;
+
                 const now = performance.now();
                 const bpm = Math.max(40, this.bpm || 120);
                 const stepMs = 60000 / bpm / 4;   // 16th-note duration in ms (40–240 BPM)
@@ -5101,14 +5154,11 @@
                 // • Upper bound 0.98: never visually jump past the next column before its
                 //   STEP_SYNC arrives — the 2% dead-zone is ~1.25 ms at 120 BPM, invisible.
                 //   Also guards against USB stalls (very large elapsed times are clamped).
-                const elapsed = now - this._pllAnchorTime;
+                const elapsed = Math.max(0, now - this._pllAnchorTime);
                 const frac = Math.min(0.98, Math.max(0, elapsed / stepMs));
 
                 // Column position on the CURRENT PAGE only (0–15).
-                // _pllAnchorStep & 15 gives the integer column; frac glides within it.
-                // Clamped to 15 so we never cross the page boundary visually mid-step
-                // (page follow is a hard snap handled by advancePlayhead on STEP_SYNC).
-                const col  = this._pllAnchorStep & 15;
+                const col  = anchorStep & 15;
                 const colF = Math.min(15, col + frac);
 
                 ph.style.transform = 'translate3d(' + (geo.x0 + colF * geo.pitch).toFixed(1) + 'px, 0, 0)';

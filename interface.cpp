@@ -823,9 +823,11 @@ void updateHardwareInterface() {
   if (saveInProgress()) {
     if (s_saveStuckSince == 0u) s_saveStuckSince = now;
     else {
-      /* FULL scoped reset can write ~37 KB — allow longer than a normal save. */
+      /* FULL scoped reset can write ~37 KB — allow longer than a normal save.
+       * [SAVE-FIX16] 25 s was too aggressive for FULL saves on a loaded session;
+       * premature saveForceUnlock() sent NACK while NvsWorker was still committing. */
       const uint32_t limitMs = g_resetInProgress.load(std::memory_order_relaxed)
-                                   ? 45000u : 25000u;
+                                   ? 60000u : 45000u;
       if ((uint32_t)(now - s_saveStuckSince) > limitMs) {
         const bool wasReset =
             g_resetAckPending.load(std::memory_order_acquire);

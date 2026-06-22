@@ -1,0 +1,1497 @@
+<!--
+  Octopus PRO XL v6.0.01 — Product information page
+  © 2026 DIODAC ELECTRONICS / iSystem. All Rights Reserved.
+  PROPRIETARY AND CONFIDENTIAL. Unauthorized use prohibited.
+-->
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Octopus PRO XL v6.0.01 | Laser-Harp Groovebox Workstation</title>
+    <meta name="description" content="Octopus PRO XL v6.0 — 8-beam reflective laser harp, 24-voice groovebox, 64-step sequencer, studio FX, and zero-install OctopusApp Web MIDI console at octopus.isystem.app.">
+    <link rel="canonical" href="https://octopus-info.isystem.app/">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&family=JetBrains+Mono:wght@400;700&family=Orbitron:wght@500;700;900&display=swap');
+
+        :root {
+            --bg-base: #050508;
+            --bg-panel: #0d0d14;
+            --cyan: #06b6d4;
+            --orange: #f97316;
+            --purple: #a855f7;
+            --green: #22c55e;
+            --pink: #ec4899;
+        }
+
+        body {
+            background-color: var(--bg-base);
+            color: #d1d5db;
+            font-family: 'Inter', sans-serif;
+            overflow-x: hidden;
+        }
+
+        h1, h2, h3, h4, .brand {
+            font-family: 'Orbitron', sans-serif;
+        }
+
+        .mono {
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        /* Neon Glow Utilities */
+        .glow-cyan { text-shadow: 0 0 10px rgba(6, 182, 212, 0.6); }
+        .glow-orange { text-shadow: 0 0 10px rgba(249, 115, 22, 0.6); }
+
+        .box-glow-cyan { box-shadow: 0 0 20px rgba(6, 182, 212, 0.15); border: 1px solid rgba(6, 182, 212, 0.3); }
+        .box-glow-purple { box-shadow: 0 0 30px rgba(168, 85, 247, 0.15); border: 1px solid rgba(168, 85, 247, 0.3); }
+        .box-glow-orange { box-shadow: 0 0 24px rgba(249, 115, 22, 0.15); border: 1px solid rgba(249, 115, 22, 0.3); }
+        .box-glow-green { box-shadow: 0 0 24px rgba(34, 197, 94, 0.15); border: 1px solid rgba(34, 197, 94, 0.3); }
+
+        .gradient-text {
+            background: linear-gradient(90deg, var(--cyan), var(--purple));
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .nav-link { position: relative; transition: color 0.2s; white-space: nowrap; }
+        .nav-link:hover { color: var(--cyan); }
+
+        /* Top bar — compact single-row menu (lg+) */
+        .top-nav-menu {
+            display: none;
+            flex: 1 1 auto;
+            flex-wrap: nowrap;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 0.55rem;
+            min-width: 0;
+            font-family: 'Orbitron', sans-serif;
+            font-size: 9px;
+            font-weight: 600;
+            letter-spacing: 0.11em;
+            text-transform: uppercase;
+        }
+        @media (min-width: 1024px) {
+            .top-nav-menu { display: flex; }
+        }
+        @media (min-width: 1280px) {
+            .top-nav-menu { gap: 0.7rem; font-size: 10px; letter-spacing: 0.13em; }
+        }
+        .top-nav-social {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 26px;
+            height: 26px;
+            border-radius: 6px;
+            border: 1px solid #2a2a35;
+            color: #9ca3af;
+            transition: color 0.2s, border-color 0.2s, background 0.2s;
+        }
+        .top-nav-social:hover {
+            color: #fff;
+            border-color: rgba(6, 182, 212, 0.45);
+            background: rgba(6, 182, 212, 0.08);
+        }
+        .top-nav-cta {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 9px;
+            font-weight: 700;
+            letter-spacing: 0.12em;
+            padding: 6px 11px;
+            border-radius: 6px;
+            white-space: nowrap;
+        }
+        @media (min-width: 1280px) {
+            .top-nav-cta { font-size: 10px; padding: 7px 13px; }
+        }
+
+        /* Table Styles */
+        table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
+        th { background: #111; color: var(--cyan); text-align: left; padding: 12px; border-bottom: 2px solid #333; font-family: 'Orbitron', sans-serif; font-size: 0.85rem;}
+        td { padding: 12px; border-bottom: 1px solid #222; font-family: 'JetBrains Mono', monospace; font-size: 0.85rem; color: #aaa; }
+        tr:hover td { background: rgba(6, 182, 212, 0.05); color: #fff; }
+
+        .feature-card {
+            background: var(--bg-panel);
+            border: 1px solid #222;
+            border-radius: 12px;
+            padding: 2rem;
+            transition: all 0.3s;
+        }
+        .feature-card:hover {
+            border-color: #444;
+            transform: translateY(-5px);
+        }
+
+        .pill { display:inline-flex; align-items:center; gap:6px; font-family:'JetBrains Mono',monospace; font-size:0.7rem; padding:4px 10px; border-radius:999px; border:1px solid #333; color:#9ca3af; background:#0a0a0e; }
+
+        .hero-img {
+            max-width: 360px;
+            width: 100%;
+            border-radius: 50%;
+            box-shadow: 0 0 80px rgba(6, 182, 212, 0.4);
+            animation: float 6s ease-in-out infinite;
+        }
+
+        /* Embedded media — circular logo + framed photos */
+        .img-circle {
+            border-radius: 50%;
+            object-fit: cover;
+            aspect-ratio: 1 / 1;
+        }
+        .img-frame {
+            position: relative;
+            overflow: hidden;
+            border-radius: 14px;
+            border: 1px solid rgba(6, 182, 212, 0.22);
+            background: #050508;
+            box-shadow: 0 0 32px rgba(6, 182, 212, 0.08);
+        }
+        .img-frame::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            border-radius: inherit;
+            box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+        }
+        .img-frame img {
+            display: block;
+            width: 100%;
+            height: auto;
+            object-fit: cover;
+        }
+        .img-frame-laser {
+            border-color: rgba(6, 182, 212, 0.35);
+            box-shadow: 0 0 48px rgba(6, 182, 212, 0.14);
+        }
+        .img-frame-logo {
+            border-color: rgba(168, 85, 247, 0.35);
+            box-shadow: 0 0 40px rgba(168, 85, 247, 0.18);
+            background: radial-gradient(circle at 30% 20%, rgba(168, 85, 247, 0.12), #050508 65%);
+        }
+        .media-caption {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.65rem;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: #6b7280;
+            margin-top: 0.5rem;
+        }
+
+        /* Contact form */
+        .contact-form label {
+            display: block;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.65rem;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: #9ca3af;
+            margin-bottom: 0.35rem;
+        }
+        .contact-form input,
+        .contact-form textarea,
+        .contact-form select {
+            width: 100%;
+            background: #0a0a0e;
+            border: 1px solid #2a2a35;
+            border-radius: 8px;
+            padding: 10px 12px;
+            color: #e5e7eb;
+            font-family: 'Inter', sans-serif;
+            font-size: 0.9rem;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+        .contact-form input:focus,
+        .contact-form textarea:focus,
+        .contact-form select:focus {
+            outline: none;
+            border-color: rgba(6, 182, 212, 0.55);
+            box-shadow: 0 0 0 2px rgba(6, 182, 212, 0.12);
+        }
+        .contact-form textarea { min-height: 88px; resize: vertical; }
+        .contact-form .field { margin-bottom: 0.75rem; }
+        .contact-form .field-row {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 0.75rem;
+            margin-bottom: 0.75rem;
+        }
+        @media (min-width: 640px) {
+            .contact-form .field-row { grid-template-columns: 1fr 1fr; }
+            .contact-form .field-row .field { margin-bottom: 0; }
+        }
+        .contact-form button[type="submit"] {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 0.75rem;
+            font-weight: 700;
+            letter-spacing: 0.14em;
+            text-transform: uppercase;
+            background: #06b6d4;
+            color: #000;
+            border: none;
+            border-radius: 8px;
+            padding: 12px 24px;
+            cursor: pointer;
+            transition: background 0.2s, box-shadow 0.2s;
+        }
+        .contact-form button[type="submit"]:hover {
+            background: #fff;
+            box-shadow: 0 0 24px rgba(6, 182, 212, 0.35);
+        }
+        .contact-form button[type="submit"]:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        .contact-success {
+            display: none;
+            padding: 1rem 1.25rem;
+            border-radius: 8px;
+            border: 1px solid rgba(34, 197, 94, 0.35);
+            background: rgba(34, 197, 94, 0.08);
+            color: #86efac;
+            font-size: 0.875rem;
+        }
+        .contact-success.visible { display: block; }
+        .img-frame-product {
+            border-color: rgba(168, 85, 247, 0.3);
+            box-shadow: 0 0 48px rgba(168, 85, 247, 0.12);
+        }
+        .img-frame-hardware {
+            border-color: rgba(6, 182, 212, 0.35);
+            box-shadow: 0 0 56px rgba(6, 182, 212, 0.14);
+            background: #08080c;
+        }
+        .img-frame-hardware img {
+            width: 100%;
+            max-height: 22rem;
+            height: auto;
+            object-fit: contain;
+            object-position: center top;
+        }
+        .hardware-spec-block {
+            max-width: 44rem;
+            margin: 0 auto 2rem;
+        }
+        .spec-table-compact { margin-top: 0; }
+        .spec-table-compact td {
+            padding: 7px 8px;
+            font-size: 0.72rem;
+        }
+        .spec-table-compact td:first-child {
+            width: 42%;
+            color: #9ca3af;
+        }
+        .spec-table-compact td:last-child {
+            color: #ccc;
+        }
+        .hardware-spec-panel {
+            margin-top: 0.75rem;
+            padding: 0.85rem 1rem 1rem;
+            border: 1px solid #222;
+            border-radius: 10px;
+            background: #050508;
+        }
+        .hardware-spec-panel h4 {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 0.7rem;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            color: #06b6d4;
+            margin: 0 0 0.65rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 1px solid #222;
+        }
+        .hardware-spec-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 0.35rem 1.25rem;
+        }
+        @media (min-width: 640px) {
+            .hardware-spec-grid { grid-template-columns: 1fr 1fr; }
+        }
+        .hardware-spec-grid .spec-row {
+            display: grid;
+            grid-template-columns: 5.5rem 1fr;
+            gap: 0.5rem;
+            align-items: start;
+            padding: 0.35rem 0;
+            border-bottom: 1px solid #151518;
+            font-size: 0.72rem;
+            line-height: 1.45;
+        }
+        .hardware-spec-grid .spec-row span:first-child {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.62rem;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            color: #6b7280;
+        }
+        .hardware-spec-grid .spec-row span:last-child {
+            color: #d1d5db;
+        }
+        .hardware-spec-grid .spec-row-full {
+            grid-column: 1 / -1;
+        }
+        .hardware-spec-table td:first-child {
+            width: 38%;
+            color: #9ca3af;
+            vertical-align: top;
+        }
+        .hardware-spec-table td:last-child {
+            color: #e5e7eb;
+        }
+        .hardware-spec-note {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.6rem;
+            color: #555;
+            margin-top: 0.65rem;
+            line-height: 1.5;
+            text-align: center;
+        }
+        .edition-callout {
+            max-width: 44rem;
+            margin: 0 auto 1.5rem;
+            padding: 0.85rem 1.1rem;
+            border-radius: 12px;
+            border: 1px solid rgba(6, 182, 212, 0.35);
+            background: linear-gradient(135deg, rgba(6, 182, 212, 0.08) 0%, rgba(168, 85, 247, 0.06) 100%);
+            box-shadow: 0 0 32px rgba(6, 182, 212, 0.1);
+            text-align: center;
+        }
+        .edition-callout h3 {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 0.85rem;
+            letter-spacing: 0.14em;
+            text-transform: uppercase;
+            color: #06b6d4;
+            margin-bottom: 0.5rem;
+        }
+        .edition-callout p {
+            font-size: 0.8rem;
+            color: #9ca3af;
+            line-height: 1.55;
+            margin: 0;
+        }
+        .edition-callout .edition-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+            margin-top: 0.5rem;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.65rem;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            color: #fbbf24;
+            border: 1px solid rgba(251, 191, 36, 0.35);
+            background: rgba(251, 191, 36, 0.08);
+            padding: 4px 10px;
+            border-radius: 999px;
+        }
+        .contact-layout {
+            align-items: stretch;
+            max-width: 52rem;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        .contact-photo-panel,
+        .contact-form-panel {
+            border-radius: 12px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+        .contact-photo-panel {
+            margin: 0;
+            padding: 1.25rem;
+            background: #050508;
+            border: 2px solid rgba(168, 85, 247, 0.3);
+            box-shadow: 0 0 48px rgba(168, 85, 247, 0.12);
+            align-items: center;
+        }
+        .contact-photo-panel img {
+            display: block;
+            width: auto;
+            max-width: 100%;
+            max-height: 20rem;
+            height: auto;
+            object-fit: contain;
+            object-position: center;
+        }
+        @media (min-width: 1024px) {
+            .contact-photo-panel img {
+                max-height: 18.5rem;
+            }
+        }
+
+        /* Resources — equal 2×3 tiles */
+        .resource-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 1.25rem;
+        }
+        @media (min-width: 640px) {
+            .resource-grid { grid-template-columns: repeat(2, 1fr); }
+        }
+        .resource-tile {
+            display: flex;
+            flex-direction: column;
+            min-height: 168px;
+            height: 100%;
+        }
+        .resource-tile p { flex: 1; margin-bottom: 0; }
+
+        /* Sequencer OLED grid preview (hardware matrix editor) */
+        .seq-oled-wrap {
+            max-width: 100%;
+        }
+        .seq-oled {
+            background: #1a1a1e;
+            border: 2px solid #333;
+            border-radius: 8px;
+            overflow: hidden;
+            font-family: 'JetBrains Mono', 'Courier New', monospace;
+            box-shadow: 0 0 28px rgba(236, 72, 153, 0.12);
+        }
+        .seq-oled-header,
+        .seq-oled-footer {
+            background: #0f0f12;
+            padding: 8px 12px;
+            color: #00ff99;
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+        }
+        .seq-oled-header { border-bottom: 1px solid #333; }
+        .seq-oled-footer { border-top: 1px solid #333; }
+        .seq-grid {
+            background: #050508;
+            padding: 8px;
+            display: grid;
+            grid-template-columns: repeat(16, 1fr);
+            gap: 2px;
+            aspect-ratio: 2 / 1;
+        }
+        .seq-cell {
+            background: #1a1a1e;
+            border: 1px solid #222;
+            border-radius: 2px;
+            aspect-ratio: 1;
+            transition: background 0.12s, border-color 0.12s, box-shadow 0.12s;
+            cursor: pointer;
+        }
+        .seq-cell:hover:not(.on):not(.on-synth):not(.on-drum) {
+            background: #252530;
+            border-color: #333;
+        }
+        .seq-cell.playhead {
+            background: rgba(0, 255, 153, 0.08);
+            border-color: rgba(0, 255, 153, 0.45);
+            box-shadow: inset 0 0 0 1px rgba(0, 255, 153, 0.2);
+        }
+        .seq-cell.on {
+            background: #00ff99;
+            border-color: #00dd77;
+            box-shadow: 0 0 4px rgba(0, 255, 153, 0.55);
+        }
+        .seq-cell.cur {
+            border: 2px solid #00ff99;
+            box-shadow: 0 0 8px rgba(0, 255, 153, 0.65), inset 0 0 4px rgba(0, 255, 153, 0.25);
+        }
+        .seq-oled-duo {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+        .seq-oled.compact .seq-oled-header,
+        .seq-oled.compact .seq-oled-footer {
+            font-size: 9px;
+            padding: 6px 10px;
+        }
+        .seq-oled.compact .seq-grid {
+            padding: 6px;
+            gap: 1px;
+        }
+        .seq-oled-drum .seq-oled-header,
+        .seq-oled-drum .seq-oled-footer { color: #ff9944; }
+        .seq-oled-drum .seq-cell.on {
+            background: #ff9944;
+            border-color: #dd7722;
+            box-shadow: 0 0 4px rgba(255, 153, 68, 0.55);
+        }
+        .seq-oled-drum .seq-cell.cur {
+            border-color: #ff9944;
+            box-shadow: 0 0 8px rgba(255, 153, 68, 0.65), inset 0 0 4px rgba(255, 153, 68, 0.25);
+        }
+        .seq-oled-drum .seq-cell.playhead {
+            background: rgba(255, 153, 68, 0.1);
+            border-color: rgba(255, 153, 68, 0.5);
+            box-shadow: inset 0 0 0 1px rgba(255, 153, 68, 0.22);
+        }
+        .seq-oled-drum .seq-cell.on.playhead {
+            box-shadow: 0 0 8px rgba(255, 153, 68, 0.75), inset 0 0 6px rgba(255, 255, 255, 0.12);
+        }
+        .seq-cell.on.playhead {
+            box-shadow: 0 0 8px rgba(0, 255, 153, 0.75), inset 0 0 6px rgba(255, 255, 255, 0.12);
+        }
+        /* OctopusApp full 16×16 matrix */
+        .seq-app-panel {
+            background: #0a0a0e;
+            border: 2px solid rgba(34, 197, 94, 0.35);
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 0 36px rgba(34, 197, 94, 0.12);
+        }
+        .seq-app-header {
+            background: #111;
+            padding: 10px 14px;
+            border-bottom: 1px solid #222;
+            font-family: 'Orbitron', sans-serif;
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.12em;
+            color: #22c55e;
+        }
+        .seq-app-grid {
+            background: #050508;
+            padding: 10px;
+            display: grid;
+            grid-template-columns: repeat(16, 1fr);
+            gap: 3px;
+            aspect-ratio: 1;
+        }
+        .seq-app-grid .seq-cell {
+            border-radius: 3px;
+        }
+        .seq-app-grid .seq-cell.playhead {
+            background: rgba(34, 197, 94, 0.12);
+            border-color: rgba(34, 197, 94, 0.55);
+            box-shadow: inset 0 0 0 1px rgba(34, 197, 94, 0.25);
+        }
+        .seq-app-grid .seq-cell.on-synth.playhead {
+            background: #f472b6;
+            border-color: #ec4899;
+            box-shadow: 0 0 10px rgba(236, 72, 153, 0.65), inset 0 0 0 1px rgba(255, 255, 255, 0.15);
+        }
+        .seq-app-grid .seq-cell.on-drum.playhead {
+            background: #fb923c;
+            border-color: #f97316;
+            box-shadow: 0 0 10px rgba(249, 115, 22, 0.65), inset 0 0 0 1px rgba(255, 255, 255, 0.15);
+        }
+        .seq-app-grid .seq-cell:hover:not(.on-synth):not(.on-drum) {
+            background: #1f1f28;
+            border-color: #333;
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .seq-cell { transition: none; }
+        }
+        .seq-app-grid .seq-cell.on-synth {
+            background: #ec4899;
+            border-color: #db2777;
+            box-shadow: 0 0 5px rgba(236, 72, 153, 0.45);
+        }
+        .seq-app-grid .seq-cell.on-drum {
+            background: #f97316;
+            border-color: #ea580c;
+            box-shadow: 0 0 5px rgba(249, 115, 22, 0.45);
+        }
+        .seq-app-grid .seq-cell.row-split {
+            box-shadow: 0 -2px 0 0 rgba(236, 72, 153, 0.35);
+        }
+        .seq-app-legend {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 1rem;
+            justify-content: center;
+            padding: 8px 12px;
+            border-top: 1px solid #222;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 10px;
+            color: #6b7280;
+        }
+        .seq-app-legend span { display: inline-flex; align-items: center; gap: 6px; }
+        .seq-app-legend i {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 2px;
+        }
+        .seq-legend {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+            line-height: 1.75;
+            color: #9ca3af;
+        }
+        .seq-legend kbd {
+            display: inline-block;
+            padding: 1px 6px;
+            border-radius: 4px;
+            border: 1px solid #333;
+            background: #111;
+            color: #d1d5db;
+            font-size: 10px;
+        }
+
+        @keyframes float {
+            0% { transform: translateY(0px); }
+            50% { transform: translateY(-20px); }
+            100% { transform: translateY(0px); }
+        }
+    </style>
+</head>
+<body>
+
+    <nav class="fixed w-full z-50 bg-[#050508]/92 backdrop-blur-md border-b border-[#222]">
+        <div class="max-w-[96rem] mx-auto px-3 lg:px-5 py-2 flex items-center gap-2 lg:gap-4 min-h-[44px]">
+            <a href="#" class="brand text-sm lg:text-base font-bold flex items-center gap-2 text-white shrink-0 no-underline">
+                <img src="logo.jpg" alt="" class="w-7 h-7 img-circle border border-[#06b6d4]/30 shadow-[0_0_12px_rgba(6,182,212,0.25)]" width="28" height="28">
+                <span>Octopus <span class="text-[#06b6d4]">PRO XL</span></span>
+            </a>
+            <div class="top-nav-menu">
+                <a href="#harp" class="nav-link text-gray-400">Harp</a>
+                <a href="#engine" class="nav-link text-gray-400">Engine</a>
+                <a href="#drums" class="nav-link text-gray-400">Drums</a>
+                <a href="#seq" class="nav-link text-gray-400">Seq</a>
+                <a href="#fx" class="nav-link text-gray-400">FX</a>
+                <a href="#app" class="nav-link text-gray-400">App</a>
+                <a href="CHANGELOG.md" class="nav-link text-gray-400">Changelog</a>
+                <a href="#resources" class="nav-link text-gray-400">Docs</a>
+                <a href="#specs" class="nav-link text-gray-400">Specs</a>
+                <a href="#contact" class="nav-link text-gray-400">Contact</a>
+                <span class="w-px h-4 bg-[#2a2a35] shrink-0" aria-hidden="true"></span>
+                <a href="https://github.com/iSystemDevelopment/Octopus_PRO_XL_v6.0/blob/main/README.md"
+                   target="_blank" rel="noopener noreferrer"
+                   class="nav-link text-gray-400" title="GitHub — README"><i class="fa-brands fa-github"></i> GitHub</a>
+                <a href="https://www.facebook.com/diodac.co.uk/" target="_blank" rel="noopener noreferrer"
+                   class="top-nav-social shrink-0" title="DIODAC on Facebook" aria-label="Facebook">
+                    <i class="fa-brands fa-facebook-f text-[11px]"></i>
+                </a>
+                <a href="https://octopus.isystem.app" target="_blank" rel="noopener noreferrer"
+                   class="top-nav-cta bg-[#22c55e] text-black hover:bg-white transition-colors shrink-0">
+                    Launch App
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- ════════════════════════ HERO ════════════════════════ -->
+    <section class="pt-28 pb-16 px-6 flex flex-col justify-center items-center text-center relative overflow-hidden">
+        <div class="absolute inset-0 z-[-1] opacity-20" style="background-image: linear-gradient(#333 1px, transparent 1px), linear-gradient(90deg, #333 1px, transparent 1px); background-size: 40px 40px;"></div>
+
+        <div class="flex items-center gap-4 mb-6">
+            <img src="logo.jpg" alt="Octopus PRO XL" class="w-20 h-20 img-circle border-2 border-[#06b6d4]/40 shadow-[0_0_40px_rgba(6,182,212,0.45)] hero-img" width="80" height="80">
+            <span class="brand tracking-[0.3em] text-sm text-gray-400">DIODAC ELECTRONICS</span>
+            <span class="pill border-[#06b6d4]/40 text-[#06b6d4]">FIRMWARE v6.0.01</span>
+        </div>
+
+        <h1 class="text-5xl md:text-7xl font-black mb-6 tracking-tight text-white glow-cyan">
+            The <span class="gradient-text">Laser-Harp</span><br>Groovebox Workstation.
+        </h1>
+        <p class="text-lg md:text-xl text-gray-400 max-w-3xl leading-relaxed mb-8">
+            A stand-alone live-performance instrument built on the <strong>ESP32-P4</strong> (32&nbsp;MB PSRAM) with a
+            <strong>10&Prime; multi-touch</strong> front panel: an
+            8-beam reflective scanning <strong>laser harp</strong>, a 24-voice bi-timbral
+            <strong>synth + drum groovebox</strong>, a <strong>16&times;16 polyphonic matrix sequencer</strong>
+            with song chains and built-in <strong>arpeggiators</strong>, a studio FX rack, and a
+            zero-install <strong>OctopusApp Web MIDI console</strong> — all in one box.
+        </p>
+        <div class="edition-callout mb-8 px-4">
+            <h3><i class="fa-solid fa-star"></i> ESP-P4 Edition</h3>
+            <p>The most advanced Octopus PRO XL hardware upgrade — built for <strong class="text-gray-200">ultimate live performance</strong>: ESP32-P4, 32&nbsp;MB PSRAM, 10&Prime; multi-touch, and full stage I/O in one premium chassis.</p>
+            <span class="edition-badge"><i class="fa-solid fa-hammer"></i> Limited version &middot; custom build</span>
+        </div>
+        <div class="flex flex-wrap gap-3 justify-center mb-8">
+            <span class="pill border-[#fbbf24]/40 text-[#fbbf24]"><i class="fa-solid fa-crown"></i> P4 Ultimate Edition</span>
+            <span class="pill"><i class="fa-solid fa-microchip text-[#06b6d4]"></i> ESP-P4 · 32 MB PSRAM</span>
+            <span class="pill"><i class="fa-solid fa-tablet-screen-button text-[#06b6d4]"></i> 10&Prime; Multi-Touch</span>
+            <span class="pill"><i class="fa-solid fa-wave-square text-[#a855f7]"></i> 24 Voices @ 44.1 kHz</span>
+            <span class="pill"><i class="fa-solid fa-bolt text-[#22c55e]"></i> 8 RGB Laser Beams</span>
+            <span class="pill"><i class="fa-solid fa-drum text-[#f97316]"></i> 4 Drum Kits</span>
+            <span class="pill"><i class="fa-solid fa-repeat text-[#ec4899]"></i> Seq + Harp ARP</span>
+            <span class="pill"><i class="fa-solid fa-laptop-code text-[#ec4899]"></i> OctopusApp v6.0.00</span>
+        </div>
+        <div class="flex flex-wrap gap-4 justify-center mb-6">
+            <a href="https://octopus.isystem.app" target="_blank" rel="noopener noreferrer"
+               class="bg-[#22c55e] text-black font-bold py-3 px-8 rounded hover:bg-white transition-colors brand tracking-widest shadow-[0_0_20px_rgba(34,197,94,0.45)]">
+                <i class="fa-solid fa-plug"></i> LAUNCH OCTOPUSAPP
+            </a>
+            <a href="https://github.com/iSystemDevelopment/Octopus_PRO_XL_v6.0/blob/main/README.md" target="_blank" rel="noopener noreferrer"
+               class="border border-[#333] text-gray-300 font-bold py-3 px-8 rounded hover:border-[#06b6d4] hover:text-white transition-colors brand tracking-widest text-sm">
+                <i class="fa-brands fa-github"></i> GITHUB
+            </a>
+            <a href="https://www.facebook.com/diodac.co.uk/" target="_blank" rel="noopener noreferrer"
+               class="border border-[#333] text-gray-300 font-bold py-3 px-8 rounded hover:border-[#1877f2] hover:text-white transition-colors brand tracking-widest text-sm">
+                <i class="fa-brands fa-facebook"></i> FACEBOOK
+            </a>
+            <a href="#app" class="bg-transparent border border-[#333] text-white font-bold py-3 px-8 rounded hover:border-[#06b6d4] transition-colors brand tracking-widest">ABOUT THE APP</a>
+        </div>
+
+        <p class="text-xs text-gray-600 mono max-w-2xl mx-auto mb-10 px-4">
+            ILDA-style galvo scan engine · note-reactive RGB · zero-install OctopusApp at
+            <a href="https://octopus.isystem.app" class="text-[#22c55e] hover:underline" target="_blank" rel="noopener">octopus.isystem.app</a>
+        </p>
+
+        <!-- OctopusApp web console mockup -->
+        <div class="w-full max-w-6xl mx-auto rounded-xl border border-[#1c2230] bg-[#0a0a0e] p-2 md:p-3 shadow-[0_0_70px_rgba(6,182,212,0.18)]">
+            <img src="octopus-app-hero.jpg" alt="OctopusApp web console — live editor for the Octopus PRO XL"
+                 class="w-full rounded-lg border border-[#111]" loading="lazy">
+        </div>
+        <p class="text-xs text-gray-600 mono mt-4">OctopusApp — zero-install Web MIDI console at <a href="https://octopus.isystem.app" class="text-[#22c55e] hover:underline" target="_blank" rel="noopener">octopus.isystem.app</a></p>
+    </section>
+
+    <!-- ════════════════════════ OVERVIEW ════════════════════════ -->
+    <section class="py-20 px-6 bg-[#0a0a0e] border-t border-[#111]">
+        <div class="max-w-6xl mx-auto text-center">
+            <h2 class="text-3xl md:text-4xl text-white mb-4">One Instrument, Three Performers</h2>
+            <p class="max-w-3xl mx-auto mb-12 text-gray-400">The Octopus PRO XL is designed for solo live shows: play the laser
+            harp with your hands while the sequencer drives a bassline and drum groove underneath, all colouring the room with
+            note-reactive laser light — no laptop required.</p>
+            <div class="grid md:grid-cols-3 gap-8 text-left">
+                <div class="feature-card">
+                    <div class="text-3xl mb-3 text-[#06b6d4]"><i class="fa-solid fa-hand-sparkles"></i></div>
+                    <h3 class="text-lg text-white mb-2">Play the Light</h3>
+                    <p class="text-sm text-gray-400">Eight visible laser beams form the harp "strings". Breaking a beam triggers a polyphonic wavetable voice and lights that beam in its own colour.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="text-3xl mb-3 text-[#f97316]"><i class="fa-solid fa-sliders"></i></div>
+                    <h3 class="text-lg text-white mb-2">Groove Underneath</h3>
+                    <p class="text-sm text-gray-400">A second synth engine and an 8-voice drum machine run from the 16&times;16 pad matrix (8 synth + 8 drum rows), locked to one tempo, so a full track grooves while you solo.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="text-3xl mb-3 text-[#22c55e]"><i class="fa-solid fa-laptop-code"></i></div>
+                    <h3 class="text-lg text-white mb-2">Tweak from the Browser</h3>
+                    <p class="text-sm text-gray-400">Plug in over USB and OctopusApp becomes your full editor — every synth/drum parameter, the 64-step grid, song chains, FX, motion P-locks, and live CPU telemetry — with settings saved back to on-board flash. Transport (play/stop/record/BPM) stays on the hardware; the app mirrors it in real time.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ════════════════════════ LASER HARP ════════════════════════ -->
+    <section id="harp" class="py-24 px-6 border-t border-[#111]">
+        <div class="max-w-7xl mx-auto">
+            <div class="grid md:grid-cols-2 gap-16 items-center">
+                <div>
+                    <h2 class="text-3xl md:text-4xl text-white mb-6"><span class="text-[#06b6d4]">01.</span> Reflective Scanning Laser Harp</h2>
+                    <p class="mb-6 leading-relaxed">
+                        A single high-speed galvanometer sweeps one laser source into a fan of <strong>8 addressable beams</strong> —
+                        the harp "strings". Detection is reflective and frameless: there is no top bar. The beam is amplitude-modulated
+                        and a matched sensor picks up only that signature, so a hand is detected while stage haze and ambient light are rejected.
+                    </p>
+                    <ul class="space-y-4 mb-8">
+                        <li class="flex items-start gap-3">
+                            <i class="fa-solid fa-check text-[#06b6d4] mt-1"></i>
+                            <div><strong>9.656 kHz carrier lock:</strong> The MCPWM engine modulates the beam at a carrier tuned to the sensor's MFB band-pass centre (10 MHz / 1036 = 9.652 kHz), giving rock-solid hand detection independent of room lighting.</div>
+                        </li>
+                        <li class="flex items-start gap-3">
+                            <i class="fa-solid fa-check text-[#06b6d4] mt-1"></i>
+                            <div><strong>Per-beam dynamic threshold:</strong> Each string gets its own 12-bit comparator DAC level — computed from live ADC telemetry, scale margin, per-string edge compensation, and colour multiplier. Threshold calibrates the sensor path only; the 74HC74 digital latch remains the sole note-on trigger.</div>
+                        </li>
+                        <li class="flex items-start gap-3">
+                            <i class="fa-solid fa-check text-[#06b6d4] mt-1"></i>
+                            <div><strong>Edge compensation:</strong> Independent per-string threshold trim for every scale (HARP SETUP &rarr; Edge Comp) — corrects weaker endpoint beams where the galvo reverses and overshoots; factory-seeded rows persist in NVS.</div>
+                        </li>
+                        <li class="flex items-start gap-3">
+                            <i class="fa-solid fa-check text-[#06b6d4] mt-1"></i>
+                            <div><strong>False-trigger protection:</strong> Asymmetric on/off counters require sustained breaks to note-on and sustained clears to note-off; optional fog-reject gate suppresses haze without blocking real hands; <code class="text-[#06b6d4]">beamStuckReleaseMs</code> fail-safe force-releases hung notes; minimum hold window via <code class="text-[#06b6d4]">beamGateHoldMs</code>.</div>
+                        </li>
+                        <li class="flex items-start gap-3">
+                            <i class="fa-solid fa-check text-[#06b6d4] mt-1"></i>
+                            <div><strong>Dark-move sweep:</strong> The laser is blanked while the galvo travels between string positions (200–1000 µs settle), so the fan shows clean, solid beams and solid V-edges with zero faint trailing lines or jitter.</div>
+                        </li>
+                        <li class="flex items-start gap-3">
+                            <i class="fa-solid fa-check text-[#06b6d4] mt-1"></i>
+                            <div><strong>Note-reactive RGB:</strong> Each string carries its own colour and per-string hue ADSR. With MIDI&rarr;HUE engaged, played notes paint the beams live; a dedicated Laser Show mode runs animated open/close fans.</div>
+                        </li>
+                        <li class="flex items-start gap-3">
+                            <i class="fa-solid fa-check text-[#06b6d4] mt-1"></i>
+                            <div><strong>D-BEAM expression:</strong> A proximity sensor on ADC DMA with per-string Kalman smoothing routes hand height to local harp modulation, volume, or filter cutoff — entirely internal DSP, no external MIDI CC required.</div>
+                        </li>
+                        <li class="flex items-start gap-3">
+                            <i class="fa-solid fa-check text-[#06b6d4] mt-1"></i>
+                            <div><strong>Fog reject (optional):</strong> A differential amplitude gate suppresses false triggers from stage haze/fog without affecting real hand breaks — tunable margin with a live scope view on the OLED.</div>
+                        </li>
+                        <li class="flex items-start gap-3">
+                            <i class="fa-solid fa-check text-[#06b6d4] mt-1"></i>
+                            <div><strong>Harp arpeggiator:</strong> Built-in ARP in POLY8 and SOLO modes (Up/Down/Up-Down/Random, 1/8–1/16T rates, gated patterns) — disabled automatically in STRINGS bowed mode.</div>
+                        </li>
+                    </ul>
+                    <div class="flex flex-wrap gap-3">
+                        <span class="pill">POLY8</span><span class="pill">STRINGS (bowed ADSR)</span><span class="pill">SOLO (mono stab)</span><span class="pill">HARP ARP</span>
+                    </div>
+                </div>
+                <div class="space-y-6">
+                    <figure class="img-frame img-frame-laser min-h-[220px]">
+                        <img src="laser.jpg" alt="Laser harp beam fan — galvo-swept RGB strings" loading="lazy">
+                    </figure>
+                    <p class="media-caption text-center">Galvo-swept 8-beam fan · dark-move blanking</p>
+                    <div class="box-glow-cyan rounded-xl p-8 bg-[#050508] relative overflow-hidden">
+                    <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-[#06b6d4] to-transparent opacity-50"></div>
+                    <h4 class="text-[#06b6d4] mb-4"><i class="fa-solid fa-bolt"></i> ILDA Galvo Engine</h4>
+                    <p class="mono text-sm text-gray-400 leading-relaxed mb-4">
+                        Vector laser-show pipeline: position on MCP4922 ch&nbsp;A, per-beam detect threshold on ch&nbsp;B,
+                        laser blanked during every galvo move (ILDA-style dark routing), then fired only at the settled string position.
+                    </p>
+                    <p class="mono text-xs text-gray-500 leading-relaxed">
+                        GALVO DAC ........ MCP4922 ch A (12-bit)<br>
+                        DETECT THRESH .... MCP4922 ch B (12-bit, per string)<br>
+                        BEAM CARRIER ..... MCPWM @ 9.656 kHz (MFB-matched)<br>
+                        TRIGGER .......... LT1016 + 74HC74 latch (digital only)<br>
+                        SENSOR ........... MFB band-pass &rarr; ADC DMA + Kalman<br>
+                        SCAN ............. Ping-pong 8-beam fan, Core 1 task<br><br>
+                        &gt; Audio DSP on Core 0 stays isolated from galvo timing
+                        so projection stays jitter-free under full polyphony.
+                    </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ════════════════════════ SOUND ENGINE ════════════════════════ -->
+    <section id="engine" class="py-24 px-6 bg-[#0a0a0e] border-t border-[#111]">
+        <div class="max-w-7xl mx-auto">
+            <div class="text-center mb-16">
+                <h2 class="text-3xl md:text-4xl text-white mb-4"><span class="text-[#a855f7]">02.</span> Bi-Timbral Wavetable Engine</h2>
+                <p class="max-w-2xl mx-auto">Two independent synth engines plus a drum engine — <strong>24 voices total</strong> (8 harp + 8 sequencer + 8 drum) — render in floating-point DSP at <strong>44.1 kHz</strong> on Core 0, fed by 25 wavetables and 128 named presets. The open-source <strong>ESP32-S3</strong> dev platform outputs <strong>16-bit</strong> I2S; the limited custom <strong>ESP32-P4</strong> build runs the same engine at 44.1 kHz with <strong>24-bit</strong> output.</p>
+            </div>
+
+            <div class="grid md:grid-cols-3 gap-8 mb-12">
+                <div class="feature-card">
+                    <div class="text-4xl mb-4 text-[#a855f7]"><i class="fa-solid fa-layer-group"></i></div>
+                    <h3 class="text-xl text-white mb-3">True Bi-Timbral Split</h3>
+                    <p class="text-sm text-gray-400">
+                        The Laser Harp engine (8 voices) and the Sequencer Synth engine (8 voices) are fully separate signal paths with their own patch, wave, scale, LFO routing and insert FX. Sequence a deep analog bassline while you play an ethereal pad over the lasers — with no note stealing between them.
+                    </p>
+                </div>
+                <div class="feature-card">
+                    <div class="text-4xl mb-4 text-[#a855f7]"><i class="fa-solid fa-diagram-project"></i></div>
+                    <h3 class="text-xl text-white mb-3">Multi-Target LFO Matrix</h3>
+                    <p class="text-sm text-gray-400">
+                        Per engine, one LFO routes to pitch, filter, wave-morph or tremolo — singly or in combination (up to a full matrix). Each engine also carries a per-voice ADSR, resonant state-variable filter, sub/detune oscillator and an envelope&rarr;cutoff amount, all stored inside the preset.
+                    </p>
+                </div>
+                <div class="feature-card">
+                    <div class="text-4xl mb-4 text-[#a855f7]"><i class="fa-solid fa-music"></i></div>
+                    <h3 class="text-xl text-white mb-3">Acoustic Emulations</h3>
+                    <p class="text-sm text-gray-400">
+                        Signature voices are hand-tuned for natural response: a blooming <strong>Hang Drum</strong> and plucked <strong>Kalimba</strong> playable across the keyboard, and a breath-driven <strong>Didgeridoo</strong> using noise injection and formant filter sweeps. 16 musical scales map both the keyboard and the laser strings.
+                    </p>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
+                <div class="feature-card py-6"><div class="text-3xl font-black text-white brand">24</div><div class="text-xs text-gray-500 mt-1">VOICES (8+8+8)</div></div>
+                <div class="feature-card py-6"><div class="text-3xl font-black text-white brand">25</div><div class="text-xs text-gray-500 mt-1">WAVETABLES</div></div>
+                <div class="feature-card py-6"><div class="text-3xl font-black text-white brand">128</div><div class="text-xs text-gray-500 mt-1">NAMED PRESETS</div></div>
+                <div class="feature-card py-6"><div class="text-3xl font-black text-white brand">16</div><div class="text-xs text-gray-500 mt-1">SCALES</div></div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ════════════════════════ DRUMS ════════════════════════ -->
+    <section id="drums" class="py-24 px-6 border-t border-[#111]">
+        <div class="max-w-7xl mx-auto grid md:grid-cols-2 gap-16 items-center">
+            <div>
+                <h2 class="text-3xl md:text-4xl text-white mb-6"><span class="text-[#f97316]">03.</span> 8-Voice Drum Machine + Kits</h2>
+                <p class="mb-6 leading-relaxed">
+                    A parametric percussion engine synthesises eight drum voices — Kick, Snare, Clap, Closed &amp; Open Hat, Hi/Lo Tom and Perc — each with Tune, Decay, Volume and Noise, plus a selectable body wavetable on the pitched voices.
+                </p>
+                <p class="mb-6 leading-relaxed">
+                    Switch the entire character instantly with <strong>4 drum kits</strong>: the classic
+                    <strong>TR-909</strong>, a deep <strong>TR-808</strong>, a booming <strong>Trap</strong> kit and a punchy
+                    <strong>House</strong> kit. Each kit reloads per-voice tuning and reshapes the kick pitch-sweep and hat character.
+                    The active kit name shows on the OLED dashboard and in the app.
+                </p>
+                <ul class="space-y-3 text-sm">
+                    <li class="flex items-start gap-3"><i class="fa-solid fa-check text-[#f97316] mt-1"></i><div><strong>Global drum pitch (D.PITCH):</strong> Transpose the entire drum bus independently of master pitch — in the App mixer and on hardware.</div></li>
+                    <li class="flex items-start gap-3"><i class="fa-solid fa-check text-[#f97316] mt-1"></i><div>Per-engine insert sends (delay/reverb) plus shared AUX bus on the master strip.</div></li>
+                    <li class="flex items-start gap-3"><i class="fa-solid fa-check text-[#f97316] mt-1"></i><div>Eight factory drum patterns, fully editable on the 64-step grid.</div></li>
+                </ul>
+            </div>
+            <div class="box-glow-orange rounded-xl p-8 bg-[#050508]">
+                <h4 class="text-[#f97316] mb-6"><i class="fa-solid fa-drum"></i> Kit Matrix</h4>
+                <div class="grid grid-cols-2 gap-4">
+                    <div class="p-4 bg-[#111] rounded border border-[#333]"><div class="text-white brand text-sm mb-1">TR-909</div><div class="text-xs text-gray-500">Punchy click kick, crisp hats</div></div>
+                    <div class="p-4 bg-[#111] rounded border border-[#333]"><div class="text-white brand text-sm mb-1">TR-808</div><div class="text-xs text-gray-500">Deep boom kick, long tails</div></div>
+                    <div class="p-4 bg-[#111] rounded border border-[#333]"><div class="text-white brand text-sm mb-1">TRAP</div><div class="text-xs text-gray-500">Sub-heavy 808 boom, tight hats</div></div>
+                    <div class="p-4 bg-[#111] rounded border border-[#333]"><div class="text-white brand text-sm mb-1">HOUSE</div><div class="text-xs text-gray-500">Tight, bright, four-on-the-floor</div></div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ════════════════════════ SEQUENCER ════════════════════════ -->
+    <section id="seq" class="py-24 px-6 bg-[#0a0a0e] border-t border-[#111]">
+        <div class="max-w-7xl mx-auto">
+            <div class="text-center mb-16">
+                <h2 class="text-3xl md:text-4xl text-white mb-4"><span class="text-[#ec4899]">04.</span> 16&times;16 Polyphonic Matrix Sequencer</h2>
+                <p class="max-w-3xl mx-auto mb-4">One <strong>16&times;16 pattern matrix</strong> per bank (256 cells). On the <strong>10&Prime; multi-touch</strong> panel you edit the full grid on-device; <strong>OctopusApp</strong> mirrors the same matrix over USB (up to 64 steps via P1–P4). The compact previews below show the logical synth/drum split.</p>
+                <p class="max-w-2xl mx-auto text-sm text-gray-500">Both surfaces address the same slot; synth + drums always play together. Built-in melody ARP, song chains, and P-lock motion across banks A–D.</p>
+            </div>
+
+            <div class="max-w-6xl mx-auto mb-10 grid lg:grid-cols-2 gap-10 items-start">
+                <!-- 1.3″ OLED — two display pages (16×8 each) -->
+                <div>
+                    <p class="media-caption mb-3"><i class="fa-solid fa-display"></i> Logical split · synth rows 0–7 (compact preview)</p>
+                    <div class="seq-oled-duo">
+                        <div class="seq-oled compact" id="seqOledSynth">
+                            <div class="seq-oled-header">BANK-A [SYNTH] MATRIX · rows 0–7</div>
+                            <div class="seq-grid" id="seqOledGridSynth" aria-label="OLED synth view 16 by 8"></div>
+                            <div class="seq-oled-footer" id="seqOledSynthFooter">View: SYNTH &nbsp;·&nbsp; Step <span class="seq-step">1</span> &nbsp;·&nbsp; Row 2 Col 3</div>
+                        </div>
+                        <div class="seq-oled compact seq-oled-drum" id="seqOledDrum">
+                            <div class="seq-oled-header">BANK-A [DRUM] MATRIX · rows 8–15</div>
+                            <div class="seq-grid" id="seqOledGridDrum" aria-label="OLED drum view 16 by 8"></div>
+                            <div class="seq-oled-footer" id="seqOledDrumFooter">View: DRUM &nbsp;·&nbsp; Step <span class="seq-step">1</span> &nbsp;·&nbsp; SEQ SETUP toggles page</div>
+                        </div>
+                    </div>
+                    <p class="text-xs text-gray-600 mono mt-3">Same pattern slot — flip <strong class="text-gray-400">Synth / Drum</strong> page on hardware. Demo: click to toggle steps; playhead loops (preview only).</p>
+                </div>
+
+                <!-- OctopusApp — full 16×16 -->
+                <div>
+                    <p class="media-caption mb-3"><i class="fa-solid fa-laptop-code"></i> OctopusApp · full 16&times;16 matrix</p>
+                    <div class="seq-app-panel">
+                        <div class="seq-app-header">BANK A · 16 ROWS &times; 16 STEPS &nbsp;·&nbsp; PLAY <span class="seq-step">1</span>/16</div>
+                        <div class="seq-app-grid" id="seqAppGrid" aria-label="OctopusApp 16 by 16 sequencer grid"></div>
+                        <div class="seq-app-legend">
+                            <span><i style="background:#ec4899"></i> Rows 0–7 synth</span>
+                            <span><i style="background:#f97316"></i> Rows 8–15 drums</span>
+                            <span>P1–P4 &rarr; 64 steps</span>
+                        </div>
+                    </div>
+                    <p class="text-xs text-gray-600 mono mt-3">All 16 tracks visible together — edits sync to the same <code>hwSeqData[bank][0]</code> as the OLED.</p>
+                </div>
+            </div>
+
+            <div class="max-w-6xl mx-auto mb-12">
+                    <h4 class="text-[#ec4899] brand text-sm mb-4 tracking-wider"><i class="fa-solid fa-table-cells"></i> Sequencer grid model</h4>
+                    <p class="text-sm text-gray-400 leading-relaxed mb-4">
+                        Each pattern bank holds <strong class="text-gray-200">one unified slot</strong> in
+                        <code class="text-[#ec4899]">hwSeqData[bank][0]</code> — <strong>16 rows</strong> played together every step.
+                        The <strong class="text-gray-200">10&Prime; touch UI</strong> shows the full <strong>16&times;16</strong> matrix on the unit;
+                        <strong class="text-gray-200">OctopusApp</strong> mirrors the same grid over USB (16 steps per page, P1–P4 for depth).
+                    </p>
+                    <ul class="space-y-3 text-sm text-gray-400 mb-6">
+                        <li class="flex gap-2"><span class="text-[#ec4899] shrink-0">0–7</span><span><strong class="text-gray-300">Synth melody</strong> — 8-note polyphonic bassline / lead (sequencer voices; row <em>r</em> &rarr; <code>seqVoices[r]</code>)</span></li>
+                        <li class="flex gap-2"><span class="text-[#f97316] shrink-0">8–15</span><span><strong class="text-gray-300">Drums</strong> — KICK, SNARE, CLAP, HH-C, HH-O, TOM-H, TOM-L, PERC (8 TR-909 voices)</span></li>
+                    </ul>
+                    <p class="text-sm text-gray-500 mb-4">
+                        Banks <strong class="text-gray-300">A / B / C / D</strong> map to indices 0–3. The legacy chain dimension is
+                        <strong class="text-gray-300">pinned to 0</strong> everywhere — synth and drums are never separate playback slots.
+                        On the touch panel, synth rows 0–7 and drum rows 8–15 are one matrix — same slot, same clock. OctopusApp and on-device edits are heard identically.
+                    </p>
+                    <div class="seq-legend p-4 rounded-lg border border-[#222] bg-[#0a0a0e]">
+                        <div class="text-gray-500 uppercase tracking-wider text-[10px] mb-2">Matrix navigation</div>
+                        <div><kbd>Enc</kbd> rotate = move row &nbsp;·&nbsp; <kbd>Enc</kbd> click = toggle step</div>
+                        <div><kbd>Scale</kbd> = step left &nbsp;·&nbsp; <kbd>OC</kbd> = step right</div>
+                        <div class="mt-3 pt-3 border-t border-[#222] text-gray-500 text-[10px] leading-relaxed">
+                            Smart wrap: step 15 + right &rarr; next bank step 0 · row 7 synth + down &rarr; drum row 0 · drum row 7 + down &rarr; next bank synth
+                        </div>
+                    </div>
+            </div>
+
+            <div class="max-w-4xl mx-auto mb-10 box-glow-purple rounded-xl p-6 md:p-8 bg-[#050508] border border-[#ec4899]/20">
+                <h4 class="text-[#ec4899] brand text-sm mb-4 tracking-wider"><i class="fa-solid fa-layer-group"></i> Full matrix (per bank)</h4>
+                <div class="grid grid-cols-2 gap-4 mono text-xs md:text-sm">
+                    <div class="p-4 bg-[#111] rounded border border-[#333]">
+                        <div class="text-white font-bold mb-1">Rows 0–7 · Synth</div>
+                        <div class="text-gray-500">8 polyphonic melody tracks &times; up to 64 steps (P1–P4 in App)</div>
+                    </div>
+                    <div class="p-4 bg-[#111] rounded border border-[#333]">
+                        <div class="text-white font-bold mb-1">Rows 8–15 · Drums</div>
+                        <div class="text-gray-500">8 drum voices &times; up to 64 steps — same slot, same clock</div>
+                    </div>
+                </div>
+                <p class="text-xs text-gray-600 mt-4 text-center">Logical matrix: 16 rows &times; up to 64 steps &nbsp;·&nbsp; 10&Prime; touch: full 16&times;16 on unit &nbsp;·&nbsp; App: mirror</p>
+            </div>
+            <div class="grid md:grid-cols-3 gap-8">
+                <div class="feature-card">
+                    <div class="text-3xl mb-3 text-[#ec4899]"><i class="fa-solid fa-table-cells"></i></div>
+                    <h3 class="text-lg text-white mb-2">Banks A–D, up to 64 steps</h3>
+                    <p class="text-sm text-gray-400">Four pattern banks, each holding the full 16&times;16 matrix (synth rows 0–7 + drum rows 8–15). Length is 16, 32, 48, or 64 steps — the App pages P1–P4 while the playhead follows the hardware STEP_SYNC clock.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="text-3xl mb-3 text-[#ec4899]"><i class="fa-solid fa-list-ol"></i></div>
+                    <h3 class="text-lg text-white mb-2">Song / Chain Mode</h3>
+                    <p class="text-sm text-gray-400">Build up to 16 song programs with 16 steps each — chain banks A→D in any order with per-step repeats. The firmware auto-advances at pattern wrap for full arrangements without a laptop.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="text-3xl mb-3 text-[#ec4899]"><i class="fa-solid fa-repeat"></i></div>
+                    <h3 class="text-lg text-white mb-2">Melody Arpeggiator</h3>
+                    <p class="text-sm text-gray-400">The seq synth engine includes a built-in ARP (8 patterns including octave variants, 8 rates from 1/1 to 1/32, adjustable gate) — editable from hardware or OctopusApp while the grid keeps running underneath.</p>
+                </div>
+            </div>
+            <div class="grid md:grid-cols-2 gap-6 mt-8">
+                <div class="feature-card">
+                    <h4 class="text-white mb-2"><i class="fa-solid fa-record-vinyl text-[#ec4899]"></i> Motion Automation (P-Locks)</h4>
+                    <p class="text-sm text-gray-400">Arm REC and move any knob: parameter motion is captured per 16th-note step and replayed from flash — standalone, no app required after recording.</p>
+                </div>
+                <div class="feature-card">
+                    <h4 class="text-white mb-2"><i class="fa-solid fa-wand-magic-sparkles text-[#ec4899]"></i> Performance Tools</h4>
+                    <p class="text-sm text-gray-400">Per-bank Copy / Paste, note Randomize, and Clear (with P-lock wipe), plus live transpose and octave — from hardware encoders or the web console.</p>
+                </div>
+            </div>
+            <div class="grid md:grid-cols-2 gap-6 mt-6">
+                <div class="feature-card">
+                    <h4 class="text-white mb-2"><i class="fa-solid fa-folder-open text-[#ec4899]"></i> Factory Patterns</h4>
+                    <p class="text-sm text-gray-400">Eight melodic presets (acid lines, arps, ambient cascades, growlers) and eight drum grooves (house, techno, breaks, minimal) load instantly into any bank.</p>
+                </div>
+                <div class="feature-card">
+                    <h4 class="text-white mb-2"><i class="fa-solid fa-clock text-[#ec4899]"></i> Audio-Locked Clock</h4>
+                    <p class="text-sm text-gray-400">The step engine integrates real elapsed time inside the I2S audio loop — tempo cannot drift under CPU load, and STEP_SYNC drives the OctopusApp playhead with no competing web timer.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ════════════════════════ STUDIO FX ════════════════════════ -->
+    <section id="fx" class="py-24 px-6 border-t border-[#111]">
+        <div class="max-w-7xl mx-auto grid md:grid-cols-2 gap-16 items-center">
+            <div class="order-2 md:order-1 box-glow-purple rounded-xl p-8 bg-[#050508]">
+                <h4 class="text-[#a855f7] mb-6"><i class="fa-solid fa-sliders"></i> Signal Topology</h4>
+                <div class="space-y-4">
+                    <div class="p-3 bg-[#111] rounded border border-[#333] mono text-xs">
+                        HARP &nbsp;&rarr; INSERT FX A &rarr; INSERT FX B &rarr; (sum)
+                    </div>
+                    <div class="p-3 bg-[#111] rounded border border-[#333] mono text-xs">
+                        SEQ &nbsp;&nbsp;&rarr; INSERT FX A &rarr; INSERT FX B &rarr; (sum)
+                    </div>
+                    <div class="p-3 bg-[#111] rounded border border-[#333] mono text-xs">
+                        DRUMS &rarr; INSERT FX A &rarr; INSERT FX B &rarr; (sum)
+                    </div>
+                    <div class="p-3 bg-[#111] rounded border border-[#333] mono text-xs text-[#f97316]">
+                        AUX SENDS &rarr; REVERB + DELAY buses
+                    </div>
+                    <div class="p-3 bg-[#111] rounded border border-[#333] mono text-xs text-[#a855f7]">
+                        MASTER &rarr; TUBE SAT &rarr; DJ FILTER &rarr; 2-BAND EQ &rarr; I2S OUT
+                    </div>
+                </div>
+            </div>
+            <div class="order-1 md:order-2">
+                <h2 class="text-3xl md:text-4xl text-white mb-6"><span class="text-[#a855f7]">05.</span> Studio FX &amp; Master Bus</h2>
+                <p class="mb-6 leading-relaxed">
+                    Each of the three engines runs <strong>two insert FX slots</strong> (A + B) chosen from 16 studio presets — rooms, choruses, shimmers, delays and more. Global aux reverb and delay buses are fed by per-engine sends, and a master section finishes the mix.
+                </p>
+                <ul class="space-y-4">
+                    <li><strong>Per-engine dual inserts:</strong> 16 character presets per slot, applied independently to harp, sequencer and drums for layered live processing.</li>
+                    <li><strong>Aux reverb + delay:</strong> Shared send buses with controllable delay time / feedback and reverb size / damping for cohesive space.</li>
+                    <li><strong>Master finish:</strong> Thunderbolt tube saturation (drive / tone / mix), a sweepable DJ low-/high-pass performance filter, and a &plusmn;12 dB two-band shelving EQ feeding the I2S DAC (<strong>16-bit</strong> on ESP32-S3 · <strong>24-bit</strong> on the custom ESP32-P4 limited build).</li>
+                    <li><strong>16 master FX presets</strong> plus a per-engine headroom-scaled, transparent limiter that keeps dense chords and full grooves clean during live sets.</li>
+                </ul>
+            </div>
+        </div>
+    </section>
+
+    <!-- ════════════════════════ OCTOPUSAPP ════════════════════════ -->
+    <section id="app" class="py-24 px-6 bg-[#0a0a0e] border-t border-[#111]">
+        <div class="max-w-7xl mx-auto text-center mb-16">
+            <h2 class="text-3xl md:text-4xl text-white mb-4"><span class="text-[#22c55e]">06.</span> OctopusApp — Web MIDI Console</h2>
+            <p class="max-w-2xl mx-auto mb-4">No installs, no drivers. Open <strong class="text-[#22c55e]"><a href="https://octopus.isystem.app" target="_blank" rel="noopener" class="hover:underline">octopus.isystem.app</a></strong> in Chrome or Edge, connect USB, authorize Web MIDI + SysEx, and the console mirrors the full device state — then becomes the master editor for all parameters while transport stays on the hardware.</p>
+            <p class="text-sm text-gray-500 max-w-xl mx-auto">MIDI runs locally in your browser (never through this website). Requires HTTPS, one open tab on Windows for full duplex echo.</p>
+        </div>
+
+        <div class="max-w-6xl mx-auto grid md:grid-cols-3 gap-8 mb-12">
+            <div class="box-glow-green rounded-xl p-6 bg-[#050508]">
+                <h4 class="text-[#22c55e] font-bold mb-2"><i class="fa-solid fa-wave-square"></i> Instruments View</h4>
+                <p class="text-sm text-gray-400">Editors for both synth engines and laser show: ADSR, filter, OSC/detune, LFO matrix, wave, scale, patch, dual insert FX, harp ARP (POLY/SOLO), and the D-BEAM panel (route, curve, offset/range — local DSP only).</p>
+            </div>
+            <div class="box-glow-green rounded-xl p-6 bg-[#050508]">
+                <h4 class="text-[#22c55e] font-bold mb-2"><i class="fa-solid fa-drum"></i> Mixer View</h4>
+                <p class="text-sm text-gray-400">8&times;4 drum grid, kit selector, per-voice body waves, D.PITCH, insert sends, master H/S delay+reverb sends, AUX bus, tube/DJ/EQ, stereo VU, and live CPU-load readout from the device.</p>
+            </div>
+            <div class="box-glow-green rounded-xl p-6 bg-[#050508]">
+                <h4 class="text-[#22c55e] font-bold mb-2"><i class="fa-solid fa-table-cells"></i> Sequencer View</h4>
+                <p class="text-sm text-gray-400">16&times;16 pad matrix (8 synth + 8 drum rows), up to 64 steps (P1–P4), seq ARP, song-chain editor, pattern loaders, and a playhead locked to hardware STEP_SYNC.</p>
+            </div>
+        </div>
+
+        <div class="max-w-5xl mx-auto grid md:grid-cols-2 gap-8 mb-12">
+            <div class="feature-card">
+                <h4 class="text-white mb-2"><i class="fa-solid fa-floppy-disk text-[#22c55e]"></i> Save / Load to On-Board Flash</h4>
+                <p class="text-sm text-gray-400">SAVE and LOAD persist the whole session — settings, user presets, patterns, and P-lock motion — to ESP32 NVS using versioned CRC-checked blobs (sparse delta storage). Power-cycle and your set plays back standalone.</p>
+            </div>
+            <div class="feature-card">
+                <h4 class="text-white mb-2"><i class="fa-solid fa-shield-halved text-[#22c55e]"></i> Robust Two-Way Sync</h4>
+                <p class="text-sm text-gray-400">190 SysEx commands at 14-bit resolution. Hardware edits echo into the app and vice-versa; a sync supervisor re-asserts BPM/play/record if a message is dropped. Transport buttons in the app are read-only reflectors — play/stop/record/BPM live on the device.</p>
+            </div>
+        </div>
+
+        <div class="text-center">
+            <a href="https://octopus.isystem.app" target="_blank" rel="noopener noreferrer"
+               class="inline-flex items-center gap-3 bg-[#22c55e] text-black font-bold py-4 px-10 rounded-lg hover:bg-white transition-colors brand tracking-widest text-sm shadow-[0_0_24px_rgba(34,197,94,0.35)]">
+                <i class="fa-solid fa-plug"></i> OPEN octopus.isystem.app
+            </a>
+            <p class="text-xs text-gray-600 mono mt-4">Chrome or Edge · USB connected · Web MIDI + SysEx · Playhead on SEQUENCER tab</p>
+        </div>
+    </section>
+
+    <!-- ════════════════════════ RESOURCES ════════════════════════ -->
+    <section id="resources" class="py-20 px-6 border-t border-[#111] bg-[#050508]">
+        <div class="max-w-5xl mx-auto text-center mb-12">
+            <h2 class="text-2xl md:text-3xl text-white mb-4">Resources &amp; Source</h2>
+            <p class="text-gray-500 text-sm max-w-2xl mx-auto">Firmware, OctopusApp, documentation, and release notes live in the public GitHub repository. This product page is hosted at <strong class="text-gray-300">octopus-info.isystem.app</strong>; the App is a separate subdomain for Web MIDI.</p>
+        </div>
+        <div class="max-w-3xl mx-auto resource-grid">
+            <a href="https://github.com/iSystemDevelopment/Octopus_PRO_XL_v6.0" target="_blank" rel="noopener noreferrer"
+               class="feature-card resource-tile block hover:border-[#06b6d4] text-left no-underline">
+                <div class="text-2xl mb-2 text-white"><i class="fa-brands fa-github"></i></div>
+                <h3 class="text-white font-bold mb-1">GitHub Repository</h3>
+                <p class="text-sm text-gray-400">ESP32-S3 firmware sources, OctopusApp.html, user manual, and deploy scripts.</p>
+            </a>
+            <a href="https://octopus.isystem.app" target="_blank" rel="noopener noreferrer"
+               class="feature-card resource-tile block hover:border-[#22c55e] text-left no-underline">
+                <div class="text-2xl mb-2 text-[#22c55e]"><i class="fa-solid fa-plug"></i></div>
+                <h3 class="text-white font-bold mb-1">OctopusApp</h3>
+                <p class="text-sm text-gray-400">Live Web MIDI console — connect USB and edit patches, grid, mixer, and song chains.</p>
+            </a>
+            <a href="user_manual.md" class="feature-card resource-tile block hover:border-[#a855f7] text-left no-underline">
+                <div class="text-2xl mb-2 text-[#a855f7]"><i class="fa-solid fa-book"></i></div>
+                <h3 class="text-white font-bold mb-1">User Manual</h3>
+                <p class="text-sm text-gray-400">Complete hardware menu reference, App-connected mode, and troubleshooting.</p>
+            </a>
+            <a href="https://github.com/iSystemDevelopment/Octopus_PRO_XL_v6.0/blob/main/README.md" target="_blank" rel="noopener noreferrer"
+               class="feature-card resource-tile block hover:border-[#06b6d4] text-left no-underline">
+                <div class="text-2xl mb-2 text-[#06b6d4]"><i class="fa-solid fa-code"></i></div>
+                <h3 class="text-white font-bold mb-1">README</h3>
+                <p class="text-sm text-gray-400">Build instructions, repository layout, and quick-start for hardware + App.</p>
+            </a>
+            <a href="https://www.facebook.com/diodac.co.uk/" target="_blank" rel="noopener noreferrer"
+               class="feature-card resource-tile block hover:border-[#1877f2] text-left no-underline">
+                <div class="text-2xl mb-2 text-[#1877f2]"><i class="fa-brands fa-facebook"></i></div>
+                <h3 class="text-white font-bold mb-1">DIODAC Facebook</h3>
+                <p class="text-sm text-gray-400">News, demos, and support from DIODAC ELECTRONICS.</p>
+            </a>
+            <a href="https://isystem.app" target="_blank" rel="noopener noreferrer"
+               class="feature-card resource-tile block hover:border-[#ec4899] text-left no-underline">
+                <div class="text-2xl mb-2 text-[#ec4899]"><i class="fa-solid fa-globe"></i></div>
+                <h3 class="text-white font-bold mb-1">iSystem</h3>
+                <p class="text-sm text-gray-400">DIODAC ELECTRONICS / iSystem — product home and support.</p>
+            </a>
+        </div>
+    </section>
+
+    <!-- ════════════════════════ CONNECTIVITY ════════════════════════ -->
+    <section class="py-20 px-6 border-t border-[#111]">
+        <div class="max-w-6xl mx-auto text-center">
+            <h2 class="text-2xl md:text-3xl text-white mb-4">Connectivity</h2>
+            <p class="text-gray-500 text-sm max-w-2xl mx-auto mb-10">v6.0 is <strong class="text-gray-300">USB-only</strong> — DIN UART MIDI was removed to simplify the stack and free GPIO. The sequencer, drums, and D-BEAM drive internal engines directly; optional USB play-in accepts standard channel voice MIDI.</p>
+            <div class="grid md:grid-cols-2 gap-8 text-left max-w-4xl mx-auto">
+                <div class="feature-card">
+                    <div class="text-2xl mb-3 text-[#06b6d4]"><i class="fa-brands fa-usb"></i></div>
+                    <h3 class="text-lg text-white mb-2">Native USB MIDI</h3>
+                    <p class="text-sm text-gray-400">Class-compliant USB MIDI carries OctopusApp SysEx control (0x7D App→device, 0x7C device→App) plus optional instrument play-in on configurable harp/seq/drum channels. No drivers on macOS, Windows, or Linux.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="text-2xl mb-3 text-[#a855f7]"><i class="fa-solid fa-arrows-left-right"></i></div>
+                    <h3 class="text-lg text-white mb-2">Standalone Operation</h3>
+                    <p class="text-sm text-gray-400">Every feature — laser harp, sequencer, drums, FX, song mode, P-locks, and NVS save — runs without a computer. Connect OctopusApp when you want deep editing; unplug and the hardware keeps performing.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ════════════════════════ SPECS ════════════════════════ -->
+    <section id="specs" class="py-20 px-6 bg-[#0a0a0e] border-t border-[#111]">
+        <div class="max-w-7xl mx-auto">
+            <h2 class="text-3xl md:text-4xl text-white mb-3 text-center">Technical Specifications</h2>
+            <p class="text-center text-sm text-[#06b6d4] mono mb-5 tracking-wide">PRO XL &middot; ESP-P4 Edition &middot; 32&nbsp;MB PSRAM &middot; 10&Prime; multi-touch</p>
+
+            <div class="edition-callout">
+                <h3>Flagship · limited custom build</h3>
+                <p>ESP-P4 is the most advanced Octopus PRO XL hardware — <strong class="text-gray-200">ultimate live performance</strong>, 10&Prime; touch, full stage I/O. Made to order; GitHub firmware targets the <strong>ESP32-S3</strong> dev platform (44.1 kHz · 16-bit I2S). The limited custom P4 build adds 24-bit output at the same 44.1 kHz sample rate.</p>
+                <span class="edition-badge"><i class="fa-solid fa-screwdriver-wrench"></i> Limited edition &middot; custom build</span>
+            </div>
+
+            <div class="hardware-spec-block">
+                <figure class="img-frame img-frame-hardware">
+                    <img src="hardware.jpg" alt="Octopus PRO XL ESP-P4 edition — 10 inch touchscreen, rear I/O panel, laser harp sensor" loading="lazy">
+                </figure>
+                <div class="hardware-spec-panel">
+                    <h4><i class="fa-solid fa-server"></i> Hardware — ESP-P4 Ultimate</h4>
+                    <div class="hardware-spec-grid">
+                        <div class="spec-row"><span>Edition</span><span><strong class="text-[#06b6d4]">ESP-P4</strong> · 32&nbsp;MB · limited custom</span></div>
+                        <div class="spec-row"><span>Chassis</span><span>Aluminum extrusion · rear stage I/O</span></div>
+                        <div class="spec-row"><span>Display</span><span>10&Prime; capacitive multi-touch · full matrix UI</span></div>
+                        <div class="spec-row"><span>Controls</span><span>Touch + encoder · <span class="text-[#22c55e]">SCALE</span> · <span class="text-[#f97316]">OC</span></span></div>
+                        <div class="spec-row"><span>Processor</span><span>ESP32-P4 · dual-core DSP + laser task</span></div>
+                        <div class="spec-row"><span>Audio</span><span>24 voices · <strong>44.1 kHz</strong> · <strong>24-bit</strong> I2S</span></div>
+                        <div class="spec-row"><span>Laser</span><span>8-beam galvo RGB · top sensor · D-BEAM prox.</span></div>
+                        <div class="spec-row"><span>Software</span><span>Octopus v6.0.00 · 190 SysEx · NVS</span></div>
+                        <div class="spec-row spec-row-full"><span>Rear I/O</span><span>TRS L/R out &amp; in · USB-C · MIDI DIN · ILDA · MicroSD</span></div>
+                    </div>
+                </div>
+                <p class="hardware-spec-note">HTML spec table — nothing clipped from the diagram. Engine detail below.</p>
+            </div>
+
+            <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-8 mb-8">
+                <div>
+                    <h4 class="text-white brand mb-3 border-b border-[#333] pb-2 text-sm"><i class="fa-solid fa-microchip text-gray-500"></i> Platform &amp; Audio</h4>
+                    <table class="spec-table-compact">
+                        <tr><td>Sample rate</td><td><strong>44.1 kHz</strong> (all builds)</td></tr>
+                        <tr><td>ESP32-S3 (dev)</td><td>16-bit I2S · open firmware</td></tr>
+                        <tr><td>ESP32-P4 (custom)</td><td>24-bit I2S · limited build</td></tr>
+                        <tr><td>Polyphony</td><td>24 voices (8+8+8)</td></tr>
+                        <tr><td>Wavetables</td><td>25 algorithms</td></tr>
+                        <tr><td>Presets</td><td>128 factory · 16 scales</td></tr>
+                        <tr><td>Sequencer</td><td>16&times;16 touch · 64 steps</td></tr>
+                        <tr><td>Arpeggiators</td><td>Seq 8 pat · Harp 4 pat</td></tr>
+                        <tr><td>Song mode</td><td>16&times;16 chain steps</td></tr>
+                        <tr><td>Drum kits</td><td>909 / 808 / Trap / House</td></tr>
+                        <tr><td>MIDI</td><td>USB-C + DIN · SysEx</td></tr>
+                        <tr><td>Persistence</td><td>NVS · CRC32 blobs</td></tr>
+                    </table>
+                </div>
+
+                <div>
+                    <h4 class="text-white brand mb-3 border-b border-[#333] pb-2 text-sm"><i class="fa-solid fa-bolt text-gray-500"></i> Laser &amp; ILDA</h4>
+                    <table class="spec-table-compact">
+                        <tr><td>Projection</td><td>ILDA vector · galvo fan</td></tr>
+                        <tr><td>Strings</td><td>8 RGB · hue ADSR</td></tr>
+                        <tr><td>Galvo DAC</td><td>MCP4922 12-bit</td></tr>
+                        <tr><td>Carrier</td><td>MCPWM ~9.656 kHz</td></tr>
+                        <tr><td>Threshold</td><td>Per-string DAC + edge comp</td></tr>
+                        <tr><td>Trigger</td><td>LT1016 &rarr; 74HC74</td></tr>
+                        <tr><td>Guard</td><td>Fog reject · stuck timeout</td></tr>
+                        <tr><td>D-BEAM</td><td>ADC + Kalman · local DSP</td></tr>
+                        <tr><td>Modes</td><td>POLY8 / STRINGS / SOLO + ARP</td></tr>
+                    </table>
+                </div>
+
+                <div>
+                    <h4 class="text-white brand mb-3 border-b border-[#333] pb-2 text-sm"><i class="fa-solid fa-sliders text-gray-500"></i> Synth &amp; FX</h4>
+                    <table class="spec-table-compact">
+                        <tr><td>ADSR</td><td>0–2 / 0–3 / 0–4 s</td></tr>
+                        <tr><td>Filter</td><td>SVF ~14 kHz</td></tr>
+                        <tr><td>LFO</td><td>0.1–30 Hz matrix</td></tr>
+                        <tr><td>Detune</td><td>&plusmn;82 cents</td></tr>
+                        <tr><td>M. pitch</td><td>&plusmn;2 octaves</td></tr>
+                        <tr><td>M. EQ</td><td>&plusmn;12 dB shelf</td></tr>
+                        <tr><td>Aux FX</td><td>Delay + reverb bus</td></tr>
+                        <tr><td>Fog reject</td><td>HARP SETUP menu</td></tr>
+                    </table>
+                </div>
+            </div>
+            <p class="text-center text-xs text-gray-600 mono mt-6">Octopus v6.0.00 &middot; ESP-P4 Edition &middot; build 2026-06-20 &middot; 32&nbsp;MB PSRAM</p>
+        </div>
+    </section>
+
+    <!-- ════════════════════════ CONTACT ════════════════════════ -->
+    <section id="contact" class="py-24 px-6 border-t border-[#111]">
+        <div class="max-w-6xl mx-auto">
+            <div class="text-center mb-12">
+                <h2 class="text-3xl md:text-4xl text-white mb-4"><span class="text-[#06b6d4]">Contact</span> DIODAC ELECTRONICS</h2>
+                <p class="max-w-2xl mx-auto text-gray-400 text-sm">Enquiries about Octopus PRO XL — sales, support, demos, or custom builds. We reply from
+                    <a href="mailto:diodac.electronics@gmail.com" class="text-[#06b6d4] hover:underline">diodac.electronics@gmail.com</a>.</p>
+            </div>
+
+            <div class="grid lg:grid-cols-2 gap-8 contact-layout">
+                <figure class="contact-photo-panel">
+                    <img src="lharps.jpg" alt="Octopus PRO XL laser harp — product photo" loading="lazy" width="199" height="300">
+                    <figcaption class="media-caption text-center mt-3 mb-0">Octopus PRO XL · DIODAC ELECTRONICS</figcaption>
+                </figure>
+
+                <div class="box-glow-cyan rounded-xl contact-form-panel p-5 md:p-6 bg-[#050508]">
+                    <div id="contactSuccess" class="contact-success mb-6" role="status">
+                        <i class="fa-solid fa-circle-check"></i> Message sent — thank you. We will get back to you at the email you provided.
+                    </div>
+
+                    <form id="contactForm" class="contact-form" action="https://formsubmit.co/diodac.electronics@gmail.com" method="POST">
+                        <input type="hidden" name="_subject" value="Octopus PRO XL — website enquiry">
+                        <input type="hidden" name="_template" value="table">
+                        <input type="hidden" name="_captcha" value="false">
+                        <input type="hidden" name="_next" value="https://octopus-info.isystem.app/#contact?sent=1">
+                        <input type="text" name="_honey" tabindex="-1" autocomplete="off" class="hidden" aria-hidden="true">
+
+                        <div class="field-row">
+                            <div class="field">
+                                <label for="contactName">Name</label>
+                                <input type="text" id="contactName" name="name" required autocomplete="name" placeholder="Your name">
+                            </div>
+                            <div class="field">
+                                <label for="contactEmail">Email</label>
+                                <input type="email" id="contactEmail" name="email" required autocomplete="email" placeholder="you@example.com">
+                            </div>
+                        </div>
+                        <div class="field">
+                            <label for="contactTopic">Topic</label>
+                            <select id="contactTopic" name="topic">
+                                <option value="General enquiry">General enquiry</option>
+                                <option value="Sales / pricing">Sales / pricing</option>
+                                <option value="Technical support">Technical support</option>
+                                <option value="Demo / performance">Demo / performance</option>
+                                <option value="Other">Other</option>
+                            </select>
+                        </div>
+                        <div class="field">
+                            <label for="contactMessage">Message</label>
+                            <textarea id="contactMessage" name="message" required placeholder="How can we help?"></textarea>
+                        </div>
+                        <button type="submit" id="contactSubmit">
+                            <i class="fa-solid fa-paper-plane"></i> Send message
+                        </button>
+                    </form>
+                    <p class="text-xs text-gray-600 mono mt-3 mb-0">Or email directly:
+                        <a href="mailto:diodac.electronics@gmail.com" class="text-[#06b6d4] hover:underline">diodac.electronics@gmail.com</a>
+                    </p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <footer class="bg-[#000] border-t border-[#222] py-12 text-center">
+        <div class="brand text-2xl font-bold mb-4 text-white opacity-50 flex items-center justify-center gap-3">
+            <img src="logo.jpg" alt="" class="w-10 h-10 img-circle opacity-80" width="40" height="40">
+            <span>Octopus <span class="text-[#06b6d4]">PRO XL</span></span>
+        </div>
+        <p class="text-xs text-gray-600 mono mb-2">&copy; 2026 DIODAC ELECTRONICS / iSystem. All Rights Reserved.</p>
+        <p class="text-xs text-gray-500 mono mb-4">
+            <a href="https://octopus-info.isystem.app" class="text-[#06b6d4] hover:underline">Product info</a>
+            &nbsp;&middot;&nbsp;
+            <a href="https://octopus.isystem.app" class="text-[#22c55e] hover:underline" target="_blank" rel="noopener">OctopusApp</a>
+            &nbsp;&middot;&nbsp;
+            <a href="https://github.com/iSystemDevelopment/Octopus_PRO_XL_v6.0" class="text-gray-300 hover:underline" target="_blank" rel="noopener">GitHub</a>
+            &nbsp;&middot;&nbsp;
+            <a href="https://www.facebook.com/diodac.co.uk/" class="text-[#1877f2] hover:underline" target="_blank" rel="noopener">Facebook</a>
+            &nbsp;&middot;&nbsp;
+            <a href="user_manual.md" class="text-[#06b6d4] hover:underline">User Manual</a>
+            &nbsp;&middot;&nbsp;
+            <a href="CHANGELOG.md" class="text-[#f97316] hover:underline">Changelog</a>
+            &nbsp;&middot;&nbsp;
+            <a href="#contact" class="text-[#06b6d4] hover:underline">Contact</a>
+        </p>
+        <p class="text-xs text-gray-700 mono max-w-xl mx-auto px-4">Proprietary and confidential. Unauthorized copying, distribution, modification, or use of this product, firmware, or OctopusApp software is strictly prohibited without prior written permission.</p>
+    </footer>
+
+    <script>
+    /* Sequencer grids — demo UI: clickable toggles + looping playhead (no backend) */
+    (function () {
+        const STEPS = 16;
+        const TICK_MS = 220;
+        const curR = 2, curC = 3;
+
+        const synthOn = [
+            [1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+            [0,1,0,0,0,1,0,0,0,0,0,0,0,0,0,0],
+            [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+            [0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0],
+            [0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+            [0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0],
+            [0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0],
+            [0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,1]
+        ];
+        const drumOn = [
+            [1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0],
+            [0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0],
+            [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+            [1,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0],
+            [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+            [0,0,1,0,0,0,1,0,0,0,1,0,0,0,1,0],
+            [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+            [0,0,0,1,0,0,0,0,0,0,0,1,0,0,0,0]
+        ];
+
+        const allCells = [];
+
+        function bindToggle(cell, onClass) {
+            cell.setAttribute('role', 'button');
+            cell.setAttribute('tabindex', '0');
+            cell.setAttribute('aria-pressed', cell.classList.contains(onClass) ? 'true' : 'false');
+            const toggle = () => {
+                const on = cell.classList.toggle(onClass);
+                cell.setAttribute('aria-pressed', on ? 'true' : 'false');
+            };
+            cell.addEventListener('click', toggle);
+            cell.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    toggle();
+                }
+            });
+        }
+
+        function fillOled(gridEl, pattern, isDrum) {
+            if (!gridEl) return;
+            for (let r = 0; r < 8; r++) {
+                for (let c = 0; c < STEPS; c++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'seq-cell';
+                    cell.dataset.col = String(c);
+                    if (pattern[r][c]) cell.classList.add('on');
+                    if (!isDrum && r === curR && c === curC) cell.classList.add('cur');
+                    bindToggle(cell, 'on');
+                    gridEl.appendChild(cell);
+                    allCells.push(cell);
+                }
+            }
+        }
+
+        fillOled(document.getElementById('seqOledGridSynth'), synthOn, false);
+        fillOled(document.getElementById('seqOledGridDrum'), drumOn, true);
+
+        const appGrid = document.getElementById('seqAppGrid');
+        if (appGrid) {
+            for (let r = 0; r < 16; r++) {
+                const row = r < 8 ? synthOn[r] : drumOn[r - 8];
+                const isSynth = r < 8;
+                const onClass = isSynth ? 'on-synth' : 'on-drum';
+                for (let c = 0; c < STEPS; c++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'seq-cell';
+                    cell.dataset.col = String(c);
+                    if (r === 8) cell.classList.add('row-split');
+                    if (row[c]) cell.classList.add(onClass);
+                    bindToggle(cell, onClass);
+                    appGrid.appendChild(cell);
+                    allCells.push(cell);
+                }
+            }
+        }
+
+        let playStep = 0;
+        const stepLabels = document.querySelectorAll('.seq-step');
+
+        function setPlayhead(step) {
+            playStep = step;
+            for (const cell of allCells) {
+                cell.classList.toggle('playhead', Number(cell.dataset.col) === step);
+            }
+            const human = step + 1;
+            for (const el of stepLabels) el.textContent = String(human);
+        }
+
+        setPlayhead(0);
+
+        const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        if (!reducedMotion) {
+            setInterval(() => setPlayhead((playStep + 1) % STEPS), TICK_MS);
+        }
+    })();
+
+    /* Contact form — show thank-you after FormSubmit redirect */
+    (function () {
+        const params = new URLSearchParams(window.location.search);
+        if (params.get('sent') === '1') {
+            const box = document.getElementById('contactSuccess');
+            const form = document.getElementById('contactForm');
+            if (box) box.classList.add('visible');
+            if (form) form.style.display = 'none';
+            history.replaceState(null, '', window.location.pathname + '#contact');
+        }
+        const form = document.getElementById('contactForm');
+        const btn = document.getElementById('contactSubmit');
+        if (form && btn) {
+            form.addEventListener('submit', () => {
+                btn.disabled = true;
+                btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Sending…';
+            });
+        }
+    })();
+    </script>
+</body>
+</html>
