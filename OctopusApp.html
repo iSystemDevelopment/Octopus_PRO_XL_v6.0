@@ -4013,7 +4013,11 @@
                             this.log('NVS save complete — device rebooting…');
                             this._prepareForDeviceReboot();
                         } else if (v14 === 0) {
-                            this._clearPersist('SAVE rejected — device busy (save or reset in progress). Try again.');
+                            /* v14=0 is sent for two conditions:
+                             *   1. Device busy (save/reset already in flight) — requestScopedSave rejected
+                             *   2. NVS write failed — settings_save_scoped returned false
+                             * The device OLED shows "FAIL!" toast in case 2.  Both require retry. */
+                            this._clearPersist('SAVE failed — device was busy or NVS write error. Check the device display and try again.');
                         }
                     },
                     [CMD.SESSION_LOAD]: v14 => {

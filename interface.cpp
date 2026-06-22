@@ -1343,10 +1343,14 @@ static void reset_persist_task(void*) {
     g_restartAfterSave.store(false, std::memory_order_release);
     g_resetAckPending.store(false, std::memory_order_release);
     rollbackResetRam(s_resetPersistScope);
-    if (isAppConnected()) {
-      sendFullStateSync();
-      txSysex(CMD_SCOPED_RESET, 0u); /* NACK — App can retry */
-    }
+    /* sendFullStateSync is only useful when the App is actively connected. */
+    if (isAppConnected()) sendFullStateSync();
+    /* NACK must be sent unconditionally — isAppConnected() may return false
+     * if the NVS write took >4.5 s (MidiUsbRx is blocked during the flash
+     * write so heartbeats can't be processed, causing the 4.5 s window to
+     * expire).  The App MUST receive a NACK to unlock its modal regardless
+     * of whether the connection was reported as live at this exact moment. */
+    txSysex(CMD_SCOPED_RESET, 0u);
     g_resetInProgress.store(false, std::memory_order_release);
     oledStatusHold("RESET FAILED", "RESTORED RAM", 2000u);
     vTaskDelay(pdMS_TO_TICKS(2100));
@@ -1402,10 +1406,7 @@ void handleScopedReset(ResetScope scope) {
   }
 
   s_resetPersistScope = scope;
-  /* Stack 16384: failure path calls rollbackResetRam (NVS load) +
-   * sendFullStateSync (50+ sysex) — 8192 overflows and crashes silently,
-   * leaving g_resetInProgress stuck and the OLED frozen for 60 s.       */
-  if (xTaskCreatePinnedToCore(reset_persist_task, "RstSave", 16384, nullptr, 5,
+  if (xTaskCreatePinnedToCore(reset_persist_task, "RstSave", 8192, nullptr, 5,
                               nullptr, 1) != pdPASS) {
     g_resetInProgress.store(false, std::memory_order_release);
     /* 2000 ms hold auto-expires via display_refresh_task; no vTaskDelay needed

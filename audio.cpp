@@ -639,16 +639,22 @@ void settings_save_task(void* pvParameters) {
 
     if (g_saveDoneSem) xSemaphoreGive(g_saveDoneSem);
 
-    /* Echo confirmation to App only after a successful commit (BEFORE any
-     * restart so the App still receives the ACK).  Reset uses SCOPED_RESET
-     * ACK so the App does not confuse it with a user-initiated SAVE. */
-    if (ok && isAppConnected()) {
-      if (g_resetAckPending.exchange(false, std::memory_order_acq_rel))
-        txSysex(CMD_SCOPED_RESET, 16383u);
-      else
-        txSysex(CMD_SESSION_SAVE, 16383u /* ACK */);
+    /* Echo ACK or NACK to App (BEFORE any restart so the ACK is received).
+     * Reset path uses CMD_SCOPED_RESET; save path uses CMD_SESSION_SAVE.
+     *
+     * NACK is sent unconditionally on failure — isAppConnected() can be
+     * false if the NVS write took >4.5 s (MidiUsbRx is blocked during the
+     * flash write, heartbeats pile up, the 4.5 s window expires).  The App
+     * modal must unblock regardless of the reported connection state. */
+    const bool wasReset = g_resetAckPending.exchange(false, std::memory_order_acq_rel);
+    if (ok) {
+      if (isAppConnected())
+        txSysex(wasReset ? CMD_SCOPED_RESET : CMD_SESSION_SAVE, 16383u);
     } else {
-      g_resetAckPending.store(false, std::memory_order_release);
+      /* Write failed — always NACK so the App closes the persist wait modal.
+       * reset_persist_task also sends its own NACK; double-NACK is harmless
+       * (_clearPersist is idempotent). */
+      txSysex(wasReset ? CMD_SCOPED_RESET : CMD_SESSION_SAVE, 0u);
     }
 
     /* [SAVE-FIX14] Restart after a good commit — used by the scoped RESET menu,
