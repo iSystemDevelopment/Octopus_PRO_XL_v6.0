@@ -243,13 +243,22 @@ static inline void IRAM_ATTR update_mcpwm_channel(
   uint32_t val, uint32_t& cval, int8_t& cforce) {
   if (!gen || !cmpr) return;
   const int8_t ft = (val == 0u) ? 0 : -1;
-  if (ft != cforce) {
-    mcpwm_generator_set_force_level(gen, ft, true);
-    cforce = ft;
-  }
+  /* Write compare BEFORE releasing force so the new duty is already in the
+   * hardware register when the generator output is un-forced.  The comparators
+   * are configured with update_cmp_on_tez = false (immediate, not TEZ-buffered)
+   * so the write takes effect within a few CPU cycles — well before the
+   * force-level call completes.  This prevents the first PWM cycle after a
+   * beam turn-on from briefly firing at the *previous* beam's duty cycle,
+   * which was invisible with the overflow-dimmed values but appears as a
+   * faint flash at full brightness.
+   * Force=0 (OFF) keeps the output LOW during the compare write — no glitch. */
   if (ft == -1 && val != cval) {
     mcpwm_comparator_set_compare_value(cmpr, val);
     cval = val;
+  }
+  if (ft != cforce) {
+    mcpwm_generator_set_force_level(gen, ft, true);
+    cforce = ft;
   }
 }
 

@@ -146,8 +146,16 @@ void setupMCPWM() {
   mcpwm_operator_connect_timer(laser_oper_g, laser_timer);
   mcpwm_operator_connect_timer(laser_oper_b, laser_timer);
 
-  /* Comparators — update on timer-zero for glitch-free duty changes */
-  mcpwm_comparator_config_t cmpr_cfg = { .flags = { .update_cmp_on_tez = true } };
+  /* Comparators — IMMEDIATE update (update_cmp_on_tez = false, all flags 0).
+   * We always write the new compare value while force=0 holds the output LOW,
+   * so there is no mid-cycle glitch risk.  Immediate mode means the register
+   * is live within a few CPU cycles of the write — the new duty is already in
+   * hardware when set_force_level(-1) releases the output a few cycles later.
+   * TEZ-buffered mode (update_cmp_on_tez = true, the old setting) delayed the
+   * update by up to one full period (103 µs), causing the first PWM cycle of
+   * each dwell to fire at the previous beam's duty cycle — a visible flash now
+   * that the laserRGB overflow bug no longer masks brightness. */
+  mcpwm_comparator_config_t cmpr_cfg = {}; /* all flags 0 → immediate update */
   if (mcpwm_new_comparator(laser_oper_r, &cmpr_cfg, &laser_cmpr_r) != ESP_OK) return;
   if (mcpwm_new_comparator(laser_oper_g, &cmpr_cfg, &laser_cmpr_g) != ESP_OK) return;
   if (mcpwm_new_comparator(laser_oper_b, &cmpr_cfg, &laser_cmpr_b) != ESP_OK) return;
@@ -584,7 +592,6 @@ void IRAM_ATTR laser_sweep_task(void* pvParameters) {
         if (nowUs - stateStartUs >= settleTimeUs) {
           fastWrite(PIN_PEAK_CLR, LOW); /* reset 74HC74 (clear latched peak)    */
           resetLaserPhase();            /* Phase 0 → first pulse is always full [L2] */
-          esp_rom_delay_us(1u);         /* guarantee soft-sync latches (1 µs >> 100 ns timer edge) */
           laserForString(ci);           /* Apply colour + hue ADSR envelope          */
           /* [SYNC] Tell the ADC DMA task which string is now illuminated so it
          * attributes the RMS amplitude to g_kalman_ac[ci]/g_last_good_data[ci].
