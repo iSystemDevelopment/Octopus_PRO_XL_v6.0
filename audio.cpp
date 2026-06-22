@@ -632,8 +632,16 @@ void settings_save_task(void* pvParameters) {
     if (g_saveDoneSem) xSemaphoreGive(g_saveDoneSem);
 
     /* Echo confirmation to App only after a successful commit (BEFORE any
-     * restart so the App still receives the ACK). */
-    if (ok && isAppConnected()) txSysex(CMD_SESSION_SAVE, 16383u /* ACK */);
+     * restart so the App still receives the ACK).  Reset uses SCOPED_RESET
+     * ACK so the App does not confuse it with a user-initiated SAVE. */
+    if (ok && isAppConnected()) {
+      if (g_resetAckPending.exchange(false, std::memory_order_acq_rel))
+        txSysex(CMD_SCOPED_RESET, 16383u);
+      else
+        txSysex(CMD_SESSION_SAVE, 16383u /* ACK */);
+    } else {
+      g_resetAckPending.store(false, std::memory_order_release);
+    }
 
     /* [SAVE-FIX14] Restart after a good commit — used by the scoped RESET menu,
      * the async reset task, AND now every runtime save (requestScopedSave sets

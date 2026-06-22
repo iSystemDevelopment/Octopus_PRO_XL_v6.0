@@ -1295,6 +1295,7 @@ static void reset_persist_task(void*) {
   if (g_saveDoneSem) xSemaphoreTake(g_saveDoneSem, 0);
 
   g_persistScope.store((uint8_t)s_resetPersistScope, std::memory_order_release);
+  g_resetAckPending.store(true, std::memory_order_release);
   g_restartAfterSave.store(true, std::memory_order_release);
   g_saveRequest.store(true, std::memory_order_release);
 
@@ -1304,6 +1305,9 @@ static void reset_persist_task(void*) {
 
   if (!got || !g_saveLastOk.load(std::memory_order_acquire)) {
     g_restartAfterSave.store(false, std::memory_order_release);
+    g_resetAckPending.store(false, std::memory_order_release);
+    g_resetInProgress.store(false, std::memory_order_release);
+    if (isAppConnected()) txSysex(CMD_SCOPED_RESET, 0u); /* NACK — App can retry */
     oledStatusLines("RESET FAILED", nullptr);
     vTaskDelay(pdMS_TO_TICKS(2000)); /* [FIX-DELAY] cooperative yield */
   }
@@ -1314,6 +1318,18 @@ static void reset_persist_task(void*) {
 /* handleScopedReset — apply RAM wipe, persist, restart.
  * Boot OC+SCALE combo: blocking 16 KB save task (NvsWorker not running yet). */
 void handleScopedReset(ResetScope scope) {
+  if (g_resetInProgress.exchange(true, std::memory_order_acq_rel)) {
+    oledStatusLines("RESET BUSY", nullptr);
+    if (isAppConnected()) txSysex(CMD_SCOPED_RESET, 0u);
+    return;
+  }
+  if (saveInProgress()) {
+    g_resetInProgress.store(false, std::memory_order_release);
+    oledStatusLines("SAVE BUSY", nullptr);
+    if (isAppConnected()) txSysex(CMD_SCOPED_RESET, 0u);
+    return;
+  }
+
   const char* line1 = "RESET";
   switch (scope) {
     case ResetScope::FULL:           line1 = "FULL RESET";    break;
@@ -1333,11 +1349,14 @@ void handleScopedReset(ResetScope scope) {
 
   if (!g_systemReady.load(std::memory_order_acquire)) {
     if (!settings_persist_blocking(scope)) {
+      g_resetInProgress.store(false, std::memory_order_release);
       oledStatusLines("RESET FAILED", nullptr);
+      if (isAppConnected()) txSysex(CMD_SCOPED_RESET, 0u);
       vTaskDelay(pdMS_TO_TICKS(2000)); /* [FIX-DELAY] cooperative yield */
       return;
     }
     vTaskDelay(pdMS_TO_TICKS(300)); /* [FIX-DELAY] cooperative yield */
+    if (isAppConnected()) txSysex(CMD_SCOPED_RESET, 16383u);
     esp_restart();
     return;
   }
@@ -1345,7 +1364,9 @@ void handleScopedReset(ResetScope scope) {
   s_resetPersistScope = scope;
   if (xTaskCreatePinnedToCore(reset_persist_task, "RstSave", 8192, nullptr, 5,
                               nullptr, 1) != pdPASS) {
+    g_resetInProgress.store(false, std::memory_order_release);
     oledStatusLines("RESET FAILED", nullptr);
+    if (isAppConnected()) txSysex(CMD_SCOPED_RESET, 0u);
     delay(2000);
   }
 }
@@ -1362,6 +1383,12 @@ void handleScopedSave(ResetScope scope) {
  * "only reachable while App is disconnected" was aspirational, not enforced;
  * if the App is connected it must receive the new state or stays stale.         */
 void handleScopedLoad(ResetScope scope) {
+  if (saveInProgress() || g_resetInProgress.load(std::memory_order_acquire)) {
+    oledStatusLines("BUSY", nullptr);
+    if (isAppConnected()) txSysex(CMD_SESSION_LOAD, 0u);
+    return;
+  }
+
   const char* line1 = "LOAD";
   switch (scope) {
     case ResetScope::FULL:           line1 = "FULL LOAD";     break;

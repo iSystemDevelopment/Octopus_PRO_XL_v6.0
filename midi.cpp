@@ -248,7 +248,9 @@ void txSysex(uint8_t cmd, uint16_t v14bit) {
   }
   /* [ECHO-FIX] Stamp dedup/rate-limit state ONLY after a successful send. */
   if (!txSysexEmit(cmd, v14bit)) {
-    txRetryPush(cmd, v14bit);
+    /* Clock-position echoes go stale quickly — never queue for retry. */
+    if (cmd != CMD_STEP_SYNC && cmd != CMD_SONG_POS)
+      txRetryPush(cmd, v14bit);
     return;
   }
   s_last_tx_ms[cmd]  = now;
@@ -916,6 +918,10 @@ void handleSysexCommand(uint8_t cmd, uint16_t v14) {
     case CMD_SESSION_LOAD:
       if (v14 == 16383u) break; /* ACK echo — ignore */
       if (v14 == 0u)     break; /* NACK echo — ignore */
+      if (saveInProgress() || g_resetInProgress.load(std::memory_order_acquire)) {
+        txSysex(CMD_SESSION_LOAD, 0u); /* NACK — persist op in flight */
+        break;
+      }
       /* [FIX-C1] Dispatch LOAD to a 16 KB task — MidiUsbRx has only 8 KB which
        * is too shallow for the full NVS blob read + patterns array.
        * [FIX-C3] ACK/NACK sent from the task after verifying success.

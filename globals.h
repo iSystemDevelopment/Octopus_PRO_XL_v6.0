@@ -1159,6 +1159,12 @@ inline SemaphoreHandle_t g_saveDoneSem{ nullptr };
 /** Set by handleScopedReset; NvsWorker calls esp_restart() after a successful save. */
 inline std::atomic<bool> g_restartAfterSave{ false };
 
+/** TRUE while handleScopedReset → reset_persist_task is running (blocks save/load). */
+inline std::atomic<bool> g_resetInProgress{ false };
+
+/** reset_persist_task sets this; NvsWorker ACKs CMD_SCOPED_RESET (not SESSION_SAVE). */
+inline std::atomic<bool> g_resetAckPending{ false };
+
 /** Result of the last NvsWorker save (for reset-persist task error UI). */
 inline std::atomic<bool> g_saveLastOk{ true };
 
@@ -1167,7 +1173,8 @@ inline std::atomic<bool> g_saveLastOk{ true };
  *  [FIX-H1] Callers must check the return value and send a NACK to the App when
  *  false — the previous silent drop caused the App to think the save was queued. */
 static inline bool requestScopedSave(uint8_t scope) {
-  if (g_saveRequest.load(std::memory_order_acquire) ||
+  if (g_resetInProgress.load(std::memory_order_acquire) ||
+      g_saveRequest.load(std::memory_order_acquire) ||
       g_saveArmed.load(std::memory_order_acquire))
     return false;                             /* [FIX-H1] was: silent return */
   g_persistScope.store(scope & 3u, std::memory_order_release);
@@ -1191,7 +1198,8 @@ static inline bool requestScopedSave(uint8_t scope) {
  *  [FIX-L2] Replaces the blocking settings_persist_blocking() call that froze
  *  the MIDI RX task for up to 20 s. */
 static inline bool requestBanksOnlySave() {
-  if (g_saveRequest.load(std::memory_order_acquire) ||
+  if (g_resetInProgress.load(std::memory_order_acquire) ||
+      g_saveRequest.load(std::memory_order_acquire) ||
       g_saveArmed.load(std::memory_order_acquire))
     return false;
   g_persistScope.store((uint8_t)1u /*BANKS_PATTERNS*/, std::memory_order_release);
@@ -1219,6 +1227,8 @@ static inline void saveForceUnlock() {
   g_saveArmed.store(false, std::memory_order_release);
   g_saveRequest.store(false, std::memory_order_release);
   g_restartAfterSave.store(false, std::memory_order_release);
+  g_resetInProgress.store(false, std::memory_order_release);
+  g_resetAckPending.store(false, std::memory_order_release);
   if (g_saveDoneSem) xSemaphoreGive(g_saveDoneSem);
 }
 

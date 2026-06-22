@@ -1483,7 +1483,7 @@
                 TR-909 / TR-808 / Trap / House — kit selection loads per-voice tuning (drum knobs follow). CC 70 on the drum MIDI channel switches kit live.</p>
 
                 <p style="margin-top:10px"><b style="color:var(--orange)">SAVE · LOAD · RESET · CLR</b><br>
-                Popups mirror hardware scopes: <b>Full</b> / <b>Banks+Pats</b> / <b>Motion</b> / <b>Settings</b>. SAVE and scoped RESET reboot (device resumes in place). LOAD reloads RAM with no reboot. CLR = hardware Clear (active grid + P-locks + both sounds → preset 0). SOFT RESET = working image only, no NVS, no reboot. All destructive actions use YES/NO confirm.</p>
+                Popups mirror hardware scopes: <b>Full</b> / <b>Banks+Pats</b> / <b>Motion</b> / <b>Settings</b>. SAVE and scoped RESET reboot (device resumes in place). LOAD reloads RAM with no reboot. Only one persist action at a time — save, reset, and load block each other while in flight (same as firmware). CLR = hardware Clear (active grid + P-locks + both sounds → preset 0). SOFT RESET = working image only, no NVS, no reboot. All destructive actions use YES/NO confirm.</p>
 
                 <p style="margin-top:10px"><b style="color:var(--purple)">USER SLOTS</b><br>
                 Header <b>SLOTS</b> — 64 harp sounds, 64 seq sounds, 64 patterns. Save / load / rename; custom names persist via SysEx name blobs and echo on connect.</p>
@@ -1579,6 +1579,14 @@
                     <span style="margin-left:6px;color:#666;font-size:9px">sounds + view/bank/length/transpose → initial · no NVS · no reboot</span>
                 </div>
             </div>
+        </div>
+    </div>
+
+    <!-- ── Persist wait overlay (save / reset / load in flight) ───────────────── -->
+    <div class="modal" id="persistWaitModal">
+        <div class="modal-content" style="width:340px;text-align:center">
+            <h3 id="persistWaitTitle" style="margin:0 0 8px;font-size:10px;color:var(--cyan)">PLEASE WAIT</h3>
+            <p id="persistWaitMsg" style="color:#888;font-size:9px;margin:0;line-height:1.5">Device is working…</p>
         </div>
     </div>
 
@@ -3150,6 +3158,9 @@
             _lastTransportRxMs: 0,
             _lastStepSyncRxMs: 0,
             _linkDegradedUntil: 0, // cooldown after auto APP_SYNC_REQ
+            _persistBusy: false,   // one save / reset / load at a time (mirrors firmware)
+            _persistKind: '',      // 'save' | 'reset' | 'load'
+            _persistSince: 0,
             _linkGraceUntil: 0,   // ms — allow boot/sync before declaring dead link
             _connOnline: false,   // true once device echo seen this session
             _linkWarned: false,   // one-shot hint when no 0x7C echo after connect
@@ -3209,6 +3220,51 @@
                 if (kind === 'bpm') this._lastBpmRxMs = now;
                 else if (kind === 'transport') this._lastTransportRxMs = now;
                 else if (kind === 'step') this._lastStepSyncRxMs = now;
+            },
+            _armPersist(kind) {
+                if (this._persistBusy) {
+                    this.log(kind.toUpperCase() + ' blocked — ' + this._persistKind + ' already in progress on device.');
+                    return false;
+                }
+                this._persistBusy = true;
+                this._persistKind = kind;
+                this._persistSince = Date.now();
+                return true;
+            },
+            _clearPersist(msg) {
+                this._persistBusy = false;
+                this._persistKind = '';
+                this._persistSince = 0;
+                this.closeAllPersistModals();
+                if (msg) this.log(msg);
+            },
+            closeAllPersistModals() {
+                this.closeSaveModal();
+                this.closeResetModal();
+                this.closeLoadModal();
+                this._hidePersistWait();
+            },
+            _showPersistWait(kind, scope) {
+                this.closeSaveModal();
+                this.closeResetModal();
+                this.closeLoadModal();
+                const title = document.getElementById('persistWaitTitle');
+                const msg = document.getElementById('persistWaitMsg');
+                const labels = { save: 'SAVING', reset: 'RESETTING', load: 'LOADING' };
+                const scopeLabel = (kind === 'load' || kind === 'save' || kind === 'reset')
+                    ? this._scopeName(scope) : '';
+                if (title) title.textContent = (labels[kind] || 'PLEASE WAIT') + (scopeLabel ? ' — ' + scopeLabel : '');
+                if (msg) {
+                    if (kind === 'load') msg.textContent = 'Reloading from NVS…';
+                    else if (kind === 'reset' || kind === 'save') msg.textContent = 'Writing NVS — device will reboot when done…';
+                    else msg.textContent = 'Device is working…';
+                }
+                const el = document.getElementById('persistWaitModal');
+                if (el) el.style.display = 'flex';
+            },
+            _hidePersistWait() {
+                const el = document.getElementById('persistWaitModal');
+                if (el) el.style.display = 'none';
             },
             // [LINK-HEAL] Detect partial outbound failure.  While playing, never fire a
             // full APP_SYNC_REQ (256 grid rows + 140 knobs stalls the playhead for 100–500 ms).
@@ -3605,6 +3661,7 @@
             // Device reboots after FULL/SETTINGS SAVE and all scoped RESETs.  The USB
             // port goes stale; drop the link and poll until the device re-enumerates.
             _prepareForDeviceReboot() {
+                this.closeAllPersistModals();
                 this.stopHeartbeat();
                 this._connOnline = false;
                 this.updateConnBadge(false);
@@ -3627,6 +3684,9 @@
                 this._linkDegradedUntil = 0;
                 this._ringDropWarned = false;
                 this._plockStealWarned = false;
+                this._persistBusy = false;
+                this._persistKind = '';
+                this.closeAllPersistModals();
                 this._rxQueue.length = 0;
                 this._rxDrainScheduled = false;
                 this._syncBurstExpected = true;
@@ -3699,6 +3759,11 @@
                 this.txSysex(CMD.PING, 0); // immediate first beat
                 const beat = () => {
                     if (!this.midiOut || !this._portLive(this.midiOut)) {
+                        if (this._persistBusy && (this._persistKind === 'save' || this._persistKind === 'reset')) {
+                            this._clearPersist(null);
+                        } else {
+                            this.closeAllPersistModals();
+                        }
                         this.stopHeartbeat();
                         this._connOnline = false;
                         this.updateConnBadge(false);
@@ -3707,6 +3772,10 @@
                         return;
                     }
                     const now = Date.now();
+                    if (this._persistBusy && this._persistSince &&
+                        (now - this._persistSince) > 45000) {
+                        this._clearPersist(this._persistKind.toUpperCase() + ' timed out — try again.');
+                    }
                     if (now > this._linkGraceUntil) {
                         const stale = !this._lastDeviceRxMs || (now - this._lastDeviceRxMs) > 4500;
                         if (stale) {
@@ -3926,11 +3995,30 @@
                     [CMD.LOAD_PAT_S]: v14 => { const e = document.getElementById('synthPat'); if (e && v14 < SYNTH_PATTERNS.length) e.value = String(v14); },
                     [CMD.LOAD_PAT_D]: v14 => { const e = document.getElementById('drumPat');  if (e && v14 < DRUM_PATTERNS.length)  e.value = String(v14); },
                     [CMD.SESSION_SAVE]: v14 => {
-                        if (v14 === 16383) { this.log('NVS save complete — device rebooting…'); this._prepareForDeviceReboot(); }
-                        else if (v14 === 0) { this.log('SAVE skipped — a save is already in progress. Try again.'); }
+                        if (v14 === 16383) {
+                            this._clearPersist(null);
+                            this.log('NVS save complete — device rebooting…');
+                            this._prepareForDeviceReboot();
+                        } else if (v14 === 0) {
+                            this._clearPersist('SAVE rejected — device busy (save or reset in progress). Try again.');
+                        }
                     },
                     [CMD.SESSION_LOAD]: v14 => {
-                        this.log(v14 === 16383 ? 'Session loaded — state synced.' : 'LOAD failed: nothing saved for that scope.');
+                        if (v14 === 16383) {
+                            this._syncBurstExpected = true;
+                            this._clearPersist('Session loaded — state synced.');
+                        } else if (v14 === 0) {
+                            this._clearPersist('LOAD rejected — device busy or nothing saved for that scope.');
+                        }
+                    },
+                    [CMD.SCOPED_RESET]: v14 => {
+                        if (v14 === 16383) {
+                            this._clearPersist(null);
+                            this.log('Reset complete — device rebooting…');
+                            this._prepareForDeviceReboot();
+                        } else if (v14 === 0) {
+                            this._clearPersist('RESET rejected — device busy (save or reset in progress). Try again.');
+                        }
                     },
                     [CMD.USR_SOUND_SAVE]: v14 => {
                         const eng = (v14 >> 13) & 1, slot = v14 & 63;
@@ -4026,7 +4114,17 @@
                         const s = v14 | 0;
                         this.visStep = s;
                         if (this.isPlaying) {
-                            this._pllAnchorStep = s; this._pllAnchorTime = performance.now();
+                            const prev = this._playAbsStep;
+                            if (prev >= 0) {
+                                const len = Math.max(1, this.seqLen | 0);
+                                const lastIdx = len - 1;
+                                const patternWrap = lastIdx > 0 && prev === lastIdx && s === 0;
+                                /* Stale / duplicate echoes snap the PLL backward — ignore. */
+                                if (!patternWrap && s < prev) return;
+                                if (!patternWrap && s === prev) return;
+                            }
+                            this._pllAnchorStep = s;
+                            this._pllAnchorTime = performance.now();
                             this._phPendingStep = s;
                         }
                     },
@@ -4205,16 +4303,9 @@
                 document.getElementById('saveModal').style.display = 'none';
             },
             saveScoped(scope) {
-                // [FIX-M4] Removed blocking confirm() — it freezes the JS event loop
-                // which starves the heartbeat and can drop the firmware link mid-confirm.
-                // The SAVE modal itself is the user's confirmation step.
-                // [FIX-H3] Removed premature _prepareForDeviceReboot() here — it caused
-                // the App to drop the MIDI link immediately, so if requestScopedSave()
-                // was silently dropped (save in flight) no reboot ever came and the App
-                // got stuck in LINKING. _prepareForDeviceReboot() is now called ONLY
-                // when the firmware ACK (CMD_SESSION_SAVE 16383) arrives — see applyIncoming.
+                if (!this._armPersist('save')) return;
+                this._showPersistWait('save', scope);
                 this.sessionSave(scope);
-                this.closeSaveModal();
                 this.log('SAVE requested (scope ' + this._scopeName(scope) + ') — waiting for ACK…');
             },
             sessionLoad(scope = 0) {
@@ -4223,8 +4314,9 @@
                 this.log('NVS load requested (scope ' + s + ')');
             },
             loadScoped(scope) {
+                if (!this._armPersist('load')) return;
+                this._showPersistWait('load', scope);
                 this.sessionLoad(scope);
-                this.closeLoadModal();
             },
 
             // ── RESET popup (scoped reset / soft reset) ─────────────────────────────────
@@ -4235,17 +4327,15 @@
                 document.getElementById('resetModal').style.display = 'none';
             },
             resetScoped(scope) {
-                // [FIX-M4] Removed blocking confirm() — modal is the confirmation step.
+                if (!this._armPersist('reset')) return;
+                this._showPersistWait('reset', scope);
                 this.txSysex(CMD.SCOPED_RESET, (+scope) & 3);
-                this.log('RESET requested (scope ' + this._scopeName(scope) + ') — device rebooting, waiting to reconnect…');
-                this.closeResetModal();
-                this._prepareForDeviceReboot();
+                this.log('RESET requested (scope ' + this._scopeName(scope) + ') — waiting for device ACK…');
             },
             softReset() {
-                // [FIX-M4] Removed blocking confirm() — modal is the confirmation step.
                 this.txSysex(CMD.SOFT_RESET, 0);
-                this.log('Soft reset requested (RAM-only: sounds + settings → factory, patterns kept)');
-                this.closeResetModal();
+                this.log('Soft reset requested (RAM-only: sounds + nav working image → initial, patterns kept)');
+                this.closeAllPersistModals();
             },
 
             // ── SLOTS popup (user sound + pattern library, 1:1 with hardware) ─────────
