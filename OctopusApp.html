@@ -975,9 +975,31 @@
             display: none;
             align-items: center;
             justify-content: center;
-            z-index: 1000;
+            z-index: 10000;
             padding: 16px
         }
+
+        #persistBanner {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 10001;
+            padding: 10px 16px;
+            text-align: center;
+            font-family: 'Orbitron', sans-serif;
+            font-size: 11px;
+            letter-spacing: 2px;
+            color: #fff;
+            background: rgba(0, 20, 40, 0.95);
+            border-bottom: 2px solid var(--cyan);
+            pointer-events: none;
+        }
+
+        #persistBanner.ok { border-bottom-color: var(--green); color: var(--green); }
+        #persistBanner.fail { border-bottom-color: var(--red); color: var(--red); }
+        #persistBanner.wait { border-bottom-color: var(--cyan); color: var(--cyan); }
 
         .modal-content {
             background: #050508;
@@ -1107,6 +1129,7 @@
 </head>
 
 <body>
+    <div id="persistBanner" class="wait" aria-live="polite">PLEASE WAIT</div>
     <!-- ═══════════════════════════════════════════════════════════════════════════
      HEADER (compact — all buttons visible)
 ═══════════════════════════════════════════════════════════════════════════ -->
@@ -3250,6 +3273,17 @@
             _encodePersistScope(scope) {
                 return ((+scope) & 3) + 1;
             },
+            _persistBanner(text, state) {
+                const b = document.getElementById('persistBanner');
+                if (!b) return;
+                b.textContent = text;
+                b.className = state || 'wait';
+                b.style.display = 'block';
+            },
+            _hidePersistBanner() {
+                const b = document.getElementById('persistBanner');
+                if (b) b.style.display = 'none';
+            },
             _persistFinished(ok, reboot) {
                 this._hidePersistWait();
                 if (this._persistTimeoutId) { clearTimeout(this._persistTimeoutId); this._persistTimeoutId = null; }
@@ -3259,15 +3293,19 @@
                 this.closeSaveModal();
                 this.closeResetModal();
                 this.closeLoadModal();
+                const label = ok ? 'DONE!' : 'FAILED!';
+                this._persistBanner(label, ok ? 'ok' : 'fail');
                 const title = document.getElementById('doneModalTitle');
                 const el = document.getElementById('doneModal');
                 if (title) {
-                    title.textContent = ok ? 'DONE!' : 'FAILED!';
+                    title.textContent = label;
                     title.style.color = ok ? 'var(--green)' : 'var(--red)';
                 }
                 if (el) el.style.display = 'flex';
+                this.log('Persist ' + (ok ? 'complete' : 'failed') + (reboot ? ' — device rebooting' : ''));
                 setTimeout(() => {
                     if (el) el.style.display = 'none';
+                    this._hidePersistBanner();
                     if (ok) {
                         if (reboot) {
                             this._prepareForDeviceReboot();
@@ -3292,6 +3330,7 @@
                 this.closeResetModal();
                 this.closeLoadModal();
                 this._hidePersistWait();
+                this._hidePersistBanner();
                 const el = document.getElementById('doneModal');
                 if (el) el.style.display = 'none';
             },
@@ -3305,6 +3344,7 @@
                 if (msg) msg.textContent = 'Device is working…';
                 const el = document.getElementById('persistWaitModal');
                 if (el) el.style.display = 'flex';
+                this._persistBanner('PLEASE WAIT…', 'wait');
             },
             _hidePersistWait() {
                 const el = document.getElementById('persistWaitModal');
@@ -3341,7 +3381,9 @@
             // Transport + playhead bypass the deferred queue — everything else is budgeted.
             _rxIsPriority(cmd) {
                 return cmd === CMD.STEP_SYNC || cmd === CMD.TRANSPORT || cmd === CMD.TRIG_MODE
-                    || cmd === CMD.BPM || cmd === CMD.SONG_POS;
+                    || cmd === CMD.BPM || cmd === CMD.SONG_POS
+                    || cmd === CMD.SESSION_SAVE || cmd === CMD.SESSION_LOAD
+                    || cmd === CMD.SCOPED_RESET || cmd === CMD.SOFT_RESET;
             },
             _rxIsLowPriority(cmd) {
                 return cmd === CMD.GRID_ROW_LO || cmd === CMD.GRID_ROW_HI;
@@ -3705,7 +3747,10 @@
             // Device reboots after FULL/SETTINGS SAVE and all scoped RESETs.  The USB
             // port goes stale; drop the link and poll until the device re-enumerates.
             _prepareForDeviceReboot() {
-                this.closeAllPersistModals();
+                this._hidePersistWait();
+                this._hidePersistBanner();
+                const el = document.getElementById('doneModal');
+                if (el) el.style.display = 'none';
                 this.stopHeartbeat();
                 this._connOnline = false;
                 this.updateConnBadge(false);

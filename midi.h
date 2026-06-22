@@ -138,6 +138,8 @@ void wireRecordInputNote(uint8_t channel, uint8_t note, uint8_t vel);
 void sendFullStateSync();
 void requestFullStateSync(bool echoSongAfter = false, bool sendSyncAck = false);
 void txSysex(uint8_t cmd, uint16_t v14bit);
+/** Persist ACK/NACK — bypasses isAppConnected() and TX dedup (long NVS writes). */
+void txSysexPersistReply(uint8_t cmd, uint16_t v14bit);
 /* Drain mutex-failed outbound frames retried from SeqSysexOut (call each loop). */
 void midi_drain_tx_retry();
 /* [BLOB] One-shot full-preset echo (engine 0=harp, 1=seq) — all 16 params in a

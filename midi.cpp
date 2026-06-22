@@ -80,7 +80,7 @@ static void nvs_load_task(void* p) {
     sendFullStateSync();
     echoSongState();
   }
-  txSysex(CMD_SESSION_LOAD, ok ? 16383u : 0u);
+  txSysexPersistReply(CMD_SESSION_LOAD, ok ? 16383u : 0u);
   delete c;
   vTaskDelete(nullptr);
 }
@@ -135,10 +135,10 @@ static bool midiLockRetry(unsigned attempts = 3u) {
 }
 
 /* Emit one 0x7C frame — caller passes dedup/rate-limit checks separately. */
-static bool txSysexEmit(uint8_t cmd, uint16_t v14bit) {
-  if (!isAppConnected()) return false;
+static bool txSysexEmit(uint8_t cmd, uint16_t v14bit, bool force = false) {
+  if (!force && !isAppConnected()) return false;
   if (v14bit > 16383u) v14bit = 16383u;
-  if (!midiLockRetry(3u)) return false;
+  if (!midiLockRetry(force ? 12u : 3u)) return false;
   const uint8_t v14hi = (uint8_t)((v14bit >> 7) & 0x7Fu);
   const uint8_t v14lo = (uint8_t)(v14bit & 0x7Fu);
   if (cmd <= 127u) {
@@ -152,13 +152,22 @@ static bool txSysexEmit(uint8_t cmd, uint16_t v14bit) {
   return true;
 }
 
+void txSysexPersistReply(uint8_t cmd, uint16_t v14bit) {
+  /* SAVE/LOAD/RESET ACK/NACK must reach the App even when the 4.5 s heartbeat
+   * window expired during a multi-second NVS write (flash cache-off can stall
+   * MidiUsbRx so PINGs are not processed).  Never dedup these replies.       */
+  if (!txSysexEmit(cmd, v14bit, true)) txRetryPush(cmd, v14bit);
+}
+
 void midi_drain_tx_retry() {
   unsigned budget = 8u;
   while (budget--) {
     const uint16_t t = s_txRetryTail.load(std::memory_order_relaxed);
     if (t == s_txRetryHead.load(std::memory_order_acquire)) return;
     const TxRetryEvt e = s_txRetry[t];
-    if (!txSysexEmit(e.cmd, e.v14)) return;
+    const bool force = (e.cmd == CMD_SESSION_SAVE || e.cmd == CMD_SESSION_LOAD ||
+                        e.cmd == CMD_SCOPED_RESET  || e.cmd == CMD_SOFT_RESET);
+    if (!txSysexEmit(e.cmd, e.v14, force)) return;
     s_last_tx_ms[e.cmd]  = millis();
     s_last_tx_val[e.cmd] = e.v14;
     s_txRetryTail.store((uint16_t)((t + 1u) & (TX_RETRY_SIZE - 1u)),
@@ -632,7 +641,11 @@ void handleSysexCommand(uint8_t cmd, uint16_t v14) {
   const uint32_t now = millis();
   const bool noDedup = (cmd == CMD_GRID_TOG ||
                         cmd == CMD_PING      ||
-                        cmd == CMD_APP_SYNC_REQ);
+                        cmd == CMD_APP_SYNC_REQ ||
+                        cmd == CMD_SESSION_SAVE ||
+                        cmd == CMD_SESSION_LOAD ||
+                        cmd == CMD_SCOPED_RESET ||
+                        cmd == CMD_SOFT_RESET);
   const bool plockRec = seqRecording.load(std::memory_order_relaxed);
   if (!noDedup) {
     if (s_last_rx_val[cmd] == v14 && (now - s_last_rx_ms[cmd] < 50u)) return;
@@ -911,14 +924,18 @@ void handleSysexCommand(uint8_t cmd, uint16_t v14) {
        * silently dropping every FULL-scope save request. */
       if (v14 == 16383u) break; /* ACK echo — ignore */
       if (v14 < 1u || v14 > 4u) break; /* NACK echo (0) or out-of-range */
+      if (saveInProgress() || g_resetInProgress.load(std::memory_order_acquire)) {
+        txSysexPersistReply(CMD_SESSION_SAVE, 0u);
+        break;
+      }
       if (!requestScopedSave((uint8_t)((v14 - 1u) & 3u)))
-        txSysex(CMD_SESSION_SAVE, 0u); /* NACK — save already in flight */
+        txSysexPersistReply(CMD_SESSION_SAVE, 0u); /* NACK — save already in flight */
       break;
     case CMD_SESSION_LOAD:
       if (v14 == 16383u) break; /* ACK echo — ignore */
       if (v14 < 1u || v14 > 4u) break; /* NACK echo (0) or out-of-range */
       if (saveInProgress() || g_resetInProgress.load(std::memory_order_acquire)) {
-        txSysex(CMD_SESSION_LOAD, 0u); /* NACK — persist op in flight */
+        txSysexPersistReply(CMD_SESSION_LOAD, 0u); /* NACK — persist op in flight */
         break;
       }
       /* [FIX-C1] Dispatch LOAD to a 16 KB task — MidiUsbRx has only 8 KB. */
@@ -927,7 +944,7 @@ void handleSysexCommand(uint8_t cmd, uint16_t v14) {
         if (xTaskCreatePinnedToCore(nvs_load_task, "NvsLoad", 16384,
                                     ctx, 3, nullptr, 1) != pdPASS) {
           delete ctx;
-          txSysex(CMD_SESSION_LOAD, 0u); /* NACK — task create failed */
+          txSysexPersistReply(CMD_SESSION_LOAD, 0u); /* NACK — task create failed */
         }
       }
       break;
@@ -945,7 +962,7 @@ void handleSysexCommand(uint8_t cmd, uint16_t v14) {
       if (v14 == 16383u) break;
       seqSoftResetWorkingImage();
       oledPersistDone(true);
-      txSysex(CMD_SOFT_RESET, 16383u);
+      txSysexPersistReply(CMD_SOFT_RESET, 16383u);
       break;
     case CMD_SEQ_RESTART:
       /* [RND-RESTART] App sends this after RND-H/RND-D to restart playback

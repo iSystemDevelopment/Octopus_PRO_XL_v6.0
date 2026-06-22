@@ -1370,7 +1370,7 @@ static void reset_persist_task(void*) {
      * write so heartbeats can't be processed, causing the 4.5 s window to
      * expire).  The App MUST receive a NACK to unlock its modal regardless
      * of whether the connection was reported as live at this exact moment. */
-    txSysex(CMD_SCOPED_RESET, 0u);
+    txSysexPersistReply(CMD_SCOPED_RESET, 0u);
     g_resetInProgress.store(false, std::memory_order_release);
     oledPersistDone(false);
     vTaskDelay(pdMS_TO_TICKS(1300));
@@ -1385,13 +1385,13 @@ static void reset_persist_task(void*) {
 void handleScopedReset(ResetScope scope) {
   if (g_resetInProgress.exchange(true, std::memory_order_acq_rel)) {
     oledPersistDone(false);
-    if (isAppConnected()) txSysex(CMD_SCOPED_RESET, 0u);
+    txSysexPersistReply(CMD_SCOPED_RESET, 0u);
     return;
   }
   if (saveInProgress()) {
     g_resetInProgress.store(false, std::memory_order_release);
     oledPersistDone(false);
-    if (isAppConnected()) txSysex(CMD_SCOPED_RESET, 0u);
+    txSysexPersistReply(CMD_SCOPED_RESET, 0u);
     return;
   }
 
@@ -1407,13 +1407,13 @@ void handleScopedReset(ResetScope scope) {
       g_resetInProgress.store(false, std::memory_order_release);
       rollbackResetRam(scope);
       oledPersistDone(false);
-      if (isAppConnected()) txSysex(CMD_SCOPED_RESET, 0u);
+      txSysexPersistReply(CMD_SCOPED_RESET, 0u);
       vTaskDelay(pdMS_TO_TICKS(1300));
       oledStatusRestoreNow();
       return;
     }
     vTaskDelay(pdMS_TO_TICKS(300));
-    txSysex(CMD_SCOPED_RESET, 16383u);
+    txSysexPersistReply(CMD_SCOPED_RESET, 16383u);
     esp_restart();
     return;
   }
@@ -1423,7 +1423,7 @@ void handleScopedReset(ResetScope scope) {
                               nullptr, 1) != pdPASS) {
     g_resetInProgress.store(false, std::memory_order_release);
     oledPersistDone(false);
-    if (isAppConnected()) txSysex(CMD_SCOPED_RESET, 0u);
+    txSysexPersistReply(CMD_SCOPED_RESET, 0u);
     vTaskDelay(pdMS_TO_TICKS(1300));
     oledStatusRestoreNow();
   }
@@ -1431,8 +1431,12 @@ void handleScopedReset(ResetScope scope) {
 
 /* handleScopedSave — menu / App scoped save (no restart). */
 void handleScopedSave(ResetScope scope) {
-  if (!requestScopedSave((uint8_t)scope))
+  if (!requestScopedSave((uint8_t)scope)) {
     oledPersistDone(false);
+    txSysexPersistReply(CMD_SESSION_SAVE, 0u);
+    return;
+  }
+  oledPersistWorking();
 }
 
 /* handleScopedLoad — menu / App scoped reload from NVS.  RAM-only (no flash
@@ -1440,7 +1444,7 @@ void handleScopedSave(ResetScope scope) {
 void handleScopedLoad(ResetScope scope) {
   if (saveInProgress() || g_resetInProgress.load(std::memory_order_acquire)) {
     oledPersistDone(false);
-    if (isAppConnected()) txSysex(CMD_SESSION_LOAD, 0u);
+    txSysexPersistReply(CMD_SESSION_LOAD, 0u);
     return;
   }
 
@@ -1450,12 +1454,12 @@ void handleScopedLoad(ResetScope scope) {
 
   oledPersistDone(ok);
 
-  if (ok && isAppConnected()) {
+  if (ok) {
     sendFullStateSync();
     echoSongState();
-    txSysex(CMD_SESSION_LOAD, 16383u);
-  } else if (!ok && isAppConnected()) {
-    txSysex(CMD_SESSION_LOAD, 0u);
+    txSysexPersistReply(CMD_SESSION_LOAD, 16383u);
+  } else {
+    txSysexPersistReply(CMD_SESSION_LOAD, 0u);
   }
 
   vTaskDelay(pdMS_TO_TICKS(1200));

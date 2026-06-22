@@ -647,15 +647,8 @@ void settings_save_task(void* pvParameters) {
      * flash write, heartbeats pile up, the 4.5 s window expires).  The App
      * modal must unblock regardless of the reported connection state. */
     const bool wasReset = g_resetAckPending.exchange(false, std::memory_order_acq_rel);
-    if (ok) {
-      /* ACK unconditionally — link may drop during a long NVS write. */
-      txSysex(wasReset ? CMD_SCOPED_RESET : CMD_SESSION_SAVE, 16383u);
-    } else {
-      /* Write failed — always NACK so the App closes the persist wait modal.
-       * reset_persist_task also sends its own NACK; double-NACK is harmless
-       * (_clearPersist is idempotent). */
-      txSysex(wasReset ? CMD_SCOPED_RESET : CMD_SESSION_SAVE, 0u);
-    }
+    const uint8_t ackCmd = wasReset ? CMD_SCOPED_RESET : CMD_SESSION_SAVE;
+    txSysexPersistReply(ackCmd, ok ? 16383u : 0u);
 
     /* [SAVE-FIX14] Restart after a good commit — used by the scoped RESET menu,
      * the async reset task, AND now every runtime save (requestScopedSave sets

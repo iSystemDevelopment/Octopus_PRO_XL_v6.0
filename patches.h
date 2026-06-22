@@ -1729,7 +1729,13 @@ static inline bool isAppConnected() {
   /* last==0 = no app sysex ever received → never "connected" at boot.
    * (Without this guard the first 4.5 s after power-on read as connected because
    *  millis()-0 < 4500.) */
-  return (last != 0u) && ((millis() - last) < 4500u);
+  if (last == 0u) return false;
+  if ((millis() - last) < 4500u) return true;
+  /* Persist in flight — App initiated save/load/reset; keep TX path alive until
+   * the NvsWorker ACK/NACK is sent (heartbeats may stall during flash writes). */
+  return g_saveRequest.load(std::memory_order_acquire) ||
+         g_saveArmed.load(std::memory_order_acquire) ||
+         g_resetInProgress.load(std::memory_order_acquire);
 }
 
 /* [v6.0] transport_available() was removed — the hardware ALWAYS owns transport
