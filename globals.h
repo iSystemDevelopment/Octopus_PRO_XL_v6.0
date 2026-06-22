@@ -1168,6 +1168,9 @@ inline std::atomic<bool> g_resetAckPending{ false };
 /** Result of the last NvsWorker save (for reset-persist task error UI). */
 inline std::atomic<bool> g_saveLastOk{ true };
 
+/** millis() until which a transient oledStatusLines message is held; 0 = none. */
+inline std::atomic<uint32_t> g_oledStatusHoldMs{ 0 };
+
 /** Arm a scoped NVS save. scope: 0=FULL 1=BANKS_PATTERNS 2=MOTION 3=SETTINGS.
  *  Returns true if the request was queued; false if a save is already in flight.
  *  [FIX-H1] Callers must check the return value and send a NACK to the App when
@@ -1229,6 +1232,7 @@ static inline void saveForceUnlock() {
   g_restartAfterSave.store(false, std::memory_order_release);
   g_resetInProgress.store(false, std::memory_order_release);
   g_resetAckPending.store(false, std::memory_order_release);
+  g_oledStatusHoldMs.store(0u, std::memory_order_release);
   if (g_saveDoneSem) xSemaphoreGive(g_saveDoneSem);
 }
 

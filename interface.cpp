@@ -79,6 +79,7 @@
                                 applyDbeamRoute, applyDbeamTarget,
                                 checkWireAuthority, encodeHarpParam, encodeSeqParam,
                                 norm_to_v14, recallHarpPatch              */
+#include "midi.h"            /* sendFullStateSync, txSysex                */
 /* #include "wires.h" — removed [C10]: absorbed into patches.h           */
 
 /* ── Object instantiations ─────────────────────────────────────────────────── */
@@ -789,7 +790,10 @@ void updateHardwareInterface() {
   static uint32_t s_saveStuckSince = 0u;
   if (saveInProgress()) {
     if (s_saveStuckSince == 0u) s_saveStuckSince = now;
-    else if ((uint32_t)(now - s_saveStuckSince) > 25000u) {
+    /* FULL scoped reset can write ~37 KB — allow longer than a normal save. */
+    const uint32_t limitMs = g_resetInProgress.load(std::memory_order_relaxed)
+                                 ? 45000u : 25000u;
+    else if ((uint32_t)(now - s_saveStuckSince) > limitMs) {
       saveForceUnlock();
       s_saveStuckSince = 0u;
       g_saveFailFlashMs.store(now + 1500u, std::memory_order_relaxed);
@@ -1285,6 +1289,29 @@ static void oledStatusLines(const char* line1, const char* line2) {
   xSemaphoreGive(i2cMutex);
 }
 
+/* Hold a status screen briefly, then hand the OLED back to display_refresh_task
+ * (APP CONNECTED splash when the App link is live).  oledStatusLines writes
+ * directly to the framebuffer and bypasses renderUIState — without this restore
+ * step "RESET FAILED" / "SAVE BUSY" would stick forever.                     */
+static void oledStatusHold(const char* line1, const char* line2,
+                           uint32_t holdMs = 2000u) {
+  oledStatusLines(line1, line2);
+  g_oledStatusHoldMs.store(millis() + holdMs, std::memory_order_relaxed);
+}
+
+static void oledStatusRestoreNow() {
+  g_oledStatusHoldMs.store(0u, std::memory_order_relaxed);
+  menuState.store(MenuState::IDLE, std::memory_order_relaxed);
+  displayDirty.store(true, std::memory_order_relaxed);
+}
+
+/* applyResetScope() already ran — reload the matching NVS scope back into RAM. */
+static void rollbackResetRam(ResetScope scope) {
+  (void)settings_load_scoped(scope);
+  for (int i = 0; i < MAX_STRINGS; ++i)
+    computeHardwareDACThreshold(i, 0.f);
+}
+
 static ResetScope s_resetPersistScope = ResetScope::FULL;
 
 /* Runtime scoped reset: persist via NvsWorker (laser park + 16 KB stack) then
@@ -1292,24 +1319,34 @@ static ResetScope s_resetPersistScope = ResetScope::FULL;
 static void reset_persist_task(void*) {
   while (saveInProgress()) vTaskDelay(pdMS_TO_TICKS(10));
 
+  /* Wipe RAM here (not in handleScopedReset) so a task-create failure cannot
+   * leave the device in a half-reset state with no NVS commit. */
+  applyResetScope(s_resetPersistScope);
+
   if (g_saveDoneSem) xSemaphoreTake(g_saveDoneSem, 0);
 
   g_persistScope.store((uint8_t)s_resetPersistScope, std::memory_order_release);
   g_resetAckPending.store(true, std::memory_order_release);
   g_restartAfterSave.store(true, std::memory_order_release);
   g_saveRequest.store(true, std::memory_order_release);
+  displayDirty.store(true, std::memory_order_relaxed);
 
   const bool got =
       g_saveDoneSem &&
-      (xSemaphoreTake(g_saveDoneSem, pdMS_TO_TICKS(20000)) == pdTRUE);
+      (xSemaphoreTake(g_saveDoneSem, pdMS_TO_TICKS(45000)) == pdTRUE);
 
   if (!got || !g_saveLastOk.load(std::memory_order_acquire)) {
     g_restartAfterSave.store(false, std::memory_order_release);
     g_resetAckPending.store(false, std::memory_order_release);
+    rollbackResetRam(s_resetPersistScope);
+    if (isAppConnected()) {
+      sendFullStateSync();
+      txSysex(CMD_SCOPED_RESET, 0u); /* NACK — App can retry */
+    }
     g_resetInProgress.store(false, std::memory_order_release);
-    if (isAppConnected()) txSysex(CMD_SCOPED_RESET, 0u); /* NACK — App can retry */
-    oledStatusLines("RESET FAILED", nullptr);
-    vTaskDelay(pdMS_TO_TICKS(2000)); /* [FIX-DELAY] cooperative yield */
+    oledStatusHold("RESET FAILED", "RESTORED RAM", 2000u);
+    vTaskDelay(pdMS_TO_TICKS(2100));
+    oledStatusRestoreNow();
   }
   /* On success NvsWorker calls esp_restart() — this task never returns. */
   vTaskDelete(nullptr);
@@ -1319,13 +1356,13 @@ static void reset_persist_task(void*) {
  * Boot OC+SCALE combo: blocking 16 KB save task (NvsWorker not running yet). */
 void handleScopedReset(ResetScope scope) {
   if (g_resetInProgress.exchange(true, std::memory_order_acq_rel)) {
-    oledStatusLines("RESET BUSY", nullptr);
+    oledStatusHold("RESET BUSY", nullptr, 1500u);
     if (isAppConnected()) txSysex(CMD_SCOPED_RESET, 0u);
     return;
   }
   if (saveInProgress()) {
     g_resetInProgress.store(false, std::memory_order_release);
-    oledStatusLines("SAVE BUSY", nullptr);
+    oledStatusHold("SAVE BUSY", nullptr, 1500u);
     if (isAppConnected()) txSysex(CMD_SCOPED_RESET, 0u);
     return;
   }
@@ -1337,25 +1374,24 @@ void handleScopedReset(ResetScope scope) {
     case ResetScope::MOTION:         line1 = "MOTION CLEAR";  break;
     case ResetScope::SETTINGS:       line1 = "SETTINGS RESET"; break;
   }
-  oledStatusLines(line1, "PLEASE WAIT...");
+  oledStatusHold(line1, "PLEASE WAIT...", 60000u);
 
-  /* [FIX-M3] Silence voices and stop the sequencer before wiping RAM.  Without
-   * this the step engine fires notes against partially-reset state during the
-   * ~500 ms window between applyResetScope() and the eventual esp_restart().   */
+  /* [FIX-M3] Silence voices and stop the sequencer before wiping RAM. */
   allNotesOff();
   seq_stop();
 
-  applyResetScope(scope);
-
   if (!g_systemReady.load(std::memory_order_acquire)) {
+    applyResetScope(scope);
     if (!settings_persist_blocking(scope)) {
       g_resetInProgress.store(false, std::memory_order_release);
-      oledStatusLines("RESET FAILED", nullptr);
+      rollbackResetRam(scope);
+      oledStatusHold("RESET FAILED", "RESTORED RAM", 2000u);
       if (isAppConnected()) txSysex(CMD_SCOPED_RESET, 0u);
-      vTaskDelay(pdMS_TO_TICKS(2000)); /* [FIX-DELAY] cooperative yield */
+      vTaskDelay(pdMS_TO_TICKS(2100));
+      oledStatusRestoreNow();
       return;
     }
-    vTaskDelay(pdMS_TO_TICKS(300)); /* [FIX-DELAY] cooperative yield */
+    vTaskDelay(pdMS_TO_TICKS(300));
     if (isAppConnected()) txSysex(CMD_SCOPED_RESET, 16383u);
     esp_restart();
     return;
@@ -1365,16 +1401,17 @@ void handleScopedReset(ResetScope scope) {
   if (xTaskCreatePinnedToCore(reset_persist_task, "RstSave", 8192, nullptr, 5,
                               nullptr, 1) != pdPASS) {
     g_resetInProgress.store(false, std::memory_order_release);
-    oledStatusLines("RESET FAILED", nullptr);
+    oledStatusHold("RESET FAILED", "TASK ERROR", 2000u);
     if (isAppConnected()) txSysex(CMD_SCOPED_RESET, 0u);
-    delay(2000);
+    vTaskDelay(pdMS_TO_TICKS(2100));
+    oledStatusRestoreNow();
   }
 }
 
 /* handleScopedSave — menu / App scoped save (no restart). */
 void handleScopedSave(ResetScope scope) {
   if (!requestScopedSave((uint8_t)scope))
-    oledStatusLines("SAVE BUSY", nullptr); /* [FIX-H1] visible error if dropped */
+    oledStatusHold("SAVE BUSY", nullptr, 1500u);
 }
 
 /* handleScopedLoad — menu / App scoped reload from NVS.  RAM-only (no flash
@@ -1384,7 +1421,7 @@ void handleScopedSave(ResetScope scope) {
  * if the App is connected it must receive the new state or stays stale.         */
 void handleScopedLoad(ResetScope scope) {
   if (saveInProgress() || g_resetInProgress.load(std::memory_order_acquire)) {
-    oledStatusLines("BUSY", nullptr);
+    oledStatusHold("BUSY", nullptr, 1500u);
     if (isAppConnected()) txSysex(CMD_SESSION_LOAD, 0u);
     return;
   }
@@ -1396,14 +1433,14 @@ void handleScopedLoad(ResetScope scope) {
     case ResetScope::MOTION:         line1 = "MOTION LOAD";   break;
     case ResetScope::SETTINGS:       line1 = "SETTINGS LOAD"; break;
   }
-  oledStatusLines(line1, "PLEASE WAIT...");
+  oledStatusHold(line1, "PLEASE WAIT...", 60000u);
 
   const bool ok = settings_load_scoped(scope);
 
   /* Re-apply the bits hardware can't pick up from atomics on its own. */
   for (int i = 0; i < MAX_STRINGS; ++i) computeHardwareDACThreshold(i, 0.f);
 
-  oledStatusLines(ok ? "LOAD OK" : "NOTHING SAVED", nullptr);
+  oledStatusHold(ok ? "LOAD OK" : "NOTHING SAVED", nullptr, 900u);
 
   /* [FIX-L3] Re-sync the App if it is connected — previously skipped because the
    * hardware LOAD was assumed to only run while the App is disconnected, but there
@@ -1418,6 +1455,7 @@ void handleScopedLoad(ResetScope scope) {
    * status-message hold window.  Arduino delay() delegates to vTaskDelay on
    * ESP32 Arduino, but this makes the intent explicit and avoids confusion. */
   vTaskDelay(pdMS_TO_TICKS(900));
+  oledStatusRestoreNow();
   menuState.store(MenuState::IDLE, std::memory_order_relaxed);
   displayDirty.store(true, std::memory_order_relaxed);
 }

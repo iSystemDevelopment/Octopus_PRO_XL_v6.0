@@ -443,8 +443,16 @@ void IRAM_ATTR display_refresh_task(void* pvParameters) {
     static bool toastPrev = false;
     const bool  toastNow  = (int32_t)(g_saveFlashMs.load(std::memory_order_relaxed) - nowMs) > 0;
     const bool  failNow   = (int32_t)(g_saveFailFlashMs.load(std::memory_order_relaxed) - nowMs) > 0;
+    const bool  statusHold = (int32_t)(g_oledStatusHoldMs.load(std::memory_order_relaxed) - nowMs) > 0;
+    static bool statusHoldPrev = false;
     if (toastNow || failNow || toastPrev) displayDirty.store(true, std::memory_order_relaxed);
     toastPrev = toastNow;
+    if (!statusHold && statusHoldPrev) {
+      /* oledStatusHold expired — restore APP CONNECTED splash / dashboard. */
+      menuState.store(MenuState::IDLE, std::memory_order_relaxed);
+      displayDirty.store(true, std::memory_order_relaxed);
+    }
+    statusHoldPrev = statusHold;
 
     /* [SAVE-FRAME] On the rising edge of a save request, force ONE redraw NOW so
      * the "SAVING…" pill is painted during the ~40 ms pre-arm window — BEFORE
@@ -479,7 +487,7 @@ void IRAM_ATTR display_refresh_task(void* pvParameters) {
     if (!saveArmedNow)
       draw = displayDirty.exchange(false, std::memory_order_relaxed) || scope || matrixStep || edgeEdit;
 
-    if (draw && xSemaphoreTake(i2cMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
+    if (draw && !statusHold && xSemaphoreTake(i2cMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
       display.clearDisplay();
       if (appConn)
         drawAppConnectedPage();   /* static splash [A5] — defined in display.cpp */
@@ -492,14 +500,14 @@ void IRAM_ATTR display_refresh_task(void* pvParameters) {
        * menu/slider/telemetry/D-BEAM updates cheap with no per-element code. */
       displayFlushDiff();
       xSemaphoreGive(i2cMutex);
-    } else if (!saveArmedNow && stepChanged && xSemaphoreTake(i2cMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
+    } else if (!saveArmedNow && !statusHold && stepChanged && xSemaphoreTake(i2cMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
       /* [PERF] Playhead-only path: repaint just the bar band (no full clear, so
        * the GFX render cost stays tiny) then page-diff flush → only the ~2 bar
        * pages hit the bus.  Skips entirely if the view has no step bar. */
       if (renderStepBarRegionIfVisible())
         displayFlushDiff();
       xSemaphoreGive(i2cMutex);
-    } else if (!saveArmedNow && dbeamChanged && xSemaphoreTake(i2cMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
+    } else if (!saveArmedNow && !statusHold && dbeamChanged && xSemaphoreTake(i2cMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
       /* [DISP-OPT2] D-BEAM region-only path: mirrors the step-bar path above.
        * renderDbeamBarIfVisible() returns false on the SEQ dashboard / menu /
        * app-connected views, keeping those views correct (D-BEAM bar only exists
