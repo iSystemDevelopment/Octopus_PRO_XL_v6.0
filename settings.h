@@ -1561,6 +1561,20 @@ static inline bool settings_persist_blocking(ResetScope scope, uint32_t timeoutM
 
 static inline bool settings_save_scoped(ResetScope scope) {
 
+  /* [DIAG] Report NVS capacity up front — this reveals the ACTUAL partition size
+   * regardless of what the IDE menu / partitions.csv claim.  A stock 20 KB nvs
+   * shows total_entries ≈ 630; the bundled 256 KB shows ≈ 8000.  If a FULL save
+   * fails, compare free_entries against what the blobs need (~50 KB ≈ 1600
+   * entries) to tell partition-too-small apart from a code/heap fault.        */
+  {
+    nvs_stats_t st;
+    if (nvs_get_stats(NULL, &st) == ESP_OK)
+      Serial.printf("[NVS] stats: total=%u used=%u free=%u (partition %s)\n",
+                    (unsigned)st.total_entries, (unsigned)st.used_entries,
+                    (unsigned)st.free_entries,
+                    st.total_entries < 1000u ? "LOOKS ~20KB (too small!)" : "ok");
+  }
+
   nvs_handle_t h;
   const esp_err_t openErr = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &h);
   if (openErr != ESP_OK) {
@@ -1569,14 +1583,12 @@ static inline bool settings_save_scoped(ResetScope scope) {
     return false;
   }
 
-  /* [FIX-TWDT] The hardware task watchdog (TWDT) was the root cause of the
-   * save crash.  Writing 7 blobs (~37 KB) to NVS flash with wear leveling
-   * takes 3–10 seconds; the default TWDT timeout is 5 seconds.  The NvsBlk
-   * task adds itself via esp_task_wdt_add() in audio.cpp and feeds the
-   * watchdog during pre-write steps, but NOT inside the actual NVS calls.
-   * esp_task_wdt_reset() is now called after each blob write so the watchdog
-   * can never expire during a normal (non-stuck) save sequence.              */
-#define WDT_RESET_SAVE() esp_task_wdt_reset()
+  /* Feed the Task-WDT between blob writes (a FULL commit can take seconds).
+   * SELF-GUARDED: only reset when THIS task is actually subscribed, so the
+   * blocking/boot-seed path (NvsBlk) can never flood
+   * "task_wdt: esp_task_wdt_reset(): task not found" regardless of whether the
+   * caller registered with the WDT. */
+#define WDT_RESET_SAVE() do { if (esp_task_wdt_status(NULL) == ESP_OK) esp_task_wdt_reset(); } while (0)
 
   esp_err_t err = ESP_OK;
   const char* step = "open";   /* names the failing blob in the error log below */
