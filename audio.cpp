@@ -441,12 +441,19 @@ void IRAM_ATTR display_refresh_task(void* pvParameters) {
      * after it expires so the pill is cleanly erased (otherwise it would linger
      * until the next unrelated redraw). */
     static bool toastPrev = false;
+    static bool failPrev  = false;
     const bool  toastNow  = (int32_t)(g_saveFlashMs.load(std::memory_order_relaxed) - nowMs) > 0;
     const bool  failNow   = (int32_t)(g_saveFailFlashMs.load(std::memory_order_relaxed) - nowMs) > 0;
     const bool  statusHold = (int32_t)(g_oledStatusHoldMs.load(std::memory_order_relaxed) - nowMs) > 0;
     static bool statusHoldPrev = false;
-    if (toastNow || failNow || toastPrev) displayDirty.store(true, std::memory_order_relaxed);
+    /* Keep redrawing while EITHER pill is up, plus ONE frame after EITHER expires
+     * so it is cleanly erased.  [FIX] failPrev mirrors toastPrev — previously only
+     * the DONE pill got the trailing erase frame, so a FAILED pill lingered on the
+     * OLED forever until some unrelated value redrew the screen. */
+    if (toastNow || failNow || toastPrev || failPrev)
+      displayDirty.store(true, std::memory_order_relaxed);
     toastPrev = toastNow;
+    failPrev  = failNow;
     if (!statusHold && statusHoldPrev) {
       /* oledStatusHold expired — restore APP CONNECTED splash / dashboard. */
       menuState.store(MenuState::IDLE, std::memory_order_relaxed);

@@ -390,6 +390,20 @@ static inline uint32_t crc32_buf(const uint8_t* p, size_t n) {
   return crc ^ 0xFFFFFFFFu;
 }
 
+/* [NVS-HEAP] Staging buffer for an NVS blob save/load.  These are large
+ * (MotionBlob ~17 KB, UserPatBlob ~14.6 KB, PatternsBlob ~8 KB) and short-lived.
+ * Internal DRAM is scarce at runtime (audio/FX/RAM-wavetables), so a
+ * MALLOC_CAP_INTERNAL-only alloc can fail and make EVERY save/load return false
+ * → nothing persists, nothing loads, UI shows FAILED on every SAVE/RESET.
+ * Try internal first (fast); fall back to PSRAM, which is ample and perfectly
+ * safe for a one-shot staging copy (no DMA — only memcpy + CRC + nvs_*_blob).
+ * heap_caps_free() works for both capabilities, so call sites free as before. */
+static inline void* nvsBlobAlloc(size_t n) {
+  void* p = heap_caps_malloc(n, MALLOC_CAP_INTERNAL);
+  if (!p) p = heap_caps_malloc(n, MALLOC_CAP_SPIRAM);
+  return p;
+}
+
 struct AllSettings {
   uint16_t version = SETTINGS_VERSION;
   uint32_t crc32 = 0;
@@ -992,7 +1006,7 @@ struct MotionBlob {
 
 /* ── patterns ────────────────────────────────────────────────────────────── */
 static inline esp_err_t patterns_save_h(nvs_handle_t h) {
-  PatternsBlob* b = (PatternsBlob*)heap_caps_malloc(sizeof(PatternsBlob), MALLOC_CAP_INTERNAL);
+  PatternsBlob* b = (PatternsBlob*)nvsBlobAlloc(sizeof(PatternsBlob));
   if (!b) return ESP_ERR_NO_MEM;
   b->version = PATTERNS_VERSION;
   b->_pad    = 0;
@@ -1028,7 +1042,7 @@ static inline esp_err_t patterns_load_h(nvs_handle_t h) {
   esp_err_t err = nvs_get_blob(h, "patterns", nullptr, &sz);
   if (err != ESP_OK || sz == 0) return err;
 
-  void* buf = heap_caps_malloc(sz, MALLOC_CAP_INTERNAL);
+  void* buf = nvsBlobAlloc(sz);
   if (!buf) return ESP_ERR_NO_MEM;
   err = nvs_get_blob(h, "patterns", buf, &sz);
   if (err != ESP_OK) { heap_caps_free(buf); return err; }
@@ -1094,7 +1108,7 @@ static inline esp_err_t patterns_load_h(nvs_handle_t h) {
 
 /* ── sparse banks ─────────────────────────────────────────────────────────── */
 static inline esp_err_t banks_save_h(nvs_handle_t h) {
-  BanksBlob* b = (BanksBlob*)heap_caps_malloc(sizeof(BanksBlob), MALLOC_CAP_INTERNAL);
+  BanksBlob* b = (BanksBlob*)nvsBlobAlloc(sizeof(BanksBlob));
   if (!b) return ESP_ERR_NO_MEM;
   memset(b, 0, sizeof(BanksBlob));
   b->version = BANKS_VERSION;
@@ -1132,7 +1146,7 @@ static inline esp_err_t banks_save_h(nvs_handle_t h) {
 
 static inline esp_err_t banks_load_h(nvs_handle_t h) {
   size_t sz = sizeof(BanksBlob);
-  BanksBlob* b = (BanksBlob*)heap_caps_malloc(sz, MALLOC_CAP_INTERNAL);
+  BanksBlob* b = (BanksBlob*)nvsBlobAlloc(sz);
   if (!b) return ESP_ERR_NO_MEM;
   esp_err_t err = nvs_get_blob(h, "banks", b, &sz);
   if (err == ESP_OK && sz == sizeof(BanksBlob) && b->version == BANKS_VERSION) {
@@ -1168,7 +1182,7 @@ static inline esp_err_t banks_load_h(nvs_handle_t h) {
 
 /* ── user-slot names (sparse: renamed slots only) ─────────────────────────── */
 static inline esp_err_t usrnames_save_h(nvs_handle_t h) {
-  UserNamesBlob* b = (UserNamesBlob*)heap_caps_malloc(sizeof(UserNamesBlob), MALLOC_CAP_INTERNAL);
+  UserNamesBlob* b = (UserNamesBlob*)nvsBlobAlloc(sizeof(UserNamesBlob));
   if (!b) return ESP_ERR_NO_MEM;
   memset(b, 0, sizeof(UserNamesBlob));
   b->version = USRNAMES_VERSION;
@@ -1189,7 +1203,7 @@ static inline esp_err_t usrnames_save_h(nvs_handle_t h) {
 
 static inline esp_err_t usrnames_load_h(nvs_handle_t h) {
   size_t sz = sizeof(UserNamesBlob);
-  UserNamesBlob* b = (UserNamesBlob*)heap_caps_malloc(sz, MALLOC_CAP_INTERNAL);
+  UserNamesBlob* b = (UserNamesBlob*)nvsBlobAlloc(sz);
   if (!b) return ESP_ERR_NO_MEM;
   esp_err_t err = nvs_get_blob(h, "usrnames", b, &sz);
   if (err == ESP_OK && sz == sizeof(UserNamesBlob) && b->version == USRNAMES_VERSION) {
@@ -1223,7 +1237,7 @@ static inline void reset_clear_user_pats() {
 }
 
 static inline esp_err_t usrpat_save_h(nvs_handle_t h) {
-  UserPatBlob* b = (UserPatBlob*)heap_caps_malloc(sizeof(UserPatBlob), MALLOC_CAP_INTERNAL);
+  UserPatBlob* b = (UserPatBlob*)nvsBlobAlloc(sizeof(UserPatBlob));
   if (!b) return ESP_ERR_NO_MEM;
   memset(b, 0, sizeof(UserPatBlob));
   b->version = USRPAT_VERSION;
@@ -1249,7 +1263,7 @@ static inline esp_err_t usrpat_save_h(nvs_handle_t h) {
 
 static inline esp_err_t usrpat_load_h(nvs_handle_t h) {
   size_t sz = sizeof(UserPatBlob);
-  UserPatBlob* b = (UserPatBlob*)heap_caps_malloc(sz, MALLOC_CAP_INTERNAL);
+  UserPatBlob* b = (UserPatBlob*)nvsBlobAlloc(sz);
   if (!b) return ESP_ERR_NO_MEM;
   esp_err_t err = nvs_get_blob(h, "usrpat", b, &sz);
   if (err == ESP_OK && sz == sizeof(UserPatBlob) && b->version == USRPAT_VERSION) {
@@ -1278,7 +1292,7 @@ static inline esp_err_t usrpat_load_h(nvs_handle_t h) {
 }
 
 static inline esp_err_t usrpatnames_save_h(nvs_handle_t h) {
-  UserPatNamesBlob* b = (UserPatNamesBlob*)heap_caps_malloc(sizeof(UserPatNamesBlob), MALLOC_CAP_INTERNAL);
+  UserPatNamesBlob* b = (UserPatNamesBlob*)nvsBlobAlloc(sizeof(UserPatNamesBlob));
   if (!b) return ESP_ERR_NO_MEM;
   memset(b, 0, sizeof(UserPatNamesBlob));
   b->version = USRPATNAMES_VERSION;
@@ -1298,7 +1312,7 @@ static inline esp_err_t usrpatnames_save_h(nvs_handle_t h) {
 
 static inline esp_err_t usrpatnames_load_h(nvs_handle_t h) {
   size_t sz = sizeof(UserPatNamesBlob);
-  UserPatNamesBlob* b = (UserPatNamesBlob*)heap_caps_malloc(sz, MALLOC_CAP_INTERNAL);
+  UserPatNamesBlob* b = (UserPatNamesBlob*)nvsBlobAlloc(sz);
   if (!b) return ESP_ERR_NO_MEM;
   esp_err_t err = nvs_get_blob(h, "usrpatnames", b, &sz);
   if (err == ESP_OK && sz == sizeof(UserPatNamesBlob) && b->version == USRPATNAMES_VERSION) {
@@ -1323,7 +1337,7 @@ static inline esp_err_t usrpatnames_load_h(nvs_handle_t h) {
 
 /* ── motion (sparse: allocated lanes only) ────────────────────────────────── */
 static inline esp_err_t motion_save_h(nvs_handle_t h) {
-  MotionBlob* b = (MotionBlob*)heap_caps_malloc(sizeof(MotionBlob), MALLOC_CAP_INTERNAL);
+  MotionBlob* b = (MotionBlob*)nvsBlobAlloc(sizeof(MotionBlob));
   if (!b) return ESP_ERR_NO_MEM;
   memset(b, 0, sizeof(MotionBlob));
   b->version = MOTION_VERSION;
@@ -1358,7 +1372,7 @@ static inline esp_err_t motion_save_h(nvs_handle_t h) {
 
 static inline esp_err_t motion_load_h(nvs_handle_t h) {
   size_t sz = sizeof(MotionBlob);
-  MotionBlob* b = (MotionBlob*)heap_caps_malloc(sz, MALLOC_CAP_INTERNAL);
+  MotionBlob* b = (MotionBlob*)nvsBlobAlloc(sz);
   if (!b) return ESP_ERR_NO_MEM;
   esp_err_t err = nvs_get_blob(h, "motion", b, &sz);
   if (err == ESP_OK && sz == sizeof(MotionBlob) && b->version == MOTION_VERSION) {
@@ -1542,6 +1556,8 @@ static inline bool settings_save_scoped(ResetScope scope) {
   nvs_handle_t h;
   const esp_err_t openErr = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &h);
   if (openErr != ESP_OK) {
+    Serial.printf("[NVS] save: nvs_open FAILED err=%d (%s)\n",
+                  (int)openErr, esp_err_to_name(openErr));
     return false;
   }
 
@@ -1605,6 +1621,15 @@ static inline bool settings_save_scoped(ResetScope scope) {
   nvs_close(h);
 
   const bool ok = (err == ESP_OK);
+  if (!ok) {
+    /* Name the exact failure so heap-exhaustion (ESP_ERR_NO_MEM) is distinct
+     * from a full partition (ESP_ERR_NVS_NOT_ENOUGH_SPACE).  Also report free
+     * heap so a borderline DRAM condition is visible at a glance. */
+    Serial.printf("[NVS] save scope=%d FAILED err=%d (%s)  DRAMfree=%u PSRAMfree=%u\n",
+                  (int)scope, (int)err, esp_err_to_name(err),
+                  (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+                  (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
+  }
   if (ok) settings_dirty.store(false, std::memory_order_release);
   return ok;
 }
@@ -1686,7 +1711,7 @@ static inline bool settings_load() {
    * Arduino task stack (8 KB total) left only ~4 KB headroom when combined
    * with nvs_get_blob's own stack usage, making stack overflow possible on
    * deep call chains.  Heap-allocate instead; freed before any sync path. */
-  uint8_t* blob = (uint8_t*)heap_caps_malloc(sizeof(AllSettings), MALLOC_CAP_INTERNAL);
+  uint8_t* blob = (uint8_t*)nvsBlobAlloc(sizeof(AllSettings));
   if (!blob) { nvs_close(h); return false; }
   size_t sz = sizeof(AllSettings);
   err = nvs_get_blob(h, "settings", blob, &sz);
@@ -1771,7 +1796,7 @@ static inline bool settings_load_scoped(ResetScope scope) {
       if (nvs_open(NVS_NAMESPACE, NVS_READONLY, &h) != ESP_OK) return false;
       /* [FIX-STACK] Same heap-alloc fix as settings_load: avoid two AllSettings
        * objects (~3680 bytes) on the nvs_load_task stack simultaneously.       */
-      uint8_t* blob = (uint8_t*)heap_caps_malloc(sizeof(AllSettings), MALLOC_CAP_INTERNAL);
+      uint8_t* blob = (uint8_t*)nvsBlobAlloc(sizeof(AllSettings));
       if (!blob) { nvs_close(h); return false; }
       size_t sz = sizeof(AllSettings);
       esp_err_t e = nvs_get_blob(h, "settings", blob, &sz);
