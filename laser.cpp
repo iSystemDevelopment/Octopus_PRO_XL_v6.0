@@ -584,6 +584,7 @@ void IRAM_ATTR laser_sweep_task(void* pvParameters) {
         if (nowUs - stateStartUs >= settleTimeUs) {
           fastWrite(PIN_PEAK_CLR, LOW); /* reset 74HC74 (clear latched peak)    */
           resetLaserPhase();            /* Phase 0 → first pulse is always full [L2] */
+          esp_rom_delay_us(1u);         /* guarantee soft-sync latches (1 µs >> 100 ns timer edge) */
           laserForString(ci);           /* Apply colour + hue ADSR envelope          */
           /* [SYNC] Tell the ADC DMA task which string is now illuminated so it
          * attributes the RMS amplitude to g_kalman_ac[ci]/g_last_good_data[ci].
