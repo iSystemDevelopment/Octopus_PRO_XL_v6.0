@@ -298,12 +298,15 @@ static constexpr uint32_t LASER_STAB_US = 200;   /* ACTIVE: beam+comparator sett
  * last 2 faint beams.  Raise toward 600 if any straight-move tail remains. */
 static constexpr uint32_t SETTLE_MIN_US = 600;   /* ACTIVE: min galvo settle  */
 static constexpr uint32_t SETTLE_MAX_US = 800;   /* ACTIVE: settle cap (big moves) */
-/* GALVO_REVERSE_EXTRA_US — extra dark-settle added to the move INTO and OUT OF a
- * scan turnaround (the 2 endpoint beams), where the galvo physically reverses
- * and rings/overshoots more than a same-direction step.  This is the targeted
- * fix for "6 beams clean, 2 with little faint".  Raise toward 400 if a faint
- * still clings to either end beam; lower to 0 to disable. */
-static constexpr uint32_t GALVO_REVERSE_EXTRA_US = 250;
+/* GALVO_REVERSE_EXTRA_US — extra dark-settle added to the THREE moves nearest
+ * each scan turnaround (reverseSettleCnt=3 in laser.cpp).  The galvo reverses
+ * at full scan velocity, producing overshoot/ringing that bleeds across more
+ * than 2 strings.  Raised 250→500 µs so the physical-extreme strings (1 and 8)
+ * get 1228 µs total settle (728 base + 500) instead of 978 µs, which was
+ * insufficient to clear the ringing at the DAC hard limits.  Lower toward 250
+ * if the extra latency becomes audible as a scan-rate drop; raise toward 700
+ * if faint lines still cling to the outer beams. */
+static constexpr uint32_t GALVO_REVERSE_EXTRA_US = 500;
 
 static constexpr uint32_t BEAM_GATE_HOLD_MAX = 500;
 /* [STUCK-FIX] Upper bound for the anti-stuck fail-safe timeout (beamStuckReleaseMs,

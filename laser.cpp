@@ -741,14 +741,18 @@ void IRAM_ATTR laser_sweep_task(void* pvParameters) {
           ci = currentIndex.load(std::memory_order_relaxed) & 7;
 
           /* ── Direction-reversal detection (faint endpoint-beam fix) ─────
-         * The scan is ping-pong; at each turnaround the galvo physically
-         * reverses and overshoots/rings more than a straight one-string step,
-         * which left the 2 endpoint beams with a faint tail.  When direction
-         * flips, tag the next TWO moves (into the turnaround + out of it) for
-         * extra dark settle so those beams come out as clean as the middle six. */
+         * The scan is ping-pong.  At each turnaround the galvo reverses at
+         * full scan velocity, producing overshoot and ringing that decays
+         * over several moves — not just the endpoint.  Previously 2 moves
+         * were tagged; strings 1 and 8 (the physical extremes) still showed
+         * faint lines because 978 µs settle was not enough, and string 6 /
+         * index 5 (the third string from the right) got no extra settle at
+         * all.  Bumped to THREE moves so the ringing region is fully covered.
+         * GALVO_REVERSE_EXTRA_US raised to 500 µs (globals.h) so the total
+         * settle at the extreme positions is 1228 µs instead of 978 µs. */
           const int8_t curScanDir = (int8_t)direction.load(std::memory_order_relaxed);
           if (curScanDir != lastScanDir) {
-            reverseSettleCnt = 2u;
+            reverseSettleCnt = 3u;
             lastScanDir = curScanDir;
           }
 
