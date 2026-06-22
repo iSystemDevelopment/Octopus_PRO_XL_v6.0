@@ -792,8 +792,14 @@ void IRAM_ATTR laser_sweep_task(void* pvParameters) {
                 floorScale = 120.0f;          /* ≥120 mV swing before it fills   */
                 break;
               case TelemetryView::CC_OUT_14BIT:
-                sampleVal = (float)dbeamAmplitude.load(std::memory_order_relaxed);
-                floorScale = 2000.0f;
+                /* Fixed full-scale = 14-bit ceiling (0..16383 = 0..100 % expression).
+                 * floorScale=16383 means fs = max(scopePeak, 16383) never drops below
+                 * 16383, so the auto-range is effectively bypassed: screen-top = 100 %
+                 * expression, screen-bottom = 0 %, stable regardless of peak seen.
+                 * The old floorScale=2000 let scopePeak track the hand's closest
+                 * approach, saturating the display at that distance — ceiling at half. */
+                sampleVal  = (float)dbeamAmplitude.load(std::memory_order_relaxed);
+                floorScale = 16383.0f;
                 break;
               case TelemetryView::SIGNAL_SNR:
                 portENTER_CRITICAL(&patchMux);
