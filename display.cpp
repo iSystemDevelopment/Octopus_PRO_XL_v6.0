@@ -143,13 +143,15 @@ void drawSaveToastIfActive() {
       (int32_t)(g_saveFlashMs.load(std::memory_order_relaxed) - millis()) > 0;
   if (!saving && !done && !failed) return;
 
-  const int16_t w = saving ? 44 : (failed ? 52 : 46), h = 13;
+  const int16_t w = saving ? 40 : (failed ? 52 : 46), h = 13;
   const int16_t x = (SCREEN_W - w) / 2, y = 1;
   display.fillRoundRect(x, y, w, h, 3, SH110X_WHITE);
   display.setTextColor(SH110X_BLACK);
   display.setTextSize(1);
-  display.setCursor(x + (failed ? 4 : (saving ? 8 : 6)), y + 3);
-  display.print(saving ? F("WAIT…") : (failed ? F("FAILED!") : F("DONE!")));
+  display.setCursor(x + (failed ? 4 : (saving ? 9 : 6)), y + 3);
+  /* ASCII only — Adafruit GFX has no glyph for the UTF-8 ellipsis (…), which
+   * rendered as garbage bytes after the word.  Plain "WAIT". */
+  display.print(saving ? F("WAIT") : (failed ? F("FAILED!") : F("DONE!")));
   display.setTextColor(SH110X_WHITE);
 }
 
