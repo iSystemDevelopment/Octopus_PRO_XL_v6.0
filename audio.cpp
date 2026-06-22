@@ -763,8 +763,8 @@ bool init_audio_system() {
    * boot (see control_surface_task) — if any task shows < 512 bytes free, bump
    * it back up. */
   xTaskCreatePinnedToCore(audio_synthesis_task, "AudioSynth", 16384, NULL, 24, &hAudioTask,   0);
-  xTaskCreatePinnedToCore(display_refresh_task,      "OledRender",  16384, NULL,  14, &hDisplayTask,0);
-  xTaskCreatePinnedToCore(control_surface_task,    "ControlPoll",8192, NULL, 10, &hControlTask,0); 
+  xTaskCreatePinnedToCore(display_refresh_task,      "OledRender",  16384, NULL,  18, &hDisplayTask,0);//14
+  xTaskCreatePinnedToCore(control_surface_task,    "ControlPoll",8192, NULL, 16, &hControlTask,0); //10
   /* [DBEAM-FIX] Priority 8 → 19.  At 8 this task sat BELOW OledRender(14) and
    * ControlPoll(10), so under full play (audio 65–98 %) it was the lowest-priority
    * task on a saturated core → starved → ADC ring backed up → "D-BEAM dead /
@@ -799,8 +799,8 @@ bool init_audio_system() {
 
 
   xTaskCreatePinnedToCore(laser_sweep_task,          "LaserSweep",  8192,  NULL, 24, &hLaserTask,  1);
-  xTaskCreatePinnedToCore(sequencer_background_task,"SeqSysexOut", 4096, NULL, 12, &hSeqBgTask, 1);
-  xTaskCreatePinnedToCore(midi_usb_event_task,  "MidiUsbRx",  8192, NULL, 6, &hMidiTask,  1);
+  xTaskCreatePinnedToCore(sequencer_background_task,"SeqSysexOut", 4096, NULL, 14, &hSeqBgTask, 1);//12
+  xTaskCreatePinnedToCore(midi_usb_event_task,  "MidiUsbRx",  8192, NULL, 12, &hMidiTask,  1);//6
   
   /* [USB-ONLY] MIDI RX always runs: it polls USB MIDI for OctopusApp 0x7D SysEx
    * control + optional instrument play-in (DIN UART removed in v6.0).            */
@@ -819,7 +819,7 @@ bool init_audio_system() {
    * in sequence with comfortable margin for future IDF stack growth.
    * Task is NOT IRAM_ATTR — NVS/flash paths execute from flash; marking the task
    * IRAM_ATTR made cache-off windows riskier on some IDF builds. */
-  xTaskCreatePinnedToCore(settings_save_task, "NvsWorker", 16384, NULL, 3, &hNvsTask, 1);
+  xTaskCreatePinnedToCore(settings_save_task, "NvsWorker", 16384, NULL, 9, &hNvsTask, 1);//3
   Serial.printf("[Audio] DSP online — %u Hz / %u frames / %u Hz PWM\n",
     SAMPLE_RATE, (unsigned)DMA_BUFFER_FRAMES, LASER_PWM_FREQ_HZ);
   return true;
