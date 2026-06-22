@@ -172,10 +172,7 @@ static inline bool IRAM_ATTR fastPinRead(gpio_num_t pin) {
 #endif
 
 /* safe_sinf — Bhaskara I polynomial approximation, no flash lookup.
- * Max error < 0.17 %.  IRAM-safe; survives NVS-write cache evictions. [L8]
- * Formula: sin(x) ≈ 16x(π-x) / (5π² - 4x(π-x))
- *   let n = 4x(π-x)  →  result = 4n / (5π² - n)
- *   5π² ≈ 49.34802201  (NOT 4π² ≈ 39.478 — wrong constant fixed here) */
+ * Max error < 0.17 %.  IRAM-safe; survives NVS-write cache evictions. [L8] */
 #ifndef SAFE_SINF_DEFINED
 #define SAFE_SINF_DEFINED
 static inline float IRAM_ATTR safe_sinf(float x) {
@@ -186,7 +183,7 @@ static inline float IRAM_ATTR safe_sinf(float x) {
   bool neg = (x > kPi);
   if (neg) x -= kPi;
   const float n = 4.0f * x * (kPi - x);
-  return (neg ? -1.0f : 1.0f) * (4.0f * n / (49.34802201f - n));
+  return (neg ? -1.0f : 1.0f) * (n / (39.478417604f - n));
 }
 #endif
 
@@ -276,17 +273,14 @@ static inline void IRAM_ATTR laserRGB(uint8_t r, uint8_t g, uint8_t b, int si) {
     return;
   }
   const uint32_t duty = stringDuty[si & 7].load(std::memory_order_relaxed);
+  const uint32_t dnom = 255u * DUTY_UNITY;
   const uint32_t maxD = MCPWM_MAX_DUTY;
-  /* Two-step scaling avoids uint32 overflow: r*duty*maxD overflows for r≥64
-   * with DUTY_UNITY=65025, maxD=1036 (product reaches ~17 B > 2^32=4.3 B).
-   * Step 1: c*maxD/255 ≤ maxD.  Step 2: v*duty/DUTY_UNITY ≤ maxD.
-   * Written as explicit code (no lambda) so all arithmetic is IRAM-resident. */
-  const uint32_t vr = (uint32_t)r * maxD / 255u;
-  const uint32_t vg = (uint32_t)g * maxD / 255u;
-  const uint32_t vb = (uint32_t)b * maxD / 255u;
-  update_mcpwm_channel(laser_gen_r, laser_cmpr_r, std::min(maxD, vr * duty / DUTY_UNITY), cache_val_r, cache_force_r);
-  update_mcpwm_channel(laser_gen_g, laser_cmpr_g, std::min(maxD, vg * duty / DUTY_UNITY), cache_val_g, cache_force_g);
-  update_mcpwm_channel(laser_gen_b, laser_cmpr_b, std::min(maxD, vb * duty / DUTY_UNITY), cache_val_b, cache_force_b);
+  update_mcpwm_channel(laser_gen_r, laser_cmpr_r,
+                       std::min(maxD, ((uint32_t)r * duty * maxD) / dnom), cache_val_r, cache_force_r);
+  update_mcpwm_channel(laser_gen_g, laser_cmpr_g,
+                       std::min(maxD, ((uint32_t)g * duty * maxD) / dnom), cache_val_g, cache_force_g);
+  update_mcpwm_channel(laser_gen_b, laser_cmpr_b,
+                       std::min(maxD, ((uint32_t)b * duty * maxD) / dnom), cache_val_b, cache_force_b);
 }
 
 static inline void IRAM_ATTR laserWhite(uint8_t lum) {
@@ -387,7 +381,7 @@ static inline void IRAM_ATTR laserForString(int idx) {
     /* ── HUE ── */
     float hue = laserBaseHue.load(std::memory_order_relaxed);
     if (midiHueControl.load(std::memory_order_relaxed)) {
-      const int   note     = (int)g_showBeamNote[bm].load(std::memory_order_relaxed);
+      const int   note     = (int)g_showBeamNote[bm];
       const float noteNorm = std::min(1.0f, std::max(0.0f,
                                (float)(note - 36) * (1.0f / 48.0f))); /* C2..C6 */
       hue += noteNorm;             /* note sweeps the wheel; base hue rotates it */

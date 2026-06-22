@@ -733,18 +733,14 @@ void IRAM_ATTR laser_sweep_task(void* pvParameters) {
           ci = currentIndex.load(std::memory_order_relaxed) & 7;
 
           /* ── Direction-reversal detection (faint endpoint-beam fix) ─────
-         * The scan is ping-pong.  At each turnaround the galvo reverses at
-         * full scan velocity, producing overshoot and ringing that decays
-         * over several moves — not just the endpoint.  Previously 2 moves
-         * were tagged; strings 1 and 8 (the physical extremes) still showed
-         * faint lines because 978 µs settle was not enough, and string 6 /
-         * index 5 (the third string from the right) got no extra settle at
-         * all.  Bumped to THREE moves so the ringing region is fully covered.
-         * GALVO_REVERSE_EXTRA_US raised to 500 µs (globals.h) so the total
-         * settle at the extreme positions is 1228 µs instead of 978 µs. */
+         * The scan is ping-pong; at each turnaround the galvo physically
+         * reverses and overshoots/rings more than a straight one-string step,
+         * which left the 2 endpoint beams with a faint tail.  When direction
+         * flips, tag the next TWO moves (into the turnaround + out of it) for
+         * extra dark settle so those beams come out as clean as the middle six. */
           const int8_t curScanDir = (int8_t)direction.load(std::memory_order_relaxed);
           if (curScanDir != lastScanDir) {
-            reverseSettleCnt = 3u;
+            reverseSettleCnt = 2u;
             lastScanDir = curScanDir;
           }
 
@@ -784,17 +780,6 @@ void IRAM_ATTR laser_sweep_task(void* pvParameters) {
               view != TelemetryView::STACK_STATS && view != TelemetryView::CAL_BASELINE) {
             float sampleVal = 0.0f;
             float floorScale = 1.0f;
-            /* [DBEAM-SCOPE-FIX] DBEAM EXPR uses a FIXED full-scale, not auto-range.
-             * dbeamAmplitude is a normalised 14-bit expression value (0..16383 =
-             * 0..100 % hand expression, set in dbeam.cpp as curved*16383).  Auto-
-             * ranging it made the trace scale jump around and amplified idle noise
-             * to fill the screen, so the waveform never represented true expression
-             * level.  A fixed 0..16383 scale gives a stable trace where screen-top =
-             * 100 % expression, screen-bottom = 0 %, and each graticule division is a
-             * fixed ~20 % of expression.  (NB: NOT 4095 — that is the 12-bit raw ADC
-             * range; the EXPR value is 14-bit and a 4095 ceiling would clip every
-             * reading above 25 % flat against the top of the display.) */
-            bool fixedScale = false;
             switch (view) {
               case TelemetryView::RAW_AC:
                 /* AC RMS above the noise floor: idle ≈ 0 (rests on the centre
@@ -807,9 +792,8 @@ void IRAM_ATTR laser_sweep_task(void* pvParameters) {
                 floorScale = 120.0f;          /* ≥120 mV swing before it fills   */
                 break;
               case TelemetryView::CC_OUT_14BIT:
-                sampleVal  = (float)dbeamAmplitude.load(std::memory_order_relaxed);
-                floorScale = 16383.0f;        /* fixed 14-bit full-scale (0..100 %) */
-                fixedScale = true;
+                sampleVal = (float)dbeamAmplitude.load(std::memory_order_relaxed);
+                floorScale = 2000.0f;
                 break;
               case TelemetryView::SIGNAL_SNR:
                 portENTER_CRITICAL(&patchMux);
@@ -820,20 +804,13 @@ void IRAM_ATTR laser_sweep_task(void* pvParameters) {
               default: break;
             }
 
+            /* Auto-range: fast attack to new peaks, slow release so old peaks
+             * fade; reset when the user switches views. */
+            if (view != scopePeakView) { scopePeak = floorScale; scopePeakView = view; }
             const float a = fabsf(sampleVal);
-            float fs;
-            if (fixedScale) {
-              /* Stable, absolute scale — no peak tracking. */
-              fs = floorScale;
-              scopePeakView = view;           /* keep view-change reset coherent */
-            } else {
-              /* Auto-range: fast attack to new peaks, slow release so old peaks
-               * fade; reset when the user switches views. */
-              if (view != scopePeakView) { scopePeak = floorScale; scopePeakView = view; }
-              if (a > scopePeak) scopePeak = a;
-              else               scopePeak *= 0.992f;
-              fs = std::max(scopePeak, floorScale);
-            }
+            if (a > scopePeak) scopePeak = a;
+            else               scopePeak *= 0.992f;
+            const float fs = std::max(scopePeak, floorScale);
 
             const int wp = scopeWritePtr.load(std::memory_order_relaxed);
             scopeHistory[wp] = (uint8_t)std::min(std::max((a / fs) * 245.f, 0.f), 255.f);
