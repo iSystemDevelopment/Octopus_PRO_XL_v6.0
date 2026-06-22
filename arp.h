@@ -94,7 +94,12 @@ constexpr uint8_t GATE_PCT[8] = { 100, 75, 50, 38, 25, 19, 13, 6 };
 struct Engine {
   int8_t  notes[MAX_NOTES];      /* sorted ascending for Up/Down patterns   */
   int8_t  raw[MAX_NOTES];        /* latch order for As-Played               */
-  int8_t  rows[MAX_NOTES];       /* source grid row per latched note        */
+  int8_t  rows[MAX_NOTES];       /* source grid row per SORTED note (notes[i]) */
+  /* [FIX-ASPLAYED-ROW] Source grid row per LATCH-order note (raw[i]).  rows[]
+   * is permuted to follow the sorted notes[], so it is the WRONG row for the
+   * latch-order raw[] used by AS_PLAYED.  Keeping the unsorted rows here lets
+   * AS_PLAYED report the beam that actually played each note. */
+  int8_t  raw_rows[MAX_NOTES];   /* source grid row per latch-order note     */
   int8_t  count = 0;
   int8_t  step_idx = 0;
   uint32_t last_period = UINT32_MAX;
@@ -105,7 +110,31 @@ struct Engine {
   int8_t   last_play_idx = 0;
   int8_t   last_play_row = 0;
   uint32_t rng = 0xA5A5A5A5u;
+  /* [FIX-ARP-RACE] reset_pending decouples cross-core reset requests from
+   * the audio task's read of non-atomic Engine fields.  seq_stop() and
+   * harpArpCommitLatch(n=0) run on Core 1 (MIDI task); the Engine fields
+   * (count, gate_open, step_idx…) are non-atomic and read by the audio task
+   * on Core 0.  Instead of writing them directly from Core 1 (data race),
+   * the caller only sets this flag (release) and the audio task applies the
+   * reset at the next safe point (acquire) — exclusively on its own core.  */
+  std::atomic<bool> reset_pending{ false };
 
+  /* reset_safe() — call ONLY from the audio task (Core 0). */
+  void reset_safe() {
+    count = 0;
+    step_idx = 0;
+    last_period = UINT32_MAX;
+    gate_off_tick = 0;
+    gate_open = false;
+    sounding_midi = -1;
+    sounding_row = -1;
+    last_play_idx = 0;
+    last_play_row = 0;
+    reset_pending.store(false, std::memory_order_release);
+  }
+
+  /* reset() — for use ONLY within the audio task (boot, same-core stop).
+   * Cross-core callers must use request_reset() instead.                  */
   void reset() {
     count = 0;
     step_idx = 0;
@@ -114,18 +143,32 @@ struct Engine {
     gate_open = false;
     sounding_midi = -1;
     sounding_row = -1;
-    /* [FIX-3] Clear playback-cursor fields so a stale row from a previous
-     * session is never used as the first note's beam/hue assignment.      */
     last_play_idx = 0;
     last_play_row = 0;
+    reset_pending.store(false, std::memory_order_relaxed);
+  }
+
+  /* request_reset() — safe to call from ANY core/task.  The audio task
+   * will apply the reset on its next buffer entry via check_reset().      */
+  void request_reset() {
+    reset_pending.store(true, std::memory_order_release);
+  }
+
+  /* check_reset() — call at the START of each audio buffer tick function
+   * before touching any other Engine fields.                               */
+  bool check_reset() {
+    if (!reset_pending.load(std::memory_order_acquire)) return false;
+    reset_safe();
+    return true;
   }
 
   void latchNotes(const int8_t* midi, const int8_t* src_rows, int n) {
     count = (int8_t)std::min(n, MAX_NOTES);
     for (int i = 0; i < count; ++i) {
-      raw[i]   = midi[i];
-      rows[i]  = src_rows[i];
-      notes[i] = midi[i];
+      raw[i]      = midi[i];
+      rows[i]     = src_rows[i];
+      raw_rows[i] = src_rows[i];   /* [FIX-ASPLAYED-ROW] latch-order copy, never sorted */
+      notes[i]    = midi[i];
     }
     /* [FIX-2] Sort notes[] ascending AND keep rows[] in sync — rows[i] must
      * always be the source beam for notes[i] after sorting.  Without this
@@ -218,7 +261,9 @@ struct Engine {
       idx = step_idx % count;
       step_idx = (int8_t)((step_idx + 1) % count);
       last_play_idx = (int8_t)idx;
-      last_play_row = rows[idx];
+      /* [FIX-ASPLAYED-ROW] AS_PLAYED returns raw[idx] (latch order), so its row
+       * must come from the latch-order raw_rows[], NOT the sorted rows[]. */
+      last_play_row = raw_rows[idx];
       return noteAtPatternIndex(AS_PLAYED, idx);
     default:
       idx = step_idx % count;
@@ -230,10 +275,14 @@ struct Engine {
     return noteAtPatternIndex(pattern, idx);
   }
 
+  /* Look up the source beam of a latched MIDI note.  Searches raw[] (latch
+   * order), so it must return the latch-order raw_rows[i] — not the sorted
+   * rows[i], which belongs to notes[i].  [FIX-ASPLAYED-ROW] */
   int8_t rowForMidi(int8_t midi) const {
+    if (count <= 0) return 0;
     for (int i = 0; i < count; ++i)
-      if (raw[i] == midi) return rows[i];
-    return rows[0];
+      if (raw[i] == midi) return raw_rows[i];
+    return raw_rows[0];
   }
 };
 

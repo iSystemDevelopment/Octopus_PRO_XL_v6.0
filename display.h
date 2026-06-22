@@ -524,8 +524,12 @@ static inline void drawScrollingText(int16_t x, int16_t y, int16_t maxW,
     return;
   }
   /* Scrolling needed — move left by one char every 120 ms, pause at end */
-  static ScrollState s_states[2];
-  ScrollState& ss = s_states[stateIdx & 1];
+  /* [IDM-BUG1b] 3 slots — slot 0: L3 key, slot 1: L3 value, slot 2: dashboard
+   * preset name.  Previously only 2 slots forced the harp dashboard preset name
+   * to share slot 0 with the L3 key name.  Views are mutually exclusive so the
+   * hash-reset saved it, but the scroll position reset on every view switch. */
+  static ScrollState s_states[3];
+  ScrollState& ss = s_states[stateIdx % 3];
   /* Simple djb2-style hash to detect content change */
   uint32_t h = 5381u;
   for (const char* p = text; *p; ++p) h = h * 33u ^ (uint8_t)*p;
@@ -563,9 +567,10 @@ inline void handleTelemetryPageEncoder(int16_t delta) {
 /* ── Single external entry point ────────────────────────────────────────── */
 void renderUIState();
 void drawAppConnectedPage(); /* [A5] shown when OctopusApp is connected */
-bool renderStepBarRegionIfVisible(); /* [PERF] partial step-bar redraw (display.cpp) */
+bool renderStepBarRegionIfVisible(); /* [PERF] partial step-bar redraw (display.cpp)  */
+bool renderDbeamBarIfVisible();      /* [PERF] partial D-BEAM bar redraw (display.cpp) */
 bool viewIsSeqMatrix();              /* [PERF] SEQ MATRIX grid on screen? (display.cpp)*/
-void displayFlushDiff();             /* [PERF] page-diff I2C flush (display.cpp)      */
-void drawSaveToastIfActive();        /* [SYNC-FIX] "SAVED" pill overlay (display.cpp) */
+void displayFlushDiff();             /* [PERF] page-diff I2C flush (display.cpp)       */
+void drawSaveToastIfActive();        /* [SYNC-FIX] "SAVED" pill overlay (display.cpp)  */
 
 #endif /* DISPLAY_H */

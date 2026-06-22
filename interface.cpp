@@ -278,37 +278,42 @@ void updateHardwareParameter(uint8_t l1, uint8_t l2, int16_t delta) {
 
   /* ── 0: HARP SETUP — beam + calibration ─────────────────────────────── */
   case 0:
+    /* [FIX-ATOM-LOCK] l2=10/11/12 are std::atomic<> stores that don't need patchMux.
+     * Split: non-atomic hw fields (0-8) under patchMux; atomic params (10-12) outside.
+     * Case 7 (margin) still exits patchMux early to call computeHardwareDACThreshold
+     * outside the lock (that function acquires patchMux itself).               */
+    if (l2 >= 10) {
+      /* Atomics — no spinlock required */
+      switch (l2) {
+      case 10: fogRejectEnabled.store(delta > 0 ? true : (delta < 0 ? false
+                    : !fogRejectEnabled.load(std::memory_order_relaxed)),
+                    std::memory_order_relaxed); break;
+      case 11: fogRejectMargin.store(constrain(
+                    fogRejectMargin.load(std::memory_order_relaxed) + delta * 25,
+                    FOG_MARGIN_MIN, FOG_MARGIN_MAX), std::memory_order_relaxed); break;
+      case 12: laserScreensaver.store(delta > 0 ? true : (delta < 0 ? false
+                    : !laserScreensaver.load(std::memory_order_relaxed)),
+                    std::memory_order_relaxed); break;
+      }
+      break;
+    }
     portENTER_CRITICAL(&patchMux);
     switch (l2) {
     case 0: beamGateHoldMs = (uint32_t)constrain(
                 (int32_t)beamGateHoldMs + delta * 25, 0, (int32_t)BEAM_GATE_HOLD_MAX); break;
-    case 1: scaleWhiteLevel[scale]      = (uint8_t)constrain((int)scaleWhiteLevel[scale]     + delta*4, 0, 255); break;
-    case 2: scaleTouchConfirm[scale]    = (uint8_t)constrain((int)scaleTouchConfirm[scale]   + delta,   CONFIRM_MIN, CONFIRM_MAX); break;
-    case 3: scaleReleaseConfirm[scale]  = (uint8_t)constrain((int)scaleReleaseConfirm[scale] + delta,   CONFIRM_MIN, CONFIRM_MAX); break;
+    case 1: scaleWhiteLevel[scale]     = (uint8_t)constrain((int)scaleWhiteLevel[scale]     + delta*4, 0, 255); break;
+    case 2: scaleTouchConfirm[scale]   = (uint8_t)constrain((int)scaleTouchConfirm[scale]   + delta,   CONFIRM_MIN, CONFIRM_MAX); break;
+    case 3: scaleReleaseConfirm[scale] = (uint8_t)constrain((int)scaleReleaseConfirm[scale] + delta,   CONFIRM_MIN, CONFIRM_MAX); break;
     case 4: scaleR[scale] = (uint8_t)constrain((int)scaleR[scale] + delta*5, 0, 255); break;
     case 5: scaleG[scale] = (uint8_t)constrain((int)scaleG[scale] + delta*5, 0, 255); break;
     case 6: scaleB[scale] = (uint8_t)constrain((int)scaleB[scale] + delta*5, 0, 255); break;
-    /* [STUCK-FIX] Anti-stuck fail-safe timeout (ms, 0 = disabled). Global, not
-     * per-scale — the laser task reads beamStuckReleaseMs directly. */
-    case 8: beamStuckReleaseMs = (uint32_t)constrain(
-                (int32_t)beamStuckReleaseMs + delta * 25, 0, (int32_t)BEAM_STUCK_RELEASE_MAX); break;
     case 7: scaleMargin[scale] = (uint16_t)constrain((int)scaleMargin[scale] + delta*10, 0, 2000);
             portEXIT_CRITICAL(&patchMux);
             for (int i = 0; i < MAX_STRINGS; ++i) computeHardwareDACThreshold(i, 0.f);
             return;
-    /* [FOG] Fog-reject module (isolated branch) — enable toggle + differential
-     * margin.  Global atomics; no patchMux needed but harmless inside it. */
-    case 10: fogRejectEnabled.store(delta > 0 ? true : (delta < 0 ? false
-                  : !fogRejectEnabled.load(std::memory_order_relaxed)),
-                  std::memory_order_relaxed); break;
-    case 11: fogRejectMargin.store(constrain(
-                  fogRejectMargin.load(std::memory_order_relaxed) + delta * 25,
-                  FOG_MARGIN_MIN, FOG_MARGIN_MAX), std::memory_order_relaxed); break;
-    /* [LASER-SHOW v2] Closed-harp idle screensaver (moved here from LASER SHOW —
-     * it is a laser-harp idle behaviour, unrelated to the projector show). */
-    case 12: laserScreensaver.store(delta > 0 ? true : (delta < 0 ? false
-                  : !laserScreensaver.load(std::memory_order_relaxed)),
-                  std::memory_order_relaxed); break;
+    /* [STUCK-FIX] Anti-stuck fail-safe timeout (ms, 0 = disabled). Global, not per-scale. */
+    case 8: beamStuckReleaseMs = (uint32_t)constrain(
+                (int32_t)beamStuckReleaseMs + delta * 25, 0, (int32_t)BEAM_STUCK_RELEASE_MAX); break;
     }
     portEXIT_CRITICAL(&patchMux);
     break;
@@ -475,10 +480,15 @@ void updateHardwareParameter(uint8_t l1, uint8_t l2, int16_t delta) {
               pbMapping.upSemi.store(v, std::memory_order_relaxed);
               pbMapping.downSemi.store(v, std::memory_order_relaxed);
               if (isAppConnected()) txSysex(CMD_PB_RANGE, (uint16_t)v); break; }
-    case 1: if (delta != 0) {
-              const bool en = !pbMapping.enabled.load(std::memory_order_relaxed);
-              pbMapping.enabled.store(en, std::memory_order_relaxed);
-              if (isAppConnected()) txSysex(CMD_PB_ENABLE, en ? 16383u : 0u); break; }
+    case 1: { /* [FIX-PB-FALL] break was inside the if block — if delta==0 execution
+               * fell through to case 2 and silently corrupted wireHarpMidiChannel.
+               * Break is now unconditional, outside the if body. */
+              if (delta != 0) {
+                const bool en = !pbMapping.enabled.load(std::memory_order_relaxed);
+                pbMapping.enabled.store(en, std::memory_order_relaxed);
+                if (isAppConnected()) txSysex(CMD_PB_ENABLE, en ? 16383u : 0u);
+              }
+              break; }
     case 2: { uint8_t v = (uint8_t)(wrapIndex((int)wireHarpMidiChannel.load()-1,(int)delta,16)+1);
               wireHarpMidiChannel.store(v, std::memory_order_release);
               txSysex(CMD_WIRE_HARP_CH, (uint16_t)v); break; }
@@ -538,10 +548,10 @@ void updateHardwareParameter(uint8_t l1, uint8_t l2, int16_t delta) {
     }
     break;
 
-  /* ── 6: SEQ MATRIX — grid navigation (handled in updateHardwareInterface) */
+  /* ── 6: SEQ MATRIX — grid navigation is intercepted in updateHardwareInterface
+   * before reaching here (l1==6 handler returns early when mstate != MENU_L1).
+   * This case is unreachable in normal operation; kept as a safe no-op. */
   case 6:
-    if      (delta > 0) seqUI_moveRight();
-    else if (delta < 0) seqUI_moveLeft();
     break;
 
   /* ── 7: AUX FX — [C4] replaces dead SEQ SETTINGS ─────────────────────── */
@@ -1295,7 +1305,7 @@ static void reset_persist_task(void*) {
   if (!got || !g_saveLastOk.load(std::memory_order_acquire)) {
     g_restartAfterSave.store(false, std::memory_order_release);
     oledStatusLines("RESET FAILED", nullptr);
-    delay(2000);
+    vTaskDelay(pdMS_TO_TICKS(2000)); /* [FIX-DELAY] cooperative yield */
   }
   /* On success NvsWorker calls esp_restart() — this task never returns. */
   vTaskDelete(nullptr);
@@ -1324,10 +1334,10 @@ void handleScopedReset(ResetScope scope) {
   if (!g_systemReady.load(std::memory_order_acquire)) {
     if (!settings_persist_blocking(scope)) {
       oledStatusLines("RESET FAILED", nullptr);
-      delay(2000);
+      vTaskDelay(pdMS_TO_TICKS(2000)); /* [FIX-DELAY] cooperative yield */
       return;
     }
-    delay(300);
+    vTaskDelay(pdMS_TO_TICKS(300)); /* [FIX-DELAY] cooperative yield */
     esp_restart();
     return;
   }
@@ -1377,7 +1387,10 @@ void handleScopedLoad(ResetScope scope) {
     txSysex(CMD_SESSION_LOAD, 16383u); /* ACK so App can log "load complete" */
   }
 
-  delay(900);
+  /* [FIX-DELAY] Use vTaskDelay so Core-0 cooperative tasks run during the
+   * status-message hold window.  Arduino delay() delegates to vTaskDelay on
+   * ESP32 Arduino, but this makes the intent explicit and avoids confusion. */
+  vTaskDelay(pdMS_TO_TICKS(900));
   menuState.store(MenuState::IDLE, std::memory_order_relaxed);
   displayDirty.store(true, std::memory_order_relaxed);
 }
@@ -1408,12 +1421,13 @@ void updateTaskStackStats() {
   s.dramFree  = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
   s.psramFree = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
 
+  /* [FIX-MINFREE] Include midi in the scan array — it was isolated outside the
+   * loop for no reason, making the logic inconsistent and easy to miss. */
   uint16_t minF = 0xFFFFu;
-  const uint16_t vals[] = { s.audio, s.dbeam, s.seq, s.control,
+  const uint16_t vals[] = { s.audio, s.midi, s.dbeam, s.seq, s.control,
                             s.display, s.laser, s.nvs };
   for (uint16_t v : vals)
     if (v > 0u && v < minF) minF = v;
-  if (s.midi > 0u && s.midi < minF) minF = s.midi;
   s.minFree = (minF == 0xFFFFu) ? 0u : minF;
 
   g_stackStats = s;

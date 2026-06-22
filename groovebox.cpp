@@ -131,6 +131,8 @@ static void seqArpCommitLatch(int8_t* midi, int8_t* rows, int n, bool laser_show
 }
 
 static void seqArpTick(uint32_t tick, bool laser_show) {
+  /* [FIX-ARP-RACE] Apply any pending cross-core reset before touching fields.*/
+  s_seqArp.check_reset();
   if (!seqArpEnabled.load(std::memory_order_relaxed)) return;
   if (s_seqArp.count <= 0) return;
 
@@ -824,7 +826,12 @@ void seq_stop() {
    * before record-off (4) in one ordered ring burst (see echoes below).        */
   seqRecording.store(false, std::memory_order_relaxed);
   std::atomic_thread_fence(std::memory_order_release);
-  s_seqArp.reset();
+  /* [FIX-ARP-RACE] Use request_reset() instead of reset(): seq_stop() may be
+   * called from the MIDI task (Core 1) while the audio task (Core 0) reads
+   * s_seqArp fields in seqArpTick().  Direct reset() of non-atomic fields is
+   * a data race.  request_reset() sets an atomic flag; the audio task applies
+   * the actual reset at the start of its next buffer via check_reset().     */
+  s_seqArp.request_reset();
   for (int i = 0; i < SEQ_POLYPHONY; ++i) release_seq_note(i);
   allNotesOff();
   seq_ext_push(CMD_TRIG_MODE, 0u);
@@ -902,7 +909,8 @@ void IRAM_ATTR sequencer_render_block(uint32_t frames) {
     lastStep = 0xFFFFFFFFu;
     halfGateFired = false;
     lastMelodyMask = lastDrumMask = 0;
-    s_seqArp.reset();
+    /* Safely apply any pending cross-core reset (audio task context). */
+    s_seqArp.reset_safe();
     return;
   }
 
@@ -1589,7 +1597,19 @@ bool IRAM_ATTR gb_seq_fill_buf(int16_t* out_buf, size_t frames) {
     seqVoices[v].osc_mix_q15   = osc2_audible ? (Q15_ONE / 2) : 0;
   }
 
-  const int32_t cut_target = calc_svf_cutoff_hz((float)lp[(int)SynthParam::P_CUTOFF]);
+  /* [OPT-A] Cache calc_svf_cutoff_hz against raw P_CUTOFF — same strategy as
+   * harp.cpp [OPT-A].  calc_svf_cutoff_hz calls h_sinf() (5th-order poly,
+   * ~12 cyc) every buffer; the cutoff only changes on knob/sysex events.   */
+  static uint16_t s_seq_cut_param = 0xFFFFu;
+  static int32_t  s_seq_cut_hz    = -1;
+  {
+    const uint16_t cp = lp[(int)SynthParam::P_CUTOFF];
+    if (cp != s_seq_cut_param) {
+      s_seq_cut_hz    = calc_svf_cutoff_hz((float)cp);
+      s_seq_cut_param = cp;
+    }
+  }
+  const int32_t cut_target = s_seq_cut_hz;
   const int32_t res_target = calc_svf_damping(lp[(int)SynthParam::P_RESONANCE]);
   if (g.cut_cur < 0) {
     g.cut_cur = cut_target;
@@ -1621,6 +1641,10 @@ bool IRAM_ATTR gb_seq_fill_buf(int16_t* out_buf, size_t frames) {
   const bool lfo_tremolo = (lfo_route == 7);
   const bool lfo_do_pitch = (lfo_pitch && lfo_depth_eff > 0);
   const bool has_bend     = (cached_pb != 65536u);
+  /* [OPT-B] Fold pitch-bend into float pitch_mul (same as harp.cpp [OPT-B]).
+   * Eliminates per-osc 64-bit uint muls from the inner voice loop.         */
+  const float eff_bend_f  = has_bend ? ((float)cached_pb * (1.0f / 65536.0f)) : 1.0f;
+  const bool do_pitch_mul = lfo_do_pitch || has_bend;
   const int16_t* const wav_static = WAVE_TABLE_RAM[base_wave];
   const int16_t* const wav2_ptr   = WAVE_TABLE_RAM[base_wave2];
 
@@ -1721,16 +1745,20 @@ bool IRAM_ATTR gb_seq_fill_buf(int16_t* out_buf, size_t frames) {
 
       const int32_t amp_q16 = (int32_t)(el >> 16);
 
+      /* [OPT-B] Single float mul per osc: bend folded via eff_bend_f (constant
+       * per buffer), LFO pitch folded from lfo_pitch_mul (per-sample).
+       * Eliminates up to 2× 64-bit uint muls per voice per sample.          */
+      const float eff_pitch_mul = lfo_do_pitch
+                                  ? (lfo_pitch_mul * eff_bend_f)
+                                  : eff_bend_f;
       uint32_t mstep = seqVoices[v].step;
-      if (has_bend)     mstep = (uint32_t)(((uint64_t)mstep * cached_pb) >> 16);
-      if (lfo_do_pitch) mstep = (uint32_t)((float)mstep * lfo_pitch_mul);
+      if (do_pitch_mul) mstep = (uint32_t)((float)mstep * eff_pitch_mul);
       seqVoices[v].phase += mstep;
       int32_t raw = synth_interpolate_wavetable(wav_ptr, seqVoices[v].phase);
 
       if (seqVoices[v].osc_mix_q15 > 0) {
         uint32_t ms2 = seqVoices[v].step2_target;
-        if (has_bend)     ms2 = (uint32_t)(((uint64_t)ms2 * cached_pb) >> 16);
-        if (lfo_do_pitch) ms2 = (uint32_t)((float)ms2 * lfo_pitch_mul);
+        if (do_pitch_mul) ms2 = (uint32_t)((float)ms2 * eff_pitch_mul);
         seqVoices[v].phase2 += ms2;
         const int32_t osc2 = synth_interpolate_wavetable(wav2_ptr, seqVoices[v].phase2);
         raw = (raw * (Q15_ONE - seqVoices[v].osc_mix_q15)

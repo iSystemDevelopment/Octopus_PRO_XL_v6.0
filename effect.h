@@ -460,15 +460,26 @@ struct InsertSlot {
         break;
       }
       case DynMode::TRANSIENT: {
+        /* [FIX-TRANSIENT] Clamp output: at transient onset dyn_env≈0, so
+         * delta≈|x| and wet = x + |x|*ratio*makeup can reach ±4.45 (preset
+         * "Drum Smack": ratio=3.0, makeup=1.15).  This propagated unclamped
+         * through the pan sum to the master limiter which would then flatten
+         * the very transient shape the TRANSIENT mode was meant to enhance.
+         * fx_clampf keeps the signal in the expected float domain.            */
         const float peak = a;
         dyn_env += (peak - dyn_env) * dyn_rel;
         const float delta = peak - dyn_env;
-        wet = x + delta * dyn_ratio * dyn_makeup;
+        wet = fx_clampf(x + delta * dyn_ratio * dyn_makeup);
         break;
       }
       case DynMode::LIMITER: {
+        /* [FIX-LIMITER] Removed the redundant fx_clampf before the threshold
+         * check.  With dyn_thr < 1.0 (all limiter presets), the threshold
+         * check always fires first — the ±1.0 clamp was a dead code path that
+         * could mask a signal that should be hard-limited at dyn_thr instead.
+         * Apply makeup first, then the threshold ceiling.                    */
         const float lim = dyn_thr;
-        wet = fx_clampf(x * dyn_makeup);
+        wet = x * dyn_makeup;
         if (fabsf(wet) > lim)
           wet = (wet > 0.f ? 1.f : -1.f) * lim;
         break;

@@ -120,10 +120,20 @@ static constexpr size_t DMA_BUFFER_STEREO_BYTES = DMA_BUFFER_FRAMES * 2u * sizeo
 static inline void IRAM_ATTR syncDrumSends() {
   const float rev = drumRevSend.load(std::memory_order_relaxed);
   const float dly = drumDlySend.load(std::memory_order_relaxed);
+  /* [OPT-E] Skip portENTER_CRITICAL when neither value has changed.
+   * portENTER_CRITICAL disables preemption on Core 0 and spinlocks Core 1
+   * every call — ~91×/s even when no D-BEAM is active.  Caching the last
+   * written pair (audio-task-private statics) eliminates the spinlock on
+   * idle frames.  Max delay on a live D-BEAM change: one buffer (~11 ms),
+   * which is imperceptible for an FX send level change.                    */
+  static float s_rev = -1.f, s_dly = -1.f;
+  if (rev == s_rev && dly == s_dly) return;
   portENTER_CRITICAL(&patchMux);
   fx.drumInsert.rev_send = rev;
   fx.drumInsert.dly_send = dly;
   portEXIT_CRITICAL(&patchMux);
+  s_rev = rev;
+  s_dly = dly;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════

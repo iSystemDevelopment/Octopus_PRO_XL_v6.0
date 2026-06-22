@@ -448,7 +448,20 @@ static void drawTelemetryOscilloscope() {
   case TelemetryView::SIGNAL_SNR:   display.print(F("SIGNAL SNR DB"));  break;
   default: return;
   }
-  display.setCursor(92, 0); display.print(F("CPU0"));
+  /* [DBEAM-SCOPE-FIX] DBEAM EXPR shows a live 0..100 % expression read-out (the
+   * fixed-scale trace's numeric reference) instead of the generic "CPU0" tag, so
+   * the absolute level is readable off the now-stable waveform. */
+  if (av == TelemetryView::CC_OUT_14BIT) {
+    const uint16_t amp = (uint16_t)std::min<uint32_t>(16383u,
+                         dbeamAmplitude.load(std::memory_order_relaxed));
+    const int pct = (int)(((uint32_t)amp * 100u) / 16383u);
+    char hdr[6];
+    snprintf(hdr, sizeof hdr, "%3d%%", pct);
+    display.setCursor(SCREEN_W - 4 * CHAR_W, 0);
+    display.print(hdr);
+  } else {
+    display.setCursor(92, 0); display.print(F("CPU0"));
+  }
   display.drawFastHLine(0, 10, SCREEN_W, SH110X_WHITE);
 
   const bool acCoupled = (av == TelemetryView::RAW_AC);
@@ -631,8 +644,11 @@ static void drawHarpDashboard() {
   display.setCursor(LABEL_X, DASH_PATCH_Y + 2);
   display.printf("#%03d ", pi + 1);
   /* Scrolling preset name — fits in remaining width */
+  /* [IDM-BUG1b] Slot 2 — dedicated to the dashboard preset name.
+   * Slot 0 = L3 key, slot 1 = L3 value; using slot 0 here caused a scroll
+   * position reset every time the user entered / exited the menu. */
   drawScrollingText(LABEL_X + 28, DASH_PATCH_Y + 2,
-                    SCREEN_W - LABEL_X - 28, pname, now);
+                    SCREEN_W - LABEL_X - 28, pname, now, 2);
   display.setTextColor(SH110X_WHITE);
 
   /* [UI-CLEAN] Line 2 — scale name (no "Scl:" prefix) + root note, RIGHT-anchored
@@ -806,10 +822,10 @@ static void formatParamValueString(int l1, int l2, char* out, size_t maxB) {
     case 13: snprintf(out, maxB, "%d%%",   (int)(harpEnvCutAmount.load()*100.f)); return;
     case 14: snprintf(out, maxB, "%s",     safeFxName(harpFxIndex.load()  & 15)); return;
     case 15: snprintf(out, maxB, "%s",     safeDynName(harpFxIndexB.load() & 15)); return;
-    case 16: { portENTER_CRITICAL(&patchMux); float v = fx.harpInsert.dly_send;
-               portEXIT_CRITICAL(&patchMux); snprintf(out, maxB, "%d%%", (int)(v*100.f)); return; }
-    case 17: { portENTER_CRITICAL(&patchMux); float v = fx.harpInsert.rev_send;
-               portEXIT_CRITICAL(&patchMux); snprintf(out, maxB, "%d%%", (int)(v*100.f)); return; }
+    /* [DISP-OPT1] Direct float read — no spinlock needed.  On Xtensa ESP32, 32-bit
+     * aligned reads are hardware-atomic.  A slightly stale display value is fine. */
+    case 16: { snprintf(out, maxB, "%d%%", (int)(fx.harpInsert.dly_send * 100.f)); return; }
+    case 17: { snprintf(out, maxB, "%d%%", (int)(fx.harpInsert.rev_send * 100.f)); return; }
     case 18: { const int pi = harpPatchIndex.load(std::memory_order_relaxed) & (NUM_PATCHES - 1);
                char nm[16]; readPresetName(pi, nm);
                snprintf(out, maxB, "#%03d %s", pi + 1, nm); return; }
@@ -872,14 +888,11 @@ static void formatParamValueString(int l1, int l2, char* out, size_t maxB) {
     case 1: snprintf(out, maxB, "%d%%",   (int)(masterAuxDlyFb.load() /0.95f*100.f)); return;
     case 2: snprintf(out, maxB, "%.2f",   masterAuxRevSize.load()); return;
     case 3: snprintf(out, maxB, "%d%%",   (int)(masterAuxRevDamp.load() *100.f)); return;
-    case 4: { portENTER_CRITICAL(&patchMux); float v = fx.harpInsert.dly_send;
-               portEXIT_CRITICAL(&patchMux); snprintf(out, maxB, "%d%%", (int)(v*100.f)); return; }
-    case 5: { portENTER_CRITICAL(&patchMux); float v = fx.harpInsert.rev_send;
-               portEXIT_CRITICAL(&patchMux); snprintf(out, maxB, "%d%%", (int)(v*100.f)); return; }
-    case 6: { portENTER_CRITICAL(&patchMux); float v = fx.seqInsert.dly_send;
-               portEXIT_CRITICAL(&patchMux); snprintf(out, maxB, "%d%%", (int)(v*100.f)); return; }
-    case 7: { portENTER_CRITICAL(&patchMux); float v = fx.seqInsert.rev_send;
-               portEXIT_CRITICAL(&patchMux); snprintf(out, maxB, "%d%%", (int)(v*100.f)); return; }
+    /* [DISP-OPT1] Direct float reads — no spinlock (see case 3 comment above). */
+    case 4: { snprintf(out, maxB, "%d%%", (int)(fx.harpInsert.dly_send * 100.f)); return; }
+    case 5: { snprintf(out, maxB, "%d%%", (int)(fx.harpInsert.rev_send * 100.f)); return; }
+    case 6: { snprintf(out, maxB, "%d%%", (int)(fx.seqInsert.dly_send  * 100.f)); return; }
+    case 7: { snprintf(out, maxB, "%d%%", (int)(fx.seqInsert.rev_send  * 100.f)); return; }
     case 8:  snprintf(out, maxB, "%s", safeFxName(harpFxIndex.load()  & 15)); return;
     case 9:  snprintf(out, maxB, "%s", safeDynName(harpFxIndexB.load() & 15)); return;
     case 10: snprintf(out, maxB, "%s", safeFxName(seqFxIndex.load()   & 15)); return;
@@ -907,10 +920,9 @@ static void formatParamValueString(int l1, int l2, char* out, size_t maxB) {
     case 13: snprintf(out, maxB, "%d%%",  (int)(seqEnvCutAmount.load()*100.f)); return;
     case 14: snprintf(out, maxB, "%s",    safeFxName(seqFxIndex.load()  & 15)); return;
     case 15: snprintf(out, maxB, "%s",    safeDynName(seqFxIndexB.load() & 15)); return;
-    case 16: { portENTER_CRITICAL(&patchMux); float v = fx.seqInsert.dly_send;
-               portEXIT_CRITICAL(&patchMux); snprintf(out, maxB, "%d%%", (int)(v*100.f)); return; }
-    case 17: { portENTER_CRITICAL(&patchMux); float v = fx.seqInsert.rev_send;
-               portEXIT_CRITICAL(&patchMux); snprintf(out, maxB, "%d%%", (int)(v*100.f)); return; }
+    /* [DISP-OPT1] Direct float reads — no spinlock (see case 3 comment above). */
+    case 16: { snprintf(out, maxB, "%d%%", (int)(fx.seqInsert.dly_send * 100.f)); return; }
+    case 17: { snprintf(out, maxB, "%d%%", (int)(fx.seqInsert.rev_send * 100.f)); return; }
     case 18: { const int pi = seqPatchIndex.load(std::memory_order_relaxed) & (NUM_PATCHES - 1);
                char nm[16]; readPresetName(pi, nm);
                snprintf(out, maxB, "#%03d %s", pi + 1, nm); return; }
@@ -1091,10 +1103,9 @@ static float getSliderPct(int l1, int l2) {
     case 13: return harpEnvCutAmount.load();
     case 14: return (float)(harpFxIndex.load()  & 15) / 15.f;
     case 15: return (float)(harpFxIndexB.load() & 15) / 15.f;
-    case 16: { portENTER_CRITICAL(&patchMux); float v = fx.harpInsert.dly_send;
-               portEXIT_CRITICAL(&patchMux); return v; }
-    case 17: { portENTER_CRITICAL(&patchMux); float v = fx.harpInsert.rev_send;
-               portEXIT_CRITICAL(&patchMux); return v; }
+    /* [DISP-OPT1] Direct float reads for slider pct — no spinlock needed. */
+    case 16: return fx.harpInsert.dly_send;
+    case 17: return fx.harpInsert.rev_send;
     case 18: return (float)(std::min(harpPatchIndex.load() & (NUM_PATCHES - 1),
                             NUM_NAMED_PRESETS - 1)) / (float)(NUM_NAMED_PRESETS - 1);
     case 19: case 20: return (float)userSlotCursor[0].load(std::memory_order_relaxed)
@@ -1111,14 +1122,11 @@ static float getSliderPct(int l1, int l2) {
     case 1: return masterAuxDlyFb.load()   / 0.95f;
     case 2: return masterAuxRevSize.load() / 0.95f;
     case 3: return masterAuxRevDamp.load();
-    case 4: { portENTER_CRITICAL(&patchMux); float v = fx.harpInsert.dly_send;
-              portEXIT_CRITICAL(&patchMux); return v; }
-    case 5: { portENTER_CRITICAL(&patchMux); float v = fx.harpInsert.rev_send;
-              portEXIT_CRITICAL(&patchMux); return v; }
-    case 6: { portENTER_CRITICAL(&patchMux); float v = fx.seqInsert.dly_send;
-              portEXIT_CRITICAL(&patchMux); return v; }
-    case 7: { portENTER_CRITICAL(&patchMux); float v = fx.seqInsert.rev_send;
-              portEXIT_CRITICAL(&patchMux); return v; }
+    /* [DISP-OPT1] Direct float reads — no spinlock needed for slider display. */
+    case 4: return fx.harpInsert.dly_send;
+    case 5: return fx.harpInsert.rev_send;
+    case 6: return fx.seqInsert.dly_send;
+    case 7: return fx.seqInsert.rev_send;
     case 8:  return (float)(harpFxIndex.load()  & 15) / 15.f;
     case 9:  return (float)(harpFxIndexB.load() & 15) / 15.f;
     case 10: return (float)(seqFxIndex.load()   & 15) / 15.f;
@@ -1145,10 +1153,9 @@ static float getSliderPct(int l1, int l2) {
     case 13: return seqEnvCutAmount.load();
     case 14: return (float)(seqFxIndex.load()  & 15) / 15.f;
     case 15: return (float)(seqFxIndexB.load() & 15) / 15.f;
-    case 16: { portENTER_CRITICAL(&patchMux); float v = fx.seqInsert.dly_send;
-               portEXIT_CRITICAL(&patchMux); return v; }
-    case 17: { portENTER_CRITICAL(&patchMux); float v = fx.seqInsert.rev_send;
-               portEXIT_CRITICAL(&patchMux); return v; }
+    /* [DISP-OPT1] Direct float reads — no spinlock needed for slider display. */
+    case 16: return fx.seqInsert.dly_send;
+    case 17: return fx.seqInsert.rev_send;
     case 18: return (float)(std::min(seqPatchIndex.load() & (NUM_PATCHES - 1),
                             NUM_NAMED_PRESETS - 1)) / (float)(NUM_NAMED_PRESETS - 1);
     case 19: case 20: return (float)userSlotCursor[1].load(std::memory_order_relaxed)
@@ -1296,11 +1303,17 @@ static void drawMenuL3() {
 
   /* Widget — toggle switch for boolean params, slider for everything else */
   /* [R7] Extended for mute toggles at l1==2, l2 18-20 */
-  const bool isToggle = (l1 == 1  && l2 == 3)                   /* D-BEAM enable */
-                     || (l1 == 0  && (l2 == 10 || l2 == 12))    /* [FOG] Fog Reject + Screensaver */
-                     || (l1 == 2  && l2 >= 18 && l2 <= 20)      /* Mutes         */
-                     || (l1 == 4  && l2 == 1)                    /* PB Enable (reindexed) */
-                     || (l1 == 10 && (l2 == 0 || l2 == 1));     /* Laser show/midihue toggles */
+  /* [FIX-TOGGLE] Added l1=3/l2=21 (Harp Arp Enable) and l1=5/l2=10 (Seq Arp Enable).
+   * Both are boolean on/off values wired through applyHarpArpEnable / applySeqArpEnable
+   * with CMD_HARP_ARP_EN / CMD_SEQ_ARP_EN SysEx.  They were showing a slider pot
+   * instead of the correct toggle switch widget.                                */
+  const bool isToggle = (l1 == 1  && l2 == 3)                   /* D-BEAM enable       */
+                     || (l1 == 0  && (l2 == 10 || l2 == 12))    /* Fog Reject + Scrnsvr*/
+                     || (l1 == 2  && l2 >= 18 && l2 <= 20)      /* Mutes               */
+                     || (l1 == 3  && l2 == 21)                   /* Harp Arp On/Off     */
+                     || (l1 == 4  && l2 == 1)                    /* PB Enable           */
+                     || (l1 == 5  && l2 == 10)                   /* Seq Arp On/Off      */
+                     || (l1 == 10 && (l2 == 0 || l2 == 1));     /* Laser show/midihue  */
   if (isToggle) {
     bool st = false;
     if (l1 == 0 && l2 == 10)       st = fogRejectEnabled.load(std::memory_order_relaxed);
@@ -1309,7 +1322,10 @@ static void drawMenuL3() {
     if (l1 == 2 && l2 == 18)       st = mixHarpMute  .load();
     if (l1 == 2 && l2 == 19)       st = mixSeqMute   .load();
     if (l1 == 2 && l2 == 20)       st = mixDrumsMute .load();
+    /* [FIX-TOGGLE] Arp enable state reads — newly added to isToggle. */
+    if (l1 == 3 && l2 == 21)       st = harpArpEnabled.load(std::memory_order_relaxed);
     if (l1 == 4)                    st = pbMapping.enabled.load(std::memory_order_relaxed);
+    if (l1 == 5 && l2 == 10)       st = seqArpEnabled .load(std::memory_order_relaxed);
     if (l1 == 10 && l2 == 0)       st = laserShowMode .load();
     if (l1 == 10 && l2 == 1)       st = midiHueControl.load();
     DRAW_SWITCH_TOGGLE(LABEL_X, 41, "State", st);
@@ -1641,6 +1657,32 @@ void renderUIState() {
   case MenuState::MENU_L2: drawMenuL2(); break;
   case MenuState::MENU_L3: drawMenuL3(); break;
   }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * renderDbeamBarIfVisible — [PERF] partial D-BEAM bargraph region redraw.
+ *
+ * Mirrors renderStepBarRegionIfVisible() for the harp dashboard.  When only
+ * the D-BEAM amplitude changes (no encoder turn, no menu state change), this
+ * repaints just the 9-px D-BEAM bar strip (y=DASH_DBEAM_Y..SCREEN_H-1) in-place
+ * — no display.clearDisplay(), no full dashboard render.  The following
+ * displayFlushDiff() pushes only the 1 changed page (page 6, y=48-55 or page 7,
+ * y=56-63) over I2C.
+ *
+ * Returns true if it drew (caller must flush); false if the harp dashboard
+ * is not the current view (caller skips the I2C transaction entirely). */
+bool renderDbeamBarIfVisible() {
+  if (!hasOLED) return false;
+  if (isAppConnected()) return false;
+  if (confirmOpen.load(std::memory_order_relaxed)) return false;
+  if (currentScopeView.load(std::memory_order_relaxed) != TelemetryView::OFF) return false;
+  if (edgeEditOpen.load(std::memory_order_relaxed)) return false;
+  if (menuState.load(std::memory_order_relaxed) != MenuState::IDLE) return false;
+  if (activeDashboard.load() != DashboardMode::HARP) return false;
+  /* Only repaint the D-BEAM strip; leave everything above y=DASH_DBEAM_Y intact. */
+  display.fillRect(0, DASH_DBEAM_Y, SCREEN_W, SCREEN_H - DASH_DBEAM_Y, SH110X_BLACK);
+  drawDbeamBargraph();
+  return true;
 }
 
 /* viewHasStepBar — is the bottom (0,56) step playhead actually on screen right

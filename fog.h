@@ -52,6 +52,12 @@ inline std::atomic<int>  fogRejectMargin { 50 };                    /* different
 /* ── Isolated amplitude branch (a copy of g_kalman_ac[].x per string) ─────── */
 inline std::atomic<float> g_fogAmp[MAX_STRINGS];
 
+/* The ci-mask in fogAccept (`ci & (MAX_STRINGS-1)`) is only valid when
+ * MAX_STRINGS is a power of two.  Enforce it so a future dimension change can't
+ * silently corrupt the index. */
+static_assert((MAX_STRINGS & (MAX_STRINGS - 1)) == 0,
+              "fog.h: MAX_STRINGS must be a power of two for the ci index mask");
+
 /** Publish one string's amplitude into the fog branch.  Called by the dbeam ADC
  *  task right after its Kalman update; a single relaxed store, side-effect free. */
 static inline void IRAM_ATTR fogPublishAmp(int si, float amp) {
@@ -59,31 +65,53 @@ static inline void IRAM_ATTR fogPublishAmp(int si, float amp) {
     g_fogAmp[si].store(amp, std::memory_order_relaxed);
 }
 
-/** Common-mode fog floor = the 2nd-SMALLEST string amplitude.  Fog lifts every
- *  string together, so the quietest hand-free strings sit at the fog level.
- *  Using the 2nd-smallest (not the absolute min) ignores one anomalously-low /
- *  dead channel, and — unlike a median — it does NOT rise with polyphony, so a
- *  real chord (up to ~6 held strings) is never falsely rejected.  A low floor
- *  only makes the gate MORE permissive (fails toward letting notes through),
- *  which is the safe direction for a performance instrument.  Also used by the
- *  TELEMETRY → FOG REJECT view to draw the floor/accept reference lines.        */
-static inline float IRAM_ATTR fogFloor() {
-  /* One-pass smallest / 2nd-smallest (no std::sort → no flash-resident call). */
-  float m1 = 1e30f;   /* smallest      */
-  float m2 = 1e30f;   /* 2nd-smallest  */
+/** [FOG-FIX] Common-mode fog floor = the 2nd-SMALLEST *valid* string amplitude.
+ *  Fog lifts every string together, so the quietest hand-free strings sit at the
+ *  fog level.  Using the 2nd-smallest (not the absolute min) ignores one
+ *  anomalously-low channel, and — unlike a median — it does NOT rise with
+ *  polyphony, so a real chord (up to ~6 held strings) is never falsely rejected.
+ *
+ *  ACCURACY FIX: samples ≤ 0 (a dead or not-yet-published channel) are SKIPPED.
+ *  The old scan counted those zeros, so TWO un-sampled channels made m1=m2=0 and
+ *  collapsed the floor to 0 — silently disabling rejection at cold-start and on a
+ *  second dead sensor.  `validOut` returns how many real (>0) samples fed the
+ *  estimate; callers treat < 2 as "no meaningful differential".  When < 2 valid
+ *  the floor is 0 (a permissive floor — the safe, let-notes-through direction).
+ *
+ *  Still a branch-only one-pass scan (NO std::sort) so there is ZERO flash-
+ *  resident dependency to fault during an IRAM cache-off window.  Shared as the
+ *  single source of truth with the TELEMETRY → FOG REJECT reference lines.       */
+static inline float IRAM_ATTR fogFloorEx(int& validOut) {
+  float m1 = 1e30f;   /* smallest valid     */
+  float m2 = 1e30f;   /* 2nd-smallest valid */
+  int   valid = 0;
   for (int i = 0; i < MAX_STRINGS; ++i) {
     const float v = g_fogAmp[i].load(std::memory_order_relaxed);
+    if (v <= 0.0f) continue;            /* skip dead / unpublished channel */
+    ++valid;
     if (v < m1)      { m2 = m1; m1 = v; }
     else if (v < m2) { m2 = v; }
   }
-  return m2;
+  validOut = valid;
+  return (valid >= 2) ? m2 : 0.0f;      /* < 2 valid → permissive 0 floor   */
+}
+
+/** Floor accessor for the telemetry view (discards the valid count). */
+static inline float IRAM_ATTR fogFloor() {
+  int valid;
+  return fogFloorEx(valid);
 }
 
 /** Accept string ci as a REAL hand (true) or reject it as fog (false).
  *  Returns true unconditionally when disabled → existing trigger logic intact.
- *  Differential test: amp[ci] ≥ fogFloor() + margin.                            */
+ *  [FOG-FIX] Also returns true (permissive) until at least 2 strings have a valid
+ *  sample, so the warm-up window and a multi-dead-sensor case can never wrongly
+ *  suppress a real break.  Differential test: amp[ci] ≥ floor + margin.          */
 static inline bool IRAM_ATTR fogAccept(int ci) {
   if (!fogRejectEnabled.load(std::memory_order_relaxed)) return true;
+  int valid;
+  const float floor = fogFloorEx(valid);
+  if (valid < 2) return true;           /* too few sensors → fail permissive */
   const float self = g_fogAmp[ci & (MAX_STRINGS - 1)].load(std::memory_order_relaxed);
-  return self >= fogFloor() + (float)fogRejectMargin.load(std::memory_order_relaxed);
+  return self >= floor + (float)fogRejectMargin.load(std::memory_order_relaxed);
 }

@@ -373,10 +373,23 @@ void IRAM_ATTR fx_process_multi_buf_safe(
   float peakOut = 0.0f;
   int16_t* __restrict__ out_p = out_buf;
   for (size_t i = 0; i < frames; ++i, out_p += 2) {
-    /* Stage 1+2: int16 → float gain → insert FX (all three in registers) */
-    float harpMono = fx_clampf((float)h_buf[i] * hG);
-    float seqMono  = fx_clampf((float)s_buf[i] * sG);
-    float drumMono = fx_clampf((float)d_buf[i] * dG);
+    /* Stage 1+2: int16 → float gain → insert FX (all three in registers)
+     * [FIX-GAIN-CLIP] Removed fx_clampf from the gain stage.  The old clamp
+     * caused hard digital clipping BEFORE the insert FX:
+     *   • Drums (MIX_TRIM_DRUM=3.00): max signal 32767/32768×3 ≈ 3.0 → hard-
+     *     clipped to ±1.0, then DrumFX.process_mono received a already-clipped
+     *     signal.  DrumFX uses fx_tanh saturation specifically designed to shape
+     *     this level — the pre-clip made it sound like square-wave distortion
+     *     instead of warm analogue saturation.
+     *   • Seq (MIX_TRIM_SEQ=1.35): clips at 74% volume, capping the seq
+     *     channel hard rather than letting the master limiter shape it smoothly.
+     * The signal path is fully bounded: engine_soft_clip() guarantees int16
+     * output (≤±32767), gain×(1/32768) keeps floats ≤ MIX_TRIM_x, DrumFX and
+     * the master soft-knee limiter are the correct stages to handle headroom.
+     * A guard against NaN/Inf is still provided by the int16 source type.    */
+    float harpMono = (float)h_buf[i] * hG;
+    float seqMono  = (float)s_buf[i] * sG;
+    float drumMono = (float)d_buf[i] * dG;
     fx.harpInsert.process_mono(harpMono);
     fx.seqInsert .process_mono(seqMono);
     fx.drumFx    .process_mono(drumMono);

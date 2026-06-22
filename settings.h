@@ -971,7 +971,7 @@ struct UserPatNamesBlob {
   NameOverride names[MAX_USER_PAT_OVR];
 };
 
-/ * SPARSE P-lock motion matrix.  The App is the primary motion recorder;
+/* SPARSE P-lock motion matrix.  The App is the primary motion recorder;
  * persisting it lets the groovebox replay recorded automation in standalone
  * mode after a power cycle.  Each lane holds MOTION_STEPS_PER_LANE (64) steps,
  * matching the seq grid depth.  Sparse NVS stores allocated lanes only.        */

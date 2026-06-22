@@ -780,6 +780,17 @@ void IRAM_ATTR laser_sweep_task(void* pvParameters) {
               view != TelemetryView::STACK_STATS && view != TelemetryView::CAL_BASELINE) {
             float sampleVal = 0.0f;
             float floorScale = 1.0f;
+            /* [DBEAM-SCOPE-FIX] DBEAM EXPR uses a FIXED full-scale, not auto-range.
+             * dbeamAmplitude is a normalised 14-bit expression value (0..16383 =
+             * 0..100 % hand expression, set in dbeam.cpp as curved*16383).  Auto-
+             * ranging it made the trace scale jump around and amplified idle noise
+             * to fill the screen, so the waveform never represented true expression
+             * level.  A fixed 0..16383 scale gives a stable trace where screen-top =
+             * 100 % expression, screen-bottom = 0 %, and each graticule division is a
+             * fixed ~20 % of expression.  (NB: NOT 4095 — that is the 12-bit raw ADC
+             * range; the EXPR value is 14-bit and a 4095 ceiling would clip every
+             * reading above 25 % flat against the top of the display.) */
+            bool fixedScale = false;
             switch (view) {
               case TelemetryView::RAW_AC:
                 /* AC RMS above the noise floor: idle ≈ 0 (rests on the centre
@@ -792,8 +803,9 @@ void IRAM_ATTR laser_sweep_task(void* pvParameters) {
                 floorScale = 120.0f;          /* ≥120 mV swing before it fills   */
                 break;
               case TelemetryView::CC_OUT_14BIT:
-                sampleVal = (float)dbeamAmplitude.load(std::memory_order_relaxed);
-                floorScale = 2000.0f;
+                sampleVal  = (float)dbeamAmplitude.load(std::memory_order_relaxed);
+                floorScale = 16383.0f;        /* fixed 14-bit full-scale (0..100 %) */
+                fixedScale = true;
                 break;
               case TelemetryView::SIGNAL_SNR:
                 portENTER_CRITICAL(&patchMux);
@@ -804,13 +816,20 @@ void IRAM_ATTR laser_sweep_task(void* pvParameters) {
               default: break;
             }
 
-            /* Auto-range: fast attack to new peaks, slow release so old peaks
-             * fade; reset when the user switches views. */
-            if (view != scopePeakView) { scopePeak = floorScale; scopePeakView = view; }
             const float a = fabsf(sampleVal);
-            if (a > scopePeak) scopePeak = a;
-            else               scopePeak *= 0.992f;
-            const float fs = std::max(scopePeak, floorScale);
+            float fs;
+            if (fixedScale) {
+              /* Stable, absolute scale — no peak tracking. */
+              fs = floorScale;
+              scopePeakView = view;           /* keep view-change reset coherent */
+            } else {
+              /* Auto-range: fast attack to new peaks, slow release so old peaks
+               * fade; reset when the user switches views. */
+              if (view != scopePeakView) { scopePeak = floorScale; scopePeakView = view; }
+              if (a > scopePeak) scopePeak = a;
+              else               scopePeak *= 0.992f;
+              fs = std::max(scopePeak, floorScale);
+            }
 
             const int wp = scopeWritePtr.load(std::memory_order_relaxed);
             scopeHistory[wp] = (uint8_t)std::min(std::max((a / fs) * 245.f, 0.f), 255.f);

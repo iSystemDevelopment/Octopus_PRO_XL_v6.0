@@ -416,11 +416,19 @@ void IRAM_ATTR display_refresh_task(void* pvParameters) {
     /* [aud OPT-5] unsigned delta — no std::abs overload ambiguity. */
     const uint16_t dbeamDelta = (amp > lastDbeam) ? (uint16_t)(amp - lastDbeam)
                                                   : (uint16_t)(lastDbeam - amp);
+    /* [DISP-OPT2] D-BEAM amplitude change → partial region update, not full dirty.
+     * Previously displayDirty=true triggered clearDisplay + full drawHarpDashboard
+     * (20+ GFX calls) even though only the 9-pixel D-BEAM bar strip changed.
+     * renderDbeamBarIfVisible() repaints only y=DASH_DBEAM_Y..SCREEN_H-1 (same as
+     * renderStepBarRegionIfVisible for the step bar).  The I2C cost is identical
+     * (only 1-2 pages change), but clearDisplay + full dashboard render is skipped,
+     * saving ~200-400 µs of Core-0 GFX work at up to 10 Hz.                       */
+    bool dbeamChanged = false;
     if (dbeamDelta > 256 &&
         (uint32_t)(nowMs - lastDbeamDrawMs) >= 100u) {
       lastDbeam       = amp;
       lastDbeamDrawMs = nowMs;
-      displayDirty.store(true, std::memory_order_relaxed);
+      dbeamChanged    = true;
     }
 
     const bool scope = (currentScopeView.load(std::memory_order_relaxed) != TelemetryView::OFF);
@@ -491,6 +499,15 @@ void IRAM_ATTR display_refresh_task(void* pvParameters) {
       if (renderStepBarRegionIfVisible())
         displayFlushDiff();
       xSemaphoreGive(i2cMutex);
+    } else if (!saveArmedNow && dbeamChanged && xSemaphoreTake(i2cMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
+      /* [DISP-OPT2] D-BEAM region-only path: mirrors the step-bar path above.
+       * renderDbeamBarIfVisible() returns false on the SEQ dashboard / menu /
+       * app-connected views, keeping those views correct (D-BEAM bar only exists
+       * on the HARP dashboard).  On those views the bargraph is part of the next
+       * full render triggered by the encoder/transport or the scope. */
+      if (renderDbeamBarIfVisible())
+        displayFlushDiff();
+      xSemaphoreGive(i2cMutex);
     }
 
     vTaskDelayUntil(&lastWake, kPer);
@@ -546,8 +563,13 @@ void settings_save_task(void* pvParameters) {
     g_saveArmed.store(true, std::memory_order_release);
     std::atomic_thread_fence(std::memory_order_seq_cst);  /* full fence */
 
-    const uint32_t deadline = millis() + 500u;
-    while (!g_loopParked.load(std::memory_order_acquire) && millis() < deadline) {
+    /* [FIX-WRAP] millis()+500u overflows at ~49-day uptime: deadline wraps to
+     * ~0 so the loop condition (millis() < deadline) is immediately false and
+     * the laser park wait is skipped entirely.  Use elapsed-time comparison
+     * (millis()-startMs) which is wrap-safe by unsigned subtraction.          */
+    const uint32_t parkStartMs = millis();
+    while (!g_loopParked.load(std::memory_order_acquire) &&
+           (uint32_t)(millis() - parkStartMs) < 500u) {
       esp_task_wdt_reset();
       vTaskDelay(pdMS_TO_TICKS(1));
     }
