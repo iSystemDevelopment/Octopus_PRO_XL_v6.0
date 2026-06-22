@@ -936,6 +936,7 @@ void handleSysexCommand(uint8_t cmd, uint16_t v14) {
       if (v14 < 1u || v14 > 4u) {
         txSysexPersistReply(CMD_SESSION_SAVE, 0u);
         linkExtendPersistWindow(12000u);
+        linkTouchAppHeartbeat();
         requestFullStateSync(true, false);
         break;
       }
@@ -947,7 +948,8 @@ void handleSysexCommand(uint8_t cmd, uint16_t v14) {
         oledPersistFailed();
         txSysexPersistReply(CMD_SESSION_SAVE, 0u);
         oledPersistRestore();
-        linkExtendPersistWindow(12000u);
+        linkExtendPersistWindow(30000u);
+        linkTouchAppHeartbeat();
         requestFullStateSync(true, false);
         break;
       }
@@ -956,7 +958,8 @@ void handleSysexCommand(uint8_t cmd, uint16_t v14) {
         oledPersistFailed();
         txSysexPersistReply(CMD_SESSION_SAVE, 0u);
         oledPersistRestore();
-        linkExtendPersistWindow(12000u);
+        linkExtendPersistWindow(30000u);
+        linkTouchAppHeartbeat();
         requestFullStateSync(true, false);
       }
       break;

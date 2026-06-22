@@ -1603,11 +1603,16 @@ static inline bool settings_save_scoped(ResetScope scope) {
    * entries) to tell partition-too-small apart from a code/heap fault.        */
   {
     nvs_stats_t st;
-    if (nvs_get_stats(NULL, &st) == ESP_OK)
+    if (nvs_get_stats(NULL, &st) == ESP_OK) {
       Serial.printf("[NVS] stats: total=%u used=%u free=%u (partition %s)\n",
                     (unsigned)st.total_entries, (unsigned)st.used_entries,
                     (unsigned)st.free_entries,
-                    st.total_entries < 1000u ? "LOOKS ~20KB (too small!)" : "ok");
+                    st.total_entries < 2000u ? "TOO SMALL (~20KB)!" : "ok");
+      if (st.total_entries < 2000u) {
+        Serial.println(F("[NVS] FULL save needs ~1600 free entries — use bundled partitions.csv"));
+        return false;
+      }
+    }
   }
 
   nvs_handle_t h;

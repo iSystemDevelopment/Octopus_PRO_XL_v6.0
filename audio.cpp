@@ -669,17 +669,19 @@ void settings_save_task(void* pvParameters) {
         midi_drain_tx_retry();
         delay(25);
       }
-      linkExtendPersistWindow(8000u);
+      linkExtendPersistWindow(12000u);
+      linkTouchAppHeartbeat();
     } else {
-      for (int burst = 0; burst < 4; ++burst) {
+      for (int burst = 0; burst < 6; ++burst) {
         txSysexPersistReply(ackCmd, 0u);
         midi_drain_tx_retry();
-        delay(20);
+        delay(25);
       }
       /* [LINK-HEAL] Failed save still killed the link: PINGs stalled during the
        * write, then isAppConnected() dropped the instant flags cleared.  Extend
        * the window and push a full resync so BPM/transport/playhead recover. */
-      linkExtendPersistWindow(15000u);
+      linkExtendPersistWindow(30000u);
+      linkTouchAppHeartbeat();
       requestFullStateSync(true, false);
     }
 

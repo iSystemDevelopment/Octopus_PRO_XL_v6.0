@@ -3186,6 +3186,7 @@
             _syncBurstActive: false,
             _gridModelDirty: false,
             _phRemeasureRaf: 0,     // coalesced playhead geometry remeasure (not every rAF)
+            _phStoppedPaint: false, // retry static playhead paint until visible when stopped
             _lastDeviceRxMs: 0,   // last 0x7C echo from firmware (link verify)
             _lastBpmRxMs: 0,      // [LINK-HEAL] transport watchdog timestamps
             _lastTransportRxMs: 0,
@@ -3264,6 +3265,7 @@
                 this._persistBusy = true;
                 this._persistKind = kind;
                 this._persistSince = Date.now();
+                this._linkGraceUntil = Date.now() + 120000;
                 /* Safety timeout: if no ACK/NACK arrives within 90 s (device crashed
                  * or rebooted before ACK was delivered), auto-clear so the UI is not
                  * stuck in the wait modal forever.  onConnect() also clears on reconnect. */
@@ -3329,17 +3331,18 @@
             /** After any persist failure (or non-reboot save), restore BPM/transport echoes. */
             _healLinkAfterPersistFail(reason) {
                 const now = Date.now();
-                this._linkGraceUntil = now + 8000;
-                this._linkDegradedUntil = now + 12000;
-                this._lastBpmRxMs = now;
-                this._lastTransportRxMs = now;
-                this._lastStepSyncRxMs = now;
+                this._linkGraceUntil = now + 15000;
+                this._linkDegradedUntil = now + 4000;
                 this._syncBurstExpected = true;
                 this._syncBurstActive = false;
+                this._phPendingStep = this.visStep | 0;
+                this._phForceRemeasure = true;
                 if (this.midiOut && this._portLive(this.midiOut)) {
-                    this.txSysex(CMD.PING, 0);
-                    this.txSysex(CMD.APP_SYNC_REQ, 0);
-                    this.log('Link heal — ' + (reason || 'resync') + ' (APP_SYNC_REQ sent).');
+                    for (let i = 0; i < 3; i++) {
+                        this.txSysex(CMD.PING, 0);
+                        this.txSysex(CMD.APP_SYNC_REQ, 0);
+                    }
+                    this.log('Link heal — ' + (reason || 'resync') + ' (PING + APP_SYNC_REQ).');
                 } else {
                     this.log('Link heal skipped — MIDI output unavailable.');
                 }
@@ -3493,6 +3496,7 @@
                 /* Idle stopped state: show playhead at step 0 (matches hardware boot). */
                 this._phPendingStep = 0;
                 this._phForceRemeasure = true;
+                this._phStoppedPaint = true;
                 // [LIVE-PERF] Background/foreground handling.  When the tab is hidden
                 // mid-show we KEEP the link alive (audio keep-alive + worker
                 // heartbeat already running).  When it returns to the foreground we
@@ -3926,7 +3930,8 @@
                         this._persistFinished(false, false);
                     }
                     if (now > this._linkGraceUntil) {
-                        const stale = !this._lastDeviceRxMs || (now - this._lastDeviceRxMs) > 4500;
+                        const rxLimit = this._persistBusy ? 120000 : 4500;
+                        const stale = !this._lastDeviceRxMs || (now - this._lastDeviceRxMs) > rxLimit;
                         if (stale) {
                             if (this._connOnline) {
                                 this._connOnline = false;
@@ -4145,31 +4150,28 @@
                     [CMD.LOAD_PAT_D]: v14 => { const e = document.getElementById('drumPat');  if (e && v14 < DRUM_PATTERNS.length)  e.value = String(v14); },
                     [CMD.SESSION_SAVE]: v14 => {
                         if (v14 === 16383) {
-                            if (this._persistBusy || this._persistKind === 'save')
+                            if (this._persistBusy && this._persistKind === 'save')
                                 this._persistFinished(true, true);
                         } else if (v14 === 0) {
-                            if (this._persistBusy || this._persistKind === 'save')
-                                this._persistFinished(false, false);
+                            this._persistFinished(false, false);
                             this._healLinkAfterPersistFail('save NACK');
                         }
                     },
                     [CMD.SESSION_LOAD]: v14 => {
                         if (v14 === 16383) {
-                            if (this._persistBusy || this._persistKind === 'load')
+                            if (this._persistBusy && this._persistKind === 'load')
                                 this._persistFinished(true, false);
                         } else if (v14 === 0) {
-                            if (this._persistBusy || this._persistKind === 'load')
-                                this._persistFinished(false, false);
+                            this._persistFinished(false, false);
                             this._healLinkAfterPersistFail('load NACK');
                         }
                     },
                     [CMD.SCOPED_RESET]: v14 => {
                         if (v14 === 16383) {
-                            if (this._persistBusy || this._persistKind === 'reset')
+                            if (this._persistBusy && this._persistKind === 'reset')
                                 this._persistFinished(true, true);
                         } else if (v14 === 0) {
-                            if (this._persistBusy || this._persistKind === 'reset')
-                                this._persistFinished(false, false);
+                            this._persistFinished(false, false);
                             this._healLinkAfterPersistFail('reset NACK');
                         }
                     },
@@ -4283,6 +4285,8 @@
                             this._pllAnchorStep = s;
                             this._pllAnchorTime = performance.now();
                             this._updateBeatLeds(s & 15);
+                        } else {
+                            this._phStoppedPaint = true;
                         }
                         this._phPendingStep = s;
                         this._phForceRemeasure = true;
@@ -4375,6 +4379,7 @@
                     this._pllAnchorTime = -1;
                     this._phPendingStep = this.visStep | 0;
                     this._phForceRemeasure = true;
+                    this._phStoppedPaint = true;
                     /* Beat LEDs are play-only — clear when stopped. */
                     for (let i = 0; i < 4; i++)
                         document.getElementById('led-' + i) ?.classList.remove('active');
@@ -4834,6 +4839,11 @@
                 document.getElementById('song-editor') ?.classList.toggle('visible', this.showSongEditor);
                 const wrap = document.getElementById('seq-grid-wrap');
                 if (wrap) wrap.style.display = this.showSongEditor ? 'none' : '';
+                if (!this.showSongEditor) {
+                    this._phForceRemeasure = true;
+                    this._phPendingStep = this.visStep | 0;
+                    if (!this.isPlaying) this._phStoppedPaint = true;
+                }
                 this._updateSeqModeBtn();
                 if (autoSwitchTab && this.showSongEditor) this.switchView(3);
             },
@@ -5130,6 +5140,7 @@
                 ph.style.width  = geo.width  + 'px';
                 ph.style.height = geo.height + 'px';
                 ph.style.opacity = '1';
+                this._phStoppedPaint = false;
                 if (this.isPlaying) {
                     if (snapped) {
                         this._pllAnchorStep = s;
@@ -5157,15 +5168,36 @@
             /** Stopped playhead — fixed at column, no PLL (hardware idle bar). */
             _positionPlayheadStatic(s) {
                 const ph = this._playheadEl;
-                if (!ph) return;
+                if (!ph) return false;
                 s = Math.max(0, s | 0);
+                const len = Math.max(1, this.seqLen | 0);
+                if (s >= len) s = len - 1;
+                const page = (s >> 4) & 3;
+                if (page !== this.gridPageIdx) {
+                    this.setGridPage(page, true);
+                    this._phPendingStep = s;
+                    this._phForceRemeasure = true;
+                    return false;
+                }
+                if (this._phForceRemeasure || !this._phGeo)
+                    this._phGeo = this._measurePlayheadGeo();
                 const geo = this._phGeo || this._measurePlayheadGeo();
-                if (!geo) return;
+                if (!geo) {
+                    this._phForceRemeasure = true;
+                    return false;
+                }
                 const col = s & 15;
                 ph.style.width = geo.width + 'px';
                 ph.style.height = geo.height + 'px';
                 ph.style.opacity = '1';
                 ph.style.transform = 'translate3d(' + (geo.x0 + col * geo.pitch).toFixed(1) + 'px, 0, 0)';
+                this._playCol = col;
+                this._playPage = page;
+                this._playAbsStep = s;
+                this._playLast = s;
+                this._phForceRemeasure = false;
+                this._phStoppedPaint = false;
+                return true;
             },
 
             // ── PLL playhead interpolation ────────────────────────────────────────────
@@ -5635,6 +5667,7 @@
                 if (id === 3) {
                     this._phForceRemeasure = true;
                     this._phPendingStep = this.visStep | 0;
+                    this._phStoppedPaint = !this.isPlaying;
                 }
             },
 
@@ -5726,8 +5759,10 @@
                     const step = this._phPendingStep;
                     this._phPendingStep = -1;
                     this.advancePlayhead(step);
-                } else if (!this.isPlaying && this._playheadEl && this._playAbsStep >= 0) {
-                    this._positionPlayheadStatic(this._playAbsStep);
+                } else if (!this.isPlaying && this._playheadEl) {
+                    const step = this._playAbsStep >= 0 ? this._playAbsStep : (this.visStep | 0);
+                    if (this._phStoppedPaint || this._playheadEl.style.opacity !== '1')
+                        this._positionPlayheadStatic(step);
                 }
 
                 // [PLAYHEAD-DETACH] Song editor rebuild is coalesced AND deferred to its

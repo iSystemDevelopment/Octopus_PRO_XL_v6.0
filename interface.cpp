@@ -839,6 +839,7 @@ void updateHardwareInterface() {
         else if (wasSave)
           txSysexPersistReply(CMD_SESSION_SAVE, 0u);
         linkExtendPersistWindow(15000u);
+        linkTouchAppHeartbeat();
         requestFullStateSync(true, false);
         oledPersistFailed();
         oledPersistRestore();
@@ -1418,14 +1419,14 @@ static void reset_persist_task(void*) {
     g_restartAfterSave.store(false, std::memory_order_release);
     g_resetAckPending.store(false, std::memory_order_release);
     rollbackResetRam(s_resetPersistScope);
-    /* sendFullStateSync is only useful when the App is actively connected. */
-    if (isAppConnected()) sendFullStateSync();
-    /* NACK must be sent unconditionally — isAppConnected() may return false
-     * if the NVS write took >4.5 s (MidiUsbRx is blocked during the flash
-     * write so heartbeats can't be processed, causing the 4.5 s window to
-     * expire).  The App MUST receive a NACK to unlock its modal regardless
-     * of whether the connection was reported as live at this exact moment. */
-    txSysexPersistReply(CMD_SCOPED_RESET, 0u);
+    linkExtendPersistWindow(30000u);
+    linkTouchAppHeartbeat();
+    requestFullStateSync(true, false);
+    for (int burst = 0; burst < 6; ++burst) {
+      txSysexPersistReply(CMD_SCOPED_RESET, 0u);
+      midi_drain_tx_retry();
+      vTaskDelay(pdMS_TO_TICKS(25));
+    }
     g_resetInProgress.store(false, std::memory_order_release);
     oledPersistFailed();
     oledPersistRestore();
@@ -1452,6 +1453,8 @@ void handleScopedReset(ResetScope scope) {
   }
 
   oledPersistWorking();
+  linkExtendPersistWindow(60000u);
+  linkTouchAppHeartbeat();
 
   /* [FIX-M3] Silence voices and stop the sequencer before wiping RAM. */
   allNotesOff();

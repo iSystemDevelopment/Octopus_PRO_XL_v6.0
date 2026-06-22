@@ -1137,8 +1137,12 @@ void sequencer_background_task(void* pvParameters) {
       seq_ext_push(CMD_BPM, (uint16_t)seqBpm.load(std::memory_order_relaxed));
       seq_ext_push(CMD_TRANSPORT, seqPlaying.load(std::memory_order_relaxed) ? 1u : 0u);
       seq_ext_push(CMD_TRANSPORT, seqRecording.load(std::memory_order_relaxed) ? 3u : 4u);
-      /* STEP_SYNC omitted — per-step echoes are sufficient; supervisor duplicates
-       * reset the App PLL anchor and cause visible backward playhead strokes. */
+      /* While stopped, re-echo step position so the App playhead stays visible
+       * (no PLL glide — just a static column).  Omitted while playing: duplicates
+       * reset the PLL anchor and cause visible backward playhead strokes.       */
+      if (!seqPlaying.load(std::memory_order_relaxed))
+        seq_ext_push(CMD_STEP_SYNC,
+                     (uint16_t)(seqCurrentStep.load(std::memory_order_relaxed) & 63u));
       /* bits 0–6: load %; 7–13: bulk ring drops (mod 128); 14: P-lock lane steal */
       const uint16_t loadPct = (uint16_t)g_audio_load_pct.load(std::memory_order_relaxed);
       const uint16_t drops   = (uint16_t)(g_seq_ext_drops.load(std::memory_order_relaxed) & 127u);

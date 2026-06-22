@@ -1043,6 +1043,11 @@ static inline void linkExtendPersistWindow(uint32_t extraMs = 12000u) {
   if (until > prev)
     g_linkExtendUntilMs.store(until, std::memory_order_relaxed);
 }
+
+/** Refresh the App heartbeat stamp after a long NVS window (PINGs were blocked). */
+static inline void linkTouchAppHeartbeat() {
+  lastWebSysexMs.store(millis(), std::memory_order_relaxed);
+}
 /* [LINK-HEAL] Bulk seq_ext ring drops (motion/BANK/etc.) — coalesced hi slots
  * never increment this.  Packed into CMD_CPU_LOAD bits 7–13 for App telemetry. */
 inline std::atomic<uint32_t> g_seq_ext_drops{ 0 };
@@ -1249,6 +1254,8 @@ static inline bool requestScopedSave(uint8_t scope) {
    * not a root-cause fix. */
   g_restartAfterSave.store(true, std::memory_order_release);
   g_saveRequest.store(true, std::memory_order_release);
+  linkExtendPersistWindow(60000u);
+  linkTouchAppHeartbeat();
   displayDirty.store(true, std::memory_order_relaxed);
   return true;
 }
@@ -1294,6 +1301,7 @@ static inline void saveForceUnlock() {
   g_oledStatusHoldMs.store(0u, std::memory_order_release);
   g_saveFailFlashMs.store(millis() + 1500u, std::memory_order_relaxed);
   linkExtendPersistWindow(12000u);
+  linkTouchAppHeartbeat();
   displayDirty.store(true, std::memory_order_relaxed);
   if (g_saveDoneSem) xSemaphoreGive(g_saveDoneSem);
 }
