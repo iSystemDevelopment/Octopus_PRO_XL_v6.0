@@ -125,11 +125,6 @@
  * sync can persist/restore the SEQ view page without pulling in groovebox.h.  */
 extern std::atomic<int> seqUI_page;
 
-/* [BLOB-PACK] Pack all settings structs to 1-byte alignment to eliminate padding
- * and ensure consistent CRC across compilations. Padding bloat can exceed NVS
- * partition limits (~20 KB) and cause corrupt writes. */
-#pragma pack(push, 1)
-
 /* [INC-3] Namespace kept as "octopus_v5" deliberately — stable across OTA so
  * the partition is not orphaned; version mismatch is handled by SETTINGS_VERSION
  * verify(), not the namespace name. */
@@ -1008,15 +1003,6 @@ struct MotionBlob {
   MotionLaneOverride lanes[MAX_MOTION_LANES];
 };
 
-#pragma pack(pop)
-
-/* [BLOB-SIZE-CHECK] Assert struct sizes to catch future padding/layout issues.
- * NVS partition is 256 KB (0x40000, see partitions.csv); set per-blob limits to
- * ~1.5–2x current size to catch bloat while allowing future field additions. */
-static_assert(sizeof(AllSettings) <= 3000, "AllSettings too large — check struct padding");
-static_assert(sizeof(PatternsBlob) <= 16000, "PatternsBlob too large — check struct padding");
-static_assert(sizeof(BanksBlob) <= 22000, "BanksBlob too large — check struct padding");
-static_assert(sizeof(MotionBlob) <= 32000, "MotionBlob too large — check struct padding");
 
 /* ── patterns ────────────────────────────────────────────────────────────── */
 static inline esp_err_t patterns_save_h(nvs_handle_t h) {

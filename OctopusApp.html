@@ -876,10 +876,6 @@
             box-sizing: border-box
         }
 
-        #seq-playhead.ph-playing {
-            will-change: transform
-        }
-
         #seq-playhead.ph-visible {
             display: block
         }
@@ -915,7 +911,8 @@
         }
 
         .seq-step:hover {
-            filter: brightness(1.18)
+            border-color: #2a2a3a;
+            box-shadow: inset 0 1px 1px rgba(255,255,255,0.10), 0 1px 1px rgba(0,0,0,0.6)
         }
 
         .seq-step.active {
@@ -3299,7 +3296,6 @@
                 this._hidePersistWait();
                 if (this._persistTimeoutId) { clearTimeout(this._persistTimeoutId); this._persistTimeoutId = null; }
                 if (!ok) {
-                    this._linkGraceUntil = Date.now() + 60000;
                     this._healLinkAfterPersistFail(this._persistKind + ' failed');
                     // [SAVE-DIAG] A FAILED here is a device-side NACK (the NVS write
                     // returned an error) — not a link drop.  Point the user at the real
@@ -3345,18 +3341,24 @@
             /** After any persist failure (or non-reboot save), restore BPM/transport echoes. */
             _healLinkAfterPersistFail(reason) {
                 const now = Date.now();
-                this._linkGraceUntil = now + 60000;
-                this._linkDegradedUntil = now + 8000;
+                /* [HEAL-TIMEOUT-FIX] Grace was 60s, which blocked transport health checks
+                 * for a full minute after any failure — BPM/transport appeared lost.
+                 * 8s matches the _linkDegradedUntil cooldown so health checks resume
+                 * promptly once the firmware finishes its recovery burst. */
+                this._linkGraceUntil = now + 8000;
+                this._linkDegradedUntil = now + 5000;
                 this._lastDeviceRxMs = now;
                 this._connOnline = true;
                 this.updateConnBadge(true);
                 this._syncBurstExpected = true;
                 this._syncBurstActive = false;
                 if (this.midiOut && this._portLive(this.midiOut)) {
-                    for (let i = 0; i < 5; i++) {
-                        this.txSysex(CMD.PING, 0);
-                        this.txSysex(CMD.APP_SYNC_REQ, 0);
-                    }
+                    /* Send ONE PING + ONE APP_SYNC_REQ — not 5×. The firmware already
+                     * calls requestFullStateSync() on its own after a NACK; flooding it
+                     * with 5 more APP_SYNC_REQs causes a massive echo storm that delays
+                     * the BPM/transport echoes we're trying to restore. */
+                    this.txSysex(CMD.PING, 0);
+                    this.txSysex(CMD.APP_SYNC_REQ, 0);
                     this.log('Link heal — ' + (reason || 'resync') + ' (PING + APP_SYNC_REQ).');
                 } else {
                     this.log('Link heal skipped — MIDI output unavailable.');

@@ -629,7 +629,7 @@ void settings_save_task(void* pvParameters) {
     /* Extend link BEFORE dropping g_saveArmed — otherwise isAppConnected()
      * goes false for one window and PING replies + state echoes are dropped. */
     if (!ok) {
-      linkExtendPersistWindow(30000u);
+      linkExtendPersistWindow(8000u);
     } else {
       linkExtendPersistWindow(12000u);
     }
