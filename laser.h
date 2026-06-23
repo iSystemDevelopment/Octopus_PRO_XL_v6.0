@@ -265,6 +265,10 @@ static inline void IRAM_ATTR blitHueToRGB(float h, uint8_t& r, uint8_t& g, uint8
  * ═══════════════════════════════════════════════════════════════════════════ */
 static constexpr uint32_t HUE_LEVEL_MAX = (uint32_t)Q15_ONE * 2u - 1u;
 
+/* Effective sample rate for harpHueAdvance(): one tick per beam dwell; ping-pong
+ * scan revisits each string ~80 Hz at 8 active strings (see BEAM_DWELL comment). */
+static constexpr float HUE_SCAN_HZ = 80.0f;
+
 /* ═══════════════════════════════════════════════════════════════════════════
  * SECTION 9 — BEAM COLOUR OUTPUT
  *
