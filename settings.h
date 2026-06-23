@@ -440,15 +440,6 @@ struct AllSettings {
 
 inline AllSettings g_settings;
 
-#pragma pack(pop)
-
-/* [BLOB-SIZE-CHECK] Assert struct sizes to catch future padding/layout issues.
- * If this fails to compile, struct padding bloat has occurred. */
-static_assert(sizeof(AllSettings) <= 2000, "AllSettings too large — NVS blob will fail");
-static_assert(sizeof(PatternsBlob) <= 2560, "PatternsBlob too large");
-static_assert(sizeof(BanksBlob) <= 14600, "BanksBlob too large");
-static_assert(sizeof(MotionBlob) <= 8704, "MotionBlob too large");
-
 /* ═══════════════════════════════════════════════════════════════════════════
  * DIRECTION REFERENCE
  *
@@ -1016,6 +1007,15 @@ struct MotionBlob {
   uint32_t crc32;                 /* zeroed while hashing */
   MotionLaneOverride lanes[MAX_MOTION_LANES];
 };
+
+#pragma pack(pop)
+
+/* [BLOB-SIZE-CHECK] Assert struct sizes to catch future padding/layout issues.
+ * If this fails to compile, struct padding bloat has occurred. */
+static_assert(sizeof(AllSettings) <= 2000, "AllSettings too large — NVS blob will fail");
+static_assert(sizeof(PatternsBlob) <= 2560, "PatternsBlob too large");
+static_assert(sizeof(BanksBlob) <= 14600, "BanksBlob too large");
+static_assert(sizeof(MotionBlob) <= 8704, "MotionBlob too large");
 
 /* ── patterns ────────────────────────────────────────────────────────────── */
 static inline esp_err_t patterns_save_h(nvs_handle_t h) {
