@@ -1419,7 +1419,10 @@ static void reset_persist_task(void*) {
       g_restartAfterSave.store(false, std::memory_order_release);
       g_resetAckPending.store(false, std::memory_order_release);
       rollbackResetRam(s_resetPersistScope);
-      linkExtendPersistWindow(60000u);
+      /* [SAVE-TIMEOUT-FIX] On error, use SHORT timeout (5s) to recover quickly
+       * instead of freezing the system for 60s. The error will be reported to the
+       * App and the connection can immediately recover. */
+      linkExtendPersistWindow(5000u);
       linkTouchAppHeartbeat();
       requestFullStateSync(true, false);
       for (int burst = 0; burst < 8; ++burst) {
@@ -1458,7 +1461,10 @@ void handleScopedReset(ResetScope scope) {
   }
 
   oledPersistWorking();
-  linkExtendPersistWindow(60000u);
+  /* [SAVE-TIMEOUT-FIX] Reduce persist window from 60s to 12s (see globals.h).
+   * The NVS write typically completes in 1-3 seconds; 60s was freezing the entire
+   * system. 12s gives safe headroom while keeping the system responsive. */
+  linkExtendPersistWindow(12000u);
   linkTouchAppHeartbeat();
 
   /* [FIX-M3] Silence voices and stop the sequencer before wiping RAM. */

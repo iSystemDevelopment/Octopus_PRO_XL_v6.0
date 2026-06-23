@@ -3193,7 +3193,6 @@
             _lastBpmRxMs: 0,      // [LINK-HEAL] transport watchdog timestamps
             _lastTransportRxMs: 0,
             _lastStepSyncRxMs: 0,
-            _lastMouseTime: 0,        // [NO-MEASURE-DURING-MOUSE] defer playhead DOM measure
             _linkDegradedUntil: 0, // cooldown after auto APP_SYNC_REQ
             _persistBusy: false,      // one save / reset / load at a time (mirrors firmware)
             _persistKind: '',         // 'save' | 'reset' | 'load'
@@ -3568,15 +3567,6 @@
                     return;
                 }
 
-                /* [NO-MEASURE-DURING-MOUSE] Defer DOM measure if there's ongoing mouse activity.
-                   Mouse events cause browser reflows between rAF frames, making measurements
-                   inconsistent. Keep the cached rect and retry on the next STEP_SYNC. */
-                const now = performance.now();
-                if (!force && hasCache && (now - this._lastMouseTime) < 50) {
-                    this._phPendingStep = s;
-                    return;
-                }
-
                 const wr = wrap.getBoundingClientRect();
                 const cr = cell.getBoundingClientRect();
                 if (!(cr.width > 0) || !(wr.height > 0)) {
@@ -3622,10 +3612,6 @@
                 this._initSelectTitles();
                 await this.setupMIDI();
                 window.addEventListener('resize', () => this._scheduleWindowPhResize());
-                /* [NO-MEASURE-DURING-MOUSE] Track mouse activity to defer playhead DOM reflow. */
-                document.addEventListener('mousemove', () => {
-                    this._lastMouseTime = performance.now();
-                }, { passive: true });
                 this.animateVU();
                 /* Idle stopped state: show playhead at step 0 (matches hardware boot). */
                 this.visStep = 0;

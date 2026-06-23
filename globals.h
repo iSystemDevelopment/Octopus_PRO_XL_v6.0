@@ -1270,7 +1270,12 @@ static inline bool requestScopedSave(uint8_t scope) {
    * not a root-cause fix. */
   g_restartAfterSave.store(true, std::memory_order_release);
   g_saveRequest.store(true, std::memory_order_release);
-  linkExtendPersistWindow(60000u);
+  /* [SAVE-TIMEOUT-FIX] Reduce persist window from 60s to 12s. The NVS write
+   * typically completes in 1–3 seconds; 60s was unnecessarily freezing the entire
+   * system (no transport, no BPM, no UI updates) and making failures unrecoverable.
+   * 12s gives safe headroom while keeping the system responsive. If the write
+   * actually takes longer, NvsWorker will extend it as needed. */
+  linkExtendPersistWindow(12000u);
   linkTouchAppHeartbeat();
   displayDirty.store(true, std::memory_order_relaxed);
   return true;
