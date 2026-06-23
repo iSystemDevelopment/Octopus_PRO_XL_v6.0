@@ -370,6 +370,8 @@ void IRAM_ATTR display_refresh_task(void* pvParameters) {
   bool     prevConnected = false;
   uint8_t  lastStepDrawn = 0xFFu;
   bool     prevSaveReq   = false;   /* [SAVE-FRAME] edge-detect save request */
+  int32_t  lastBpmDrawn  = -1;      /* [BPM-REGION] detect BPM/bank change */
+  uint8_t  lastBankDrawn = 0xFFu;
 
   for (;;) {
     const bool appConn = isAppConnected();
@@ -428,6 +430,12 @@ void IRAM_ATTR display_refresh_task(void* pvParameters) {
       lastDbeamDrawMs = nowMs;
       dbeamChanged    = true;
     }
+
+    /* [BPM-REGION] Track BPM/bank changes for partial row update on APP CONNECTED. */
+    const int32_t curBpm  = (int32_t)seqBpm.load(std::memory_order_relaxed);
+    const uint8_t curBank = (uint8_t)(seqActiveBank.load(std::memory_order_relaxed) & 15u);
+    const bool bpmChanged = appConn && (curBpm != lastBpmDrawn || curBank != lastBankDrawn);
+    if (bpmChanged) { lastBpmDrawn = curBpm; lastBankDrawn = curBank; }
 
     const bool scope = (currentScopeView.load(std::memory_order_relaxed) != TelemetryView::OFF);
     /* [C9b] No more "redraw every frame for 2.5 s after a turn" (manOv): that
@@ -512,13 +520,18 @@ void IRAM_ATTR display_refresh_task(void* pvParameters) {
       if (renderStepBarRegionIfVisible())
         displayFlushDiff();
       xSemaphoreGive(i2cMutex);
-    } else if (!saveArmedNow && !statusHold && dbeamChanged && xSemaphoreTake(i2cMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
-      /* [DISP-OPT2] D-BEAM region-only path: mirrors the step-bar path above.
-       * renderDbeamBarIfVisible() returns false on the SEQ dashboard / menu /
-       * app-connected views, keeping those views correct (D-BEAM bar only exists
-       * on the HARP dashboard).  On those views the bargraph is part of the next
-       * full render triggered by the encoder/transport or the scope. */
+    } else if (!saveArmedNow && !saveReqNow && !statusHold && !toastNow && !failNow && dbeamChanged &&
+               xSemaphoreTake(i2cMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
+      /* [DISP-OPT2] D-BEAM region-only path. Now handles APP CONNECTED too.
+       * Blocked while any pill (WAIT/DONE!/FAILED!) is on screen. */
       if (renderDbeamBarIfVisible())
+        displayFlushDiff();
+      xSemaphoreGive(i2cMutex);
+    } else if (!saveArmedNow && !saveReqNow && !statusHold && !toastNow && !failNow && bpmChanged &&
+               xSemaphoreTake(i2cMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
+      /* [BPM-REGION] BPM/bank changed on APP CONNECTED — repaint only the BPM row.
+       * Blocked while any pill is on screen (pill at y=1-14 overlaps BPM row y=11-23). */
+      if (renderBpmRowIfVisible())
         displayFlushDiff();
       xSemaphoreGive(i2cMutex);
     }
@@ -620,9 +633,10 @@ void settings_save_task(void* pvParameters) {
 
     if (g_saveDoneSem) xSemaphoreGive(g_saveDoneSem);
 
-    /* Send ACK to App on success only. On failure the reset_persist_task sends
-     * the NACK; for a plain save the App's 90 s timeout unblocks the modal. */
-    if (ok && isAppConnected()) txSysex(CMD_SESSION_SAVE, 16383u);
+    /* Send ACK to App on success. txSysexPersistReply uses force=true (12 mutex
+     * retries, bypasses isAppConnected) so the ACK is never silently dropped
+     * by transient midiMutex contention or a stale heartbeat timestamp. */
+    if (ok) txSysexPersistReply(CMD_SESSION_SAVE, 16383u);
 
     /* [SAVE-FIX14] Restart after a good commit so laser beams re-init cleanly. */
     if (g_restartAfterSave.exchange(false, std::memory_order_acq_rel)) {

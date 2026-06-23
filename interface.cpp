@@ -1410,7 +1410,7 @@ static void reset_persist_task(void*) {
 
   const bool got =
       g_saveDoneSem &&
-      (xSemaphoreTake(g_saveDoneSem, pdMS_TO_TICKS(15000)) == pdTRUE);
+      (xSemaphoreTake(g_saveDoneSem, pdMS_TO_TICKS(8000)) == pdTRUE);
 
   if (!got || !g_saveLastOk.load(std::memory_order_acquire)) {
     g_restartAfterSave.store(false, std::memory_order_release);

@@ -1672,15 +1672,49 @@ void renderUIState() {
  * is not the current view (caller skips the I2C transaction entirely). */
 bool renderDbeamBarIfVisible() {
   if (!hasOLED) return false;
-  if (isAppConnected()) return false;
   if (confirmOpen.load(std::memory_order_relaxed)) return false;
   if (currentScopeView.load(std::memory_order_relaxed) != TelemetryView::OFF) return false;
+
+  /* APP CONNECTED splash: repaint the BEAM row (y=34..53) in-place.
+   * Does not touch the header, BPM row, voices row, or step bar. */
+  if (isAppConnected()) {
+    display.setTextSize(1);
+    display.setTextColor(SH110X_WHITE);
+    display.fillRect(0, 34, SCREEN_W, 20, SH110X_BLACK);
+    display.setCursor(0, 37);
+    display.print(F("BEAM"));
+    if (dbeamEnabled.load(std::memory_order_relaxed)) {
+      const uint16_t amp = (uint16_t)dbeamAmplitude.load(std::memory_order_relaxed);
+      DRAW_BAR_GRAPH(30, 36, SCREEN_W - 30, 7, (float)amp, 16383.f);
+    } else {
+      display.setCursor(34, 37);
+      display.print(F("- bypassed -"));
+    }
+    return true;
+  }
+
   if (edgeEditOpen.load(std::memory_order_relaxed)) return false;
   if (menuState.load(std::memory_order_relaxed) != MenuState::IDLE) return false;
   if (activeDashboard.load() != DashboardMode::HARP) return false;
-  /* Only repaint the D-BEAM strip; leave everything above y=DASH_DBEAM_Y intact. */
   display.fillRect(0, DASH_DBEAM_Y, SCREEN_W, SCREEN_H - DASH_DBEAM_Y, SH110X_BLACK);
   drawDbeamBargraph();
+  return true;
+}
+
+/* renderBpmRowIfVisible — partial BPM+BANK row update for APP CONNECTED splash.
+ * Repaints only y=11..23 so BPM encoder changes don't flicker the full screen. */
+bool renderBpmRowIfVisible() {
+  if (!hasOLED) return false;
+  if (!isAppConnected()) return false;
+  if (confirmOpen.load(std::memory_order_relaxed)) return false;
+  if (currentScopeView.load(std::memory_order_relaxed) != TelemetryView::OFF) return false;
+  display.setTextSize(1);
+  display.setTextColor(SH110X_WHITE);
+  display.fillRect(0, 11, SCREEN_W, 13, SH110X_BLACK);
+  display.setCursor(0, 14);
+  display.printf("BPM %-3d  BANK %c",
+    (int)seqBpm.load(std::memory_order_relaxed),
+    (char)('A' + std::min(3, (int)seqActiveBank.load() & 15)));
   return true;
 }
 

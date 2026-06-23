@@ -571,6 +571,7 @@ void renderUIState();
 void drawAppConnectedPage(); /* [A5] shown when OctopusApp is connected */
 bool renderStepBarRegionIfVisible(); /* [PERF] partial step-bar redraw (display.cpp)  */
 bool renderDbeamBarIfVisible();      /* [PERF] partial D-BEAM bar redraw (display.cpp) */
+bool renderBpmRowIfVisible();        /* [PERF] partial BPM row on APP CONNECTED splash */
 bool viewIsSeqMatrix();              /* [PERF] SEQ MATRIX grid on screen? (display.cpp)*/
 void displayFlushDiff();             /* [PERF] page-diff I2C flush (display.cpp)       */
 void drawSaveToastIfActive();        /* [PERSIST-UI] DONE!/FAILED!/WAIT pill (display.cpp) */

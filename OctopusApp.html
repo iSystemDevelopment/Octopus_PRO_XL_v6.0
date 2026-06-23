@@ -3273,13 +3273,13 @@
                 this._persistKind = kind;
                 this._persistSince = Date.now();
                 /* No grace window — heartbeat + connection detector run normally during save.
-                 * Safety timeout: 15 s covers any realistic NVS write; if no ACK arrives
-                 * (e.g. device rebooted mid-write) the modal auto-clears. */
+                 * Safety timeout: 10 s. NVS write takes 1-5 s; ACK is sent immediately
+                 * after. If no ACK/NACK in 10 s the device crashed — modal auto-clears. */
                 if (this._persistTimeoutId) clearTimeout(this._persistTimeoutId);
                 this._persistTimeoutId = setTimeout(() => {
                     if (this._persistBusy && !this._persistAwaitReboot)
                         this._persistFinished(false, false);
-                }, 15000);
+                }, 10000);
                 return true;
             },
             /** Firmware encodes scope as v14 = ResetScope + 1 (0 reserved for NACK). */
