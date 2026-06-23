@@ -1563,17 +1563,21 @@
                 <!-- Song slot -->
                 <div>
                     <div style="color:#fff;font-size:9px;margin-bottom:6px;font-family:'Orbitron',sans-serif;letter-spacing:1px">SONG (CHAIN SLOT)</div>
-                    <select class="display-box" id="loadSongSlot" style="border-color:var(--green);color:var(--green);width:120px"></select>
-                    <button class="btn" style="color:var(--green);border-color:var(--green);margin-left:6px" onclick="app.loadSongFromModal()"><i class="fa-solid fa-folder-open"></i>SELECT SONG</button>
+                    <div style="display:flex;flex-wrap:wrap;align-items:center;gap:10px">
+                        <select class="display-box" id="loadSongSlot" style="border-color:var(--green);color:var(--green);width:140px;min-width:120px"></select>
+                        <button class="btn" style="color:var(--green);border-color:var(--green)" onclick="app.loadSongFromModal()"><i class="fa-solid fa-folder-open"></i> SELECT SONG</button>
+                    </div>
                 </div>
                 <!-- Factory pattern -->
                 <div>
                     <div style="color:#fff;font-size:9px;margin-bottom:6px;font-family:'Orbitron',sans-serif;letter-spacing:1px">FACTORY PATTERN → BANK <span id="loadBankLabel" style="color:var(--green)">A</span></div>
-                    <select class="display-box pink-txt" id="loadSynthPat" style="width:180px"></select>
-                    <button class="btn" style="color:var(--pink);border-color:var(--pink);margin-left:4px" onclick="app.loadSynthFromModal()">LOAD MELODY</button>
-                    <div style="margin-top:7px">
-                        <select class="display-box orange-txt" id="loadDrumPat" style="width:180px"></select>
-                        <button class="btn" style="color:var(--orange);border-color:var(--orange);margin-left:4px" onclick="app.loadDrumFromModal()">LOAD DRUMS</button>
+                    <div style="display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:8px">
+                        <select class="display-box pink-txt" id="loadSynthPat" style="width:180px;min-width:160px"></select>
+                        <button class="btn" style="color:var(--pink);border-color:var(--pink)" onclick="app.loadSynthFromModal()">LOAD MELODY</button>
+                    </div>
+                    <div style="display:flex;flex-wrap:wrap;align-items:center;gap:10px">
+                        <select class="display-box orange-txt" id="loadDrumPat" style="width:180px;min-width:160px"></select>
+                        <button class="btn" style="color:var(--orange);border-color:var(--orange)" onclick="app.loadDrumFromModal()">LOAD DRUMS</button>
                     </div>
                 </div>
             </div>
@@ -3211,6 +3215,7 @@
             _ringDropWarned: false, // one-shot when bulk ring drop counter rises
             _plockStealWarned: false,
             _lastRingDrops: 0,
+            _loadGridPending: false,
             _reloadAfterReconnect: false,
             _reloadTimer: null,
 
@@ -3345,6 +3350,15 @@
                     this._prepareForDeviceReboot();
                     return;
                 }
+                if (kind === 'load') {
+                    /* Device already sent sendFullStateSync() before SESSION_LOAD ACK.
+                     * Stay on-page so the inbound grid burst can drain (reload was
+                     * aborting the queue mid-import). */
+                    this._syncBurstExpected = true;
+                    this._loadGridPending = true;
+                    this.log('Load complete — updating matrix from device…');
+                    return;
+                }
                 this._scheduleAppReload(kind + ' complete');
             },
             _clearPersist() {
@@ -3466,6 +3480,10 @@
                 if (this._gridModelDirty) {
                     this._gridModelDirty = false;
                     this.repaintGrid();
+                }
+                if (!this._syncBurstExpected && !this._syncBurstActive && this._loadGridPending) {
+                    this._loadGridPending = false;
+                    this.log('Matrix synced from NVS load.');
                 }
                 this._syncBurstExpected = false;
                 this._syncBurstActive = false;
@@ -4205,8 +4223,11 @@
                         if (v14 === 16383) {
                             if (this._persistBusy && this._persistKind === 'load')
                                 this._persistFinished(true, false);
-                            else if (!this._persistBusy)
-                                this._scheduleAppReload('hardware load');
+                            else if (!this._persistBusy) {
+                                this._syncBurstExpected = true;
+                                this._loadGridPending = true;
+                                this.log('Hardware load — updating matrix from device…');
+                            }
                         } else if (v14 === 0) {
                             if (this._persistBusy || this._persistKind === 'load')
                                 this._persistFinished(false, false);
@@ -4360,11 +4381,9 @@
                             this.log('P-lock lanes full — oldest lane replaced to record new automation');
                         }
                     },
-                    // [FIX-GRID-ENC] No incoming CMD.GRID_ROW_LO/HI (162/163) handlers.
-                    // The device emits grid rows ONLY as SX_SUB_GRID_ROW frames (sub 0x05),
-                    // decoded in onMidiMessage() below — never the legacy v14 encoding whose
-                    // page bits overlapped the byte bits (corrupting steps 4-5 on pages 1-3).
-                    // A stray legacy 162/163 frame falls through applyIncoming() as a no-op.
+                    // Grid rows arrive as lossless sub-0x05 blobs from sendFullStateSync /
+                    // echoFullGrid (device→App).  Legacy CMD.GRID_ROW_LO/HI are still used
+                    // App→device via handleSysexCommand on the firmware side.
                 };
             },
             applyIncoming(cmd, v14) {
@@ -4525,6 +4544,8 @@
                 const name = this._scopeName(scope);
                 if (!confirm('LOAD ' + name + '\nReload from NVS?')) return;
                 if (!this._armPersist('load')) return;
+                this._syncBurstExpected = true;
+                this._loadGridPending = true;
                 this._showPersistWait('load', scope);
                 this.sessionLoad(scope);
             },

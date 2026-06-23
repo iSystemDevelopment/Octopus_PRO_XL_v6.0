@@ -938,22 +938,17 @@ static inline void echoAllDrumWaves();
 static inline void echoDbeamExprState();
 static inline void echoPbMapping();
 
-/* [G2] echoGridRow — send one row's ABSOLUTE 64-step state to the App as eight
- * half-row messages (4 pages × LO/HI).  Grid uses chain 0 (synth rows 0-7,
- * drum rows 8-15) — the OctopusApp matrix model.                             */
+/* echoGridRow — send one row's absolute 64-step state (four lossless sub-0x05 frames). */
 static inline void echoGridRow(uint8_t bank, uint8_t row) {
   bank &= 3u;
   row &= 15u;
   portENTER_CRITICAL(&patchMux);
   const uint64_t mask = hwSeqData[bank][0][row]; /* chain pinned 0 */
   portEXIT_CRITICAL(&patchMux);
-  const uint16_t addr = (uint16_t)(((uint16_t)bank << 12) | ((uint16_t)row << 8));
   for (uint8_t page = 0; page < 4u; ++page) {
-    const uint16_t pageAddr = (uint16_t)(addr | ((uint16_t)page << 4));
-    const uint8_t lo = (uint8_t)((mask >> (page * 16)) & 0xFFu);
+    const uint8_t lo = (uint8_t)((mask >> (page * 16))       & 0xFFu);
     const uint8_t hi = (uint8_t)((mask >> (page * 16 + 8)) & 0xFFu);
-    txSysex(CMD_GRID_ROW_LO, (uint16_t)(pageAddr | lo));
-    txSysex(CMD_GRID_ROW_HI, (uint16_t)(pageAddr | hi));
+    txGridRowBlob(bank, row, page, lo, hi);
   }
 }
 

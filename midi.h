@@ -94,6 +94,7 @@ void sendFullStateSync();
 void txSysex(uint8_t cmd, uint16_t v14bit);
 
 void txPatchBlob(uint8_t engine);
+void txGridRowBlob(uint8_t bank, uint8_t row, uint8_t page, uint8_t lo, uint8_t hi);
 
 void txUserLibraryNames();
 

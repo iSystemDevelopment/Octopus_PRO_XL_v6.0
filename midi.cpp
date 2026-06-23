@@ -110,6 +110,23 @@ void txPatchBlob(uint8_t engine) {
   midiUnlock();
 }
 
+/* Lossless grid row (device→App).  Matches OctopusApp sub 0x05 parser — avoids
+ * GRID_ROW_LO/HI v14 bit overlap on steps 4–5 of each 8-step half-row.          */
+void txGridRowBlob(uint8_t bank, uint8_t row, uint8_t page, uint8_t lo, uint8_t hi) {
+  if (!isAppConnected()) return;
+  if (!midiLock()) return;
+  const uint8_t f[10] = {
+    0xF0u, 0x7Cu, SX_SUB_GRID_ROW,
+    (uint8_t)(((bank & 3u) << 4) | (row & 15u)),
+    (uint8_t)(page & 3u),
+    (uint8_t)(lo & 0x0Fu), (uint8_t)((lo >> 4) & 0x0Fu),
+    (uint8_t)(hi & 0x0Fu), (uint8_t)((hi >> 4) & 0x0Fu),
+    0xF7u
+  };
+  midiEmitRaw(f, sizeof(f));
+  midiUnlock();
+}
+
 static void txUserSoundNameBlob(uint8_t engine, uint8_t slot) {
   if (engine > 1u || slot >= NUM_USER_SLOTS) return;
   if (!g_userSlotName[engine][slot][0]) return;
@@ -683,6 +700,23 @@ void parseMidiByte(uint8_t b, MidiParserState& ps) {
                                | (ps.sxBuf[5u + i * 2u] & 0x7Fu);
             handleSysexCommand((uint8_t)(base + i), pv);
           }
+        }
+      } else if (ps.sxBuf[2] == SX_SUB_GRID_ROW) {
+        if (ps.sxPtr >= 10u) {
+          const uint8_t bank = (ps.sxBuf[3] >> 4) & 3u;
+          const uint8_t row  = ps.sxBuf[3] & 15u;
+          const uint8_t page = ps.sxBuf[4] & 3u;
+          const uint8_t lo = (uint8_t)((ps.sxBuf[5] & 0xFu) | ((ps.sxBuf[6] & 0xFu) << 4));
+          const uint8_t hi = (uint8_t)((ps.sxBuf[7] & 0xFu) | ((ps.sxBuf[8] & 0xFu) << 4));
+          const int shiftLo = (int)(page * 16u);
+          const int shiftHi = shiftLo + 8;
+          portENTER_CRITICAL(&patchMux);
+          uint64_t m = hwSeqData[bank][0][row];
+          m = (m & ~(0xFFull << shiftLo)) | ((uint64_t)lo << shiftLo);
+          m = (m & ~(0xFFull << shiftHi)) | ((uint64_t)hi << shiftHi);
+          hwSeqData[bank][0][row] = m;
+          portEXIT_CRITICAL(&patchMux);
+          displayDirty.store(true, std::memory_order_release);
         }
       } else if (ps.sxBuf[2] == SX_SUB_USR_SOUND_NAME) {
         if (ps.sxPtr >= 21u) {
