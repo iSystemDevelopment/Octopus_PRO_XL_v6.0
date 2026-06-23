@@ -251,10 +251,9 @@ void txSysex(uint8_t cmd, uint16_t v14bit) {
 
   const uint32_t now = millis();
   /* Deduplication: don't re-send the same value within 500 ms.
-   * STEP_SYNC / SONG_POS / STEP_PHASE are clock position — never dedup (the
-   * playhead stalls if the same step/phase value repeats within 500 ms at slow
-   * tempos / short lengths). */
-  if (cmd != CMD_STEP_SYNC && cmd != CMD_SONG_POS && cmd != CMD_STEP_PHASE) {
+   * STEP_SYNC / SONG_POS are clock position — never dedup (playhead stalls if
+   * the same step index repeats within 500 ms at slow tempos / short lengths). */
+  if (cmd != CMD_STEP_SYNC && cmd != CMD_SONG_POS) {
     if (s_last_tx_val[cmd] == v14bit && (now - s_last_tx_ms[cmd] < 500u)) return;
   }
   /* Rate limiting for fast-changing parameter groups */
@@ -264,7 +263,7 @@ void txSysex(uint8_t cmd, uint16_t v14bit) {
   /* [ECHO-FIX] Stamp dedup/rate-limit state ONLY after a successful send. */
   if (!txSysexEmit(cmd, v14bit)) {
     /* Clock-position echoes go stale quickly — never queue for retry. */
-    if (cmd != CMD_STEP_SYNC && cmd != CMD_SONG_POS && cmd != CMD_STEP_PHASE)
+    if (cmd != CMD_STEP_SYNC && cmd != CMD_SONG_POS)
       txRetryPush(cmd, v14bit);
     return;
   }
@@ -931,12 +930,6 @@ void handleSysexCommand(uint8_t cmd, uint16_t v14) {
       break;
     case CMD_SESSION_SAVE:
       if (v14 == 16383u) break;
-      /* [SAVE-FIX15] Recover wedged g_saveArmed so saveInProgress() is not stuck. */
-      if (!g_saveRequest.load(std::memory_order_acquire) &&
-          g_saveArmed.load(std::memory_order_acquire)) {
-        g_saveArmed.store(false, std::memory_order_release);
-        g_loopParked.store(false, std::memory_order_release);
-      }
       if (v14 < 1u || v14 > 4u) {
         txSysexPersistReply(CMD_SESSION_SAVE, 0u);
         linkExtendPersistWindow(12000u);
@@ -944,19 +937,12 @@ void handleSysexCommand(uint8_t cmd, uint16_t v14) {
         requestFullStateSync(true, false);
         break;
       }
-      if (g_resetInProgress.load(std::memory_order_acquire) &&
-          !saveInProgress()) {
-        g_resetInProgress.store(false, std::memory_order_release);
-      }
-      if (saveInProgress() || g_resetInProgress.load(std::memory_order_acquire)) {
-        oledPersistFailed();
-        txSysexPersistReply(CMD_SESSION_SAVE, 0u);
-        oledPersistRestore();
-        linkExtendPersistWindow(30000u);
-        linkTouchAppHeartbeat();
-        requestFullStateSync(true, false);
-        break;
-      }
+      /* [SAVE-WEDGE-FIX] No early saveInProgress()/g_resetInProgress NACK here.  That
+       * guard ran BEFORE any wedge recovery, so a stuck g_saveArmed/g_resetInProgress
+       * (crash/abort mid-write) made EVERY save NACK forever ("always FAILED!").
+       * requestScopedSave() now self-heals stale flags (recoverWedgedPersistFlags)
+       * FIRST, then returns false only if a save is genuinely in flight — one NACK
+       * path, recovery always reachable. */
       oledPersistWorking();
       if (!requestScopedSave((uint8_t)((v14 - 1u) & 3u))) {
         oledPersistFailed();
@@ -973,6 +959,7 @@ void handleSysexCommand(uint8_t cmd, uint16_t v14) {
         txSysexPersistReply(CMD_SESSION_LOAD, 0u);
         break;
       }
+      recoverWedgedPersistFlags();  /* [SAVE-WEDGE-FIX] heal stale flags before the guard */
       if (saveInProgress() || g_resetInProgress.load(std::memory_order_acquire) ||
           g_loadInProgress.load(std::memory_order_acquire)) {
         oledPersistFailed();

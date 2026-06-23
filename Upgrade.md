@@ -79,20 +79,27 @@ heuristics. Instead: **hardware ticks, web interpolates between them** (PLL).
 **Files:** `OctopusApp.html` (primary); confirm `groovebox.cpp` / `midi.cpp` never
 dedupe `STEP_SYNC`; note mirror model in `code_info.h`.
 
-**Status:** ✅ **DONE — v6.0.01** (shipped in `OctopusApp.html`). Implemented exactly
-as specified: `_pllAnchorStep` / `_pllAnchorTime` set on each `CMD_STEP_SYNC`;
-`_pllPositionTick()` interpolates in rAF (`stepMs = 60000/bpm/4`, `frac =
-elapsed/stepMs`, `col = _pllAnchorStep & 15`); re-anchor on STEP_SYNC with hard
-snap on page change / pattern wrap; CSS `transform` transition retired (overlay
-detached from grid DOM); clock stops + playhead hides on transport stop / link loss.
+**Status:** ✅ **DONE — v6.0.01**, but the approach PIVOTED after field testing. The
+rAF PLL glide (`_pllPositionTick`, sub-cell interpolation every animation frame) was
+found to be hostage to main-thread jank: **moving the mouse** forced the browser to do
+hit-testing + `:hover` style-recalc + grid repaints between frames, delaying the rAF
+callback so the bar stuttered. Two sub-step attempts were also reverted (`CMD_STEP_PHASE`
+nudge → per-step forward jiggle; CSS transform transition → re-anchor snaps). **Final
+design = DISCRETE:** `_paintPlayhead()` sets the bar's CELL only on each `CMD_STEP_SYNC`
+(prompt + infrequent), transform stays 0, and the per-frame glide call is removed from
+`animateVU`. This is **immune to mouse/rAF jank** and exactly **1:1 with the device's own
+discrete 16-box bar** (hardware is the perfect reference). Transport-edge cache
+invalidation (cell counters reset to −1) keeps a same-step restart from painting a stale
+rect. `_pllPositionTick` is retained as dead reference code only.
 Steps 1–4 + the "retire/simplify" cleanup are complete. **Step 5 (firmware sub-step
-phase) is now ALSO done** — implemented as a separate low-rate `CMD_STEP_PHASE` (194)
-echo rather than packing it into STEP_SYNC: SeqSysexOut emits `(step6<<8)|phase8` at
-~20 Hz while playing, and the App's `[CMD.STEP_PHASE]` handler nudges `_pllAnchorTime`
-forward-only within the current step (STEP_SYNC keeps sole step/page/wrap authority).
-This corrects USB/drain-latency jitter on top of the per-step re-anchor. Supersedes the
-partial Workstream 7 §7.4 glide work. Verify the manual acceptance tests (BPM/LEN
-sweep, LEN=1, page follow, mid-play disconnect) on hardware before the 6.0.01 flash.
+phase) was tried and reverted** — CMD 194 (`CMD_STEP_PHASE`) is reserved, no longer
+emitted/handled. A compositor-driven (off-main-thread) CSS-transform glide is the only
+way to reintroduce smoothness without the jank; deferred. For now discrete is **1:1 with
+the hardware step and jank-free**. The transport-edge cache invalidation (the cell
+counters now reset to −1 so a same-step restart can never paint a stale rect) ships too.
+Supersedes the partial Workstream 7 §7.4 glide work. Verify the manual acceptance tests
+(BPM/LEN sweep, LEN=1, page follow, mid-play disconnect, and dragging the mouse around
+while playing) on hardware before the 6.0.01 flash.
 
 ---
 

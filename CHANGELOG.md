@@ -10,9 +10,12 @@ Versioning aligns with firmware `SYSTEM_FW_VERSION` in `code_info.h`.
 
 ## [6.0.01] — 2026-06-22
 
-### Added
+### Fixed (field-test pass)
 
-- **Sub-step PLL phase echo (`CMD_STEP_PHASE`, 194)** — device→App-only ~20 Hz echo of the position *within* the current step (`v14 = (step6<<8)|phase8`), emitted from SeqSysexOut. The App nudges its PLL anchor (`_pllAnchorTime`) forward-only within the step so the cyan playhead tracks the true hardware phase despite USB/drain latency. Pure refinement — `CMD_STEP_SYNC` keeps sole step/page/wrap authority. `CMD_COUNT 194 → 195`.
+- **Save / Reset "always FAILED"** — the App SAVE handler and `handleScopedReset()` NACK'd on an early `saveInProgress()` / `g_resetInProgress` guard *before* the wedge-recovery in `requestScopedSave()` could run, so a stuck `g_saveArmed`/`g_resetInProgress` (crash/abort mid-write) made every save **and** reset NACK forever. Recovery is now a shared `recoverWedgedPersistFlags()` (`globals.h`) called FIRST at every persist entry point. The App's FAILED toast now also logs the real NACK causes (re-flash with partition table + NVS erase, low heap, wrong partition) and points at the device UART0 `[NVS] … FAILED err=…` line. *Note: a genuine NVS write error is environmental — confirm via that serial line.*
+- **App playhead glitch / mouse-movement glitch / not 1:1 with hardware** — three fixes: (1) on a transport edge the cell-cache counters (`_playLast`/`_playPage`/`_playCol`/`_playAbsStep`/`_phRect`) were left on the last step, so a same-step restart hit the cached fast-path with a **stale rect** and painted a cell off from the hardware step — they now reset to `-1` on every transport edge (a fresh measure → exact hardware cell); (2) the `CMD_STEP_PHASE` sub-step nudge was **reverted** (it snapped the PLL anchor on late STEP_SYNC → per-step forward jiggle); (3) the per-frame rAF sub-cell **glide was removed** — driving the bar every animation frame made it hostage to main-thread jank, so moving the mouse (browser hit-test + `:hover` recalc + grid repaints between frames) delayed the rAF callback and stuttered the bar. The playhead is now **DISCRETE**: its cell is set only on a `CMD_STEP_SYNC` event (prompt + infrequent), making it immune to mouse/rAF jank and exactly **1:1 with the device's own discrete 16-box bar**.
+- **4 beat-LEDs froze in SONG editor view** — `_updateBeatLeds()` only ran inside `_paintPlayhead()`, which bails early when the grid is hidden (chain editor). The LEDs (step-only, no grid geometry) are now driven straight from the `STEP_SYNC` handler, so they keep sequencing in the SONG view.
+- **`octopus_web.html`** — sample rate shown as **44.1 kHz (44,100 Hz)**, P4 row notes 44.1 kHz · 24-bit, S3 = 16-bit; corrected stale "USB-C **+ DIN**" (DIN removed in v6.0 → USB-only), "190 SysEx" → 195, OctopusApp v6.0.00 → v6.0.01, build date.
 
 ### Fixed
 

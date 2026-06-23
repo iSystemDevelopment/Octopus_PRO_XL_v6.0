@@ -1496,14 +1496,14 @@
                 • <b>USB-only MIDI</b> — DIN MIDI removed; v6.0 SysEx protocol (manufacturer 0x7C device→App, 0x7D App→device).</p>
 
                 <p style="margin-top:10px"><b style="color:var(--green)">WHAT'S NEW IN v6.0.01</b><br>
-                • <b>PLL playhead mirror</b> — smooth 60 fps glide between steps; hardware anchors, App interpolates. No more USB-jitter jumps.<br>
+                • <b>Playhead mirror</b> — the cyan bar tracks the hardware step 1:1 (discrete, driven by STEP_SYNC) so it never drifts or stutters under mouse movement / UI load.<br>
                 • <b>Connect-while-playing fix</b> — playhead no longer flashes to step 0 when the App connects mid-sequence.<br>
                 • <b>Bug fixes</b> — data race on beam-note array (atomic), kick click integer overflow, arp divide-by-zero guard, seqUI OOB row/col clamp, P-lock bank/chain range checks.</p>
 
                 <p style="margin-top:10px"><b style="color:var(--cyan)">CONNECTION &amp; SYNC</b><br>
                 Select the ★ Octopus MIDI port → click <b>CONNECT</b> (or auto-connect when detected) → App sends CMD_APP_SYNC_REQ → device echoes full state. Badge shows LINKING then ONLINE once firmware replies. Heartbeat PING every ~800 ms keeps the OLED on "APP CONNECTED".<br>
                 <b>Hardware while connected:</b> SCALE = play/stop · OC short = record-arm · encoder = BPM · encoder long = SAVE menu.<br>
-                <b>Playhead:</b> switch to the <b>SEQUENCER</b> tab while playing — cyan bar glides smoothly at 60 fps via a PLL slaved to STEP_SYNC (hardware anchors every step, App interpolates sub-step position). Snaps hard only on page change or pattern wrap. BPM range 40–240. ▶ / ■ / REC mirror device state only (clicking shows a hint). ▶<br>
+                <b>Playhead:</b> switch to the <b>SEQUENCER</b> tab while playing — the cyan bar tracks the hardware step <b>1:1</b> (discrete, driven directly by STEP_SYNC, exactly like the device's 16-box bar). It never drifts or stutters when you move the mouse or the UI is busy. BPM range 40–240. ▶ / ■ / REC mirror device state only (clicking shows a hint). ▶<br>
                 <b>No inbound echo?</b> Close other OctopusApp tabs, hard-refresh (Ctrl+Shift+R), open MON with FILTER off — you must see ← lines when moving hardware controls.</p>
 
                 <p style="margin-top:10px"><b style="color:var(--orange)">DRUM KITS</b><br>
@@ -3301,6 +3301,16 @@
                 if (!ok) {
                     this._linkGraceUntil = Date.now() + 60000;
                     this._healLinkAfterPersistFail(this._persistKind + ' failed');
+                    // [SAVE-DIAG] A FAILED here is a device-side NACK (the NVS write
+                    // returned an error) — not a link drop.  Point the user at the real
+                    // causes so they aren't left guessing at a blind "FAILED!".
+                    this.log('⚠ ' + (this._persistKind || 'persist').toUpperCase() +
+                        ' NACK from device — the NVS write failed. Most common causes: ' +
+                        '(1) firmware flashed WITHOUT the partition table + flash-erase ' +
+                        '(re-flash with partitions.csv at 0x8000 and erase NVS); ' +
+                        '(2) low heap — STOP playback before saving; ' +
+                        '(3) wrong partition scheme. Check the device UART0 serial log for ' +
+                        'the exact line "[NVS] save … FAILED err=… / [NVS] stats: total=…".');
                 }
                 this._persistBusy = false;
                 this._persistKind = '';
@@ -3529,9 +3539,7 @@
                 if (!force && !stepChanged && hasCache && ph.classList.contains('ph-visible')) {
                     if (this.isPlaying) {
                         ph.classList.add('ph-playing');
-                        this._pllAnchorStep = s;
-                        this._pllAnchorTime = performance.now();
-                        this._updateBeatLeds(col);
+                        this._updateBeatLeds(col);   // [DISCRETE] same cell — bar already in place (transform 0)
                     }
                     return;
                 }
@@ -3550,12 +3558,10 @@
                     this._phPendingStep = -1;
                     if (this.isPlaying) {
                         ph.classList.add('ph-playing');
-                        this._pllAnchorStep = s;
-                        this._pllAnchorTime = performance.now();
+                        ph.style.transform = 'translate3d(0,0,0)';   // [DISCRETE] sit on the cell
                         this._updateBeatLeds(col);
                     } else {
                         ph.classList.remove('ph-playing');
-                        this._pllAnchorStep = -1;
                         ph.style.transform = 'translate3d(0,0,0)';
                     }
                     return;
@@ -3584,12 +3590,10 @@
 
                 if (this.isPlaying) {
                     ph.classList.add('ph-playing');
-                    this._pllAnchorStep = s;
-                    this._pllAnchorTime = performance.now();
+                    ph.style.transform = 'translate3d(0,0,0)';   // [DISCRETE] sit exactly on the hardware step's cell
                     this._updateBeatLeds(col);
                 } else {
                     ph.classList.remove('ph-playing');
-                    this._pllAnchorStep = -1;
                     ph.style.transform = 'translate3d(0,0,0)';
                 }
             },
@@ -4394,28 +4398,23 @@
                         if (s < 0) s = 0;
                         if (s >= len) s = len - 1;
                         this.visStep = s;
+                        // [LED-FIX] The 4 beat LEDs depend only on the step, not on the
+                        // grid geometry — drive them HERE so they keep sequencing in the
+                        // SONG editor view too.  Previously they only updated inside
+                        // _paintPlayhead(), which bails early when the grid is hidden
+                        // (showSongEditor), so the LEDs froze the moment the chain editor
+                        // was opened.  (_updateBeatLeds de-dups, so the later _paintPlayhead
+                        // call is a no-op when the grid IS visible — no double work.)
+                        if (this.isPlaying) this._updateBeatLeds(s & 15);
                         this._paintPlayhead(s);
                     },
-                    // [SUBSTEP] Sub-step phase refinement (CMD_STEP_PHASE, ~20 Hz).
-                    // Pure refinement: it ONLY nudges _pllAnchorTime within the CURRENT
-                    // step so interpolation reflects the true hardware phase (USB/drain
-                    // latency corrected). It never sets step/page/wrap — STEP_SYNC owns
-                    // those. Guards: same step only, and forward-only (never a backward
-                    // stutter), capped at 0.98 like _pllPositionTick.
-                    [CMD.STEP_PHASE]: v14 => {
-                        if (!this.isPlaying || this._pllAnchorStep < 0) return;
-                        // Pure visual refinement — deliberately does NOT touch the
-                        // STEP_SYNC liveness/staleness timers (_lastStepSyncRxMs), so a
-                        // real STEP_SYNC stall is still detectable even if phase flows.
-                        const step = (v14 >> 8) & 0x3F;
-                        if (step !== (this._pllAnchorStep | 0)) return; // boundary in flight → STEP_SYNC
-                        const ph = (v14 & 0xFF) / 256;       // true phase within step (0..~0.996)
-                        const bpm = Math.max(40, this.bpm || 120);
-                        const stepMs = 60000 / bpm / 4;
-                        const now = performance.now();
-                        const curFrac = (now - this._pllAnchorTime) / stepMs;
-                        if (ph > curFrac && ph <= 0.98) this._pllAnchorTime = now - ph * stepMs;
-                    },
+                    // [SUBSTEP-REVERTED] CMD_STEP_PHASE (194) is intentionally NOT handled.
+                    // The sub-step nudge it drove caused a per-step FORWARD JUMP whenever a
+                    // STEP_SYNC arrived late (it snapped _pllAnchorTime to the reported
+                    // phase), i.e. a visible jiggle.  The plain glide below is already 1:1
+                    // with the hardware at the CELL level (STEP_SYNC sets the cell) and
+                    // glides smoothly within it, lagging only by the constant USB latency —
+                    // no jitter.  Constant 194 stays RESERVED so wire IDs never renumber.
                     [CMD.CPU_LOAD]: v14 => {
                         const pct = Math.max(0, Math.min(100, v14 & 0x7F));
                         const drops = (v14 >> 7) & 0x7F;
@@ -4477,16 +4476,30 @@
                 document.getElementById('btnPlay') ?.classList.toggle('active-green', playing);
                 document.getElementById('btnStop') ?.classList.toggle('active-green', !playing);
                 document.getElementById('btnRec') ?.classList.toggle('active-red', recording);
-                if (!playing) {
+                if (playing !== wasPlaying) {
+                    // [PLAYHEAD-1:1] On ANY transport edge, fully invalidate the playhead
+                    // cell cache so the next STEP_SYNC forces a fresh measure + paint.
+                    // These step counters MUST be able to fall back to -1: stop used to
+                    // leave them on the last step, so a same-step restart hit the cached
+                    // fast-path with a STALE _phRect (the grid may have been rebuilt or
+                    // resized while stopped) → the bar painted a cell OFF from the
+                    // hardware step.  Resetting to -1 guarantees stepChanged === true on
+                    // the first post-edge paint, so the App bar lands exactly on the
+                    // hardware step (1:1).  (This is the "counter could not reach -1" bug.)
+                    this._playLast = -1;
+                    this._playCol = -1;
+                    this._playPage = -1;
+                    this._playAbsStep = -1;
+                    this._phRect = null;
+                    this._phRectPage = -1;
                     this._pllAnchorStep = -1;
                     this._pllAnchorTime = -1;
+                }
+                if (!playing) {
                     for (let i = 0; i < 4; i++)
                         document.getElementById('led-' + i)?.classList.remove('active');
                     this._playBeat = -1;
                     this._paintPlayhead(this.visStep | 0);
-                } else if (!wasPlaying) {
-                    this._pllAnchorStep = -1;
-                    this._pllAnchorTime = -1;
                 }
             },
             play() {
@@ -5152,6 +5165,11 @@
                 }
                 this._playBeat = beat;
             },
+            // [DISCRETE-PLAYHEAD] RETAINED BUT NOT CALLED.  This was the per-frame
+            // sub-cell glide; it is no longer invoked from animateVU because driving the
+            // bar every rAF frame made it stutter under mouse-movement main-thread jank.
+            // Kept here (dead) only as the reference implementation if a compositor-driven
+            // smooth glide is reintroduced later.  Do NOT re-add the animateVU call.
             _pllPositionTick() {
                 if (!this.isPlaying || this._pllAnchorStep < 0) return;
                 const ph = this._playheadEl;
@@ -5644,13 +5662,16 @@
 
             // ── VU meter + playhead rAF loop ──────────────────────────────────────────
             animateVU(ts) {
-                // ┌─────────────────────────────────────────────────────────────────────┐
-                // │  HIGHEST PRIORITY: PLL playhead position — runs FIRST, every frame. │
-                // │  Nothing above this line.  No DOM mutations before this call.        │
-                // │  will-change:transform on #seq-playhead gives it a dedicated GPU     │
-                // │  compositor layer so grid cell paints never block this update.       │
-                // └─────────────────────────────────────────────────────────────────────┘
-                if (this.isPlaying) this._pllPositionTick();
+                // [DISCRETE-PLAYHEAD] The per-frame sub-cell PLL glide (_pllPositionTick)
+                // was REMOVED from the rAF loop.  Driving the bar's position every frame
+                // made it hostage to main-thread jank: moving the mouse forces the browser
+                // to do hit-testing + :hover style-recalc + grid repaints BETWEEN frames,
+                // which delays this rAF callback so the glide stuttered (the reported
+                // "mouse movement glitches the playhead").  The bar is now DISCRETE — its
+                // cell is set ONLY on a CMD_STEP_SYNC event (prompt + infrequent), so it is
+                // immune to mouse/rAF jank and lands exactly on the hardware step (1:1 with
+                // the device's own discrete 16-box bar).  Sub-cell smoothing can be
+                // restored later via a compositor-driven CSS transform transition if wanted.
                 if (this._phPendingStep >= 0 && this._seqGridVisible()) {
                     const step = this._phPendingStep;
                     this._phPendingStep = -1;

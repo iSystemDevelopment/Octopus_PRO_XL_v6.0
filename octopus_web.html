@@ -713,7 +713,7 @@
             <span class="pill"><i class="fa-solid fa-bolt text-[#22c55e]"></i> 8 RGB Laser Beams</span>
             <span class="pill"><i class="fa-solid fa-drum text-[#f97316]"></i> 4 Drum Kits</span>
             <span class="pill"><i class="fa-solid fa-repeat text-[#ec4899]"></i> Seq + Harp ARP</span>
-            <span class="pill"><i class="fa-solid fa-laptop-code text-[#ec4899]"></i> OctopusApp v6.0.00</span>
+            <span class="pill"><i class="fa-solid fa-laptop-code text-[#ec4899]"></i> OctopusApp v6.0.01</span>
         </div>
         <div class="flex flex-wrap gap-4 justify-center mb-6">
             <a href="https://octopus.isystem.app" target="_blank" rel="noopener noreferrer"
@@ -1118,7 +1118,7 @@
             </div>
             <div class="feature-card">
                 <h4 class="text-white mb-2"><i class="fa-solid fa-shield-halved text-[#22c55e]"></i> Robust Two-Way Sync</h4>
-                <p class="text-sm text-gray-400">190 SysEx commands at 14-bit resolution. Hardware edits echo into the app and vice-versa; a sync supervisor re-asserts BPM/play/record if a message is dropped. Transport buttons in the app are read-only reflectors — play/stop/record/BPM live on the device.</p>
+                <p class="text-sm text-gray-400">195 SysEx commands at 14-bit resolution. Hardware edits echo into the app and vice-versa; a sync supervisor re-asserts BPM/play/record if a message is dropped. Transport buttons in the app are read-only reflectors — play/stop/record/BPM live on the device.</p>
             </div>
         </div>
 
@@ -1222,7 +1222,7 @@
                         <div class="spec-row"><span>Processor</span><span>ESP32-P4 · dual-core DSP + laser task</span></div>
                         <div class="spec-row"><span>Audio</span><span>24 voices · <strong>44.1 kHz</strong> · <strong>24-bit</strong> I2S</span></div>
                         <div class="spec-row"><span>Laser</span><span>8-beam galvo RGB · top sensor · D-BEAM prox.</span></div>
-                        <div class="spec-row"><span>Software</span><span>Octopus v6.0.00 · 190 SysEx · NVS</span></div>
+                        <div class="spec-row"><span>Software</span><span>Octopus v6.0.01 · 195 SysEx · NVS</span></div>
                         <div class="spec-row spec-row-full"><span>Rear I/O</span><span>TRS L/R out &amp; in · USB-C · MIDI DIN · ILDA · MicroSD</span></div>
                     </div>
                 </div>
@@ -1233,9 +1233,9 @@
                 <div>
                     <h4 class="text-white brand mb-3 border-b border-[#333] pb-2 text-sm"><i class="fa-solid fa-microchip text-gray-500"></i> Platform &amp; Audio</h4>
                     <table class="spec-table-compact">
-                        <tr><td>Sample rate</td><td><strong>44.1 kHz</strong> (all builds)</td></tr>
+                        <tr><td>Sample rate</td><td><strong>44.1 kHz</strong> (44,100 Hz) · all builds</td></tr>
                         <tr><td>ESP32-S3 (dev)</td><td>16-bit I2S · open firmware</td></tr>
-                        <tr><td>ESP32-P4 (custom)</td><td>24-bit I2S · limited build</td></tr>
+                        <tr><td>ESP32-P4 (custom)</td><td>24-bit I2S · 44.1 kHz · limited build</td></tr>
                         <tr><td>Polyphony</td><td>24 voices (8+8+8)</td></tr>
                         <tr><td>Wavetables</td><td>25 algorithms</td></tr>
                         <tr><td>Presets</td><td>128 factory · 16 scales</td></tr>
@@ -1243,7 +1243,7 @@
                         <tr><td>Arpeggiators</td><td>Seq 8 pat · Harp 4 pat</td></tr>
                         <tr><td>Song mode</td><td>16&times;16 chain steps</td></tr>
                         <tr><td>Drum kits</td><td>909 / 808 / Trap / House</td></tr>
-                        <tr><td>MIDI</td><td>USB-C + DIN · SysEx</td></tr>
+                        <tr><td>MIDI</td><td>USB-C class-compliant · SysEx (no DIN in v6.0)</td></tr>
                         <tr><td>Persistence</td><td>NVS · CRC32 blobs</td></tr>
                     </table>
                 </div>
@@ -1277,7 +1277,7 @@
                     </table>
                 </div>
             </div>
-            <p class="text-center text-xs text-gray-600 mono mt-6">Octopus v6.0.00 &middot; ESP-P4 Edition &middot; build 2026-06-20 &middot; 32&nbsp;MB PSRAM</p>
+            <p class="text-center text-xs text-gray-600 mono mt-6">Octopus v6.0.01 &middot; ESP-P4 Edition &middot; build 2026-06-22 &middot; 32&nbsp;MB PSRAM</p>
         </div>
     </section>
 

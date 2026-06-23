@@ -273,16 +273,13 @@ static constexpr uint8_t CMD_D_FX_P2  = 192; /* v14 0–16383 → p2 0..250 (dep
  * Sent by App after RND-H / RND-D randomisation so the new pattern plays from
  * beat 1 immediately.  Firmware-side: no-op when stopped.                    */
 static constexpr uint8_t CMD_SEQ_RESTART = 193;
-/* [SUBSTEP] Device→App ONLY — sub-step phase echo for the App PLL playhead.
- *   v14 = (step6 << 8) | phase8
- *     step6  = current step 0–63 (bits 13-8)
- *     phase8 = position WITHIN that step 0–255 (bits 7-0) = (tick % TICKS_PER_STEP)
- *              scaled to 0..255.
- * Emitted at ~20 Hz from SeqSysexOut while playing so the App can anchor its
- * interpolation to the TRUE sub-step phase (correcting USB/drain latency) instead
- * of restarting each step at frac 0.  Refinement ONLY: it nudges the App's
- * _pllAnchorTime within the current step and never carries step/page/wrap
- * authority — CMD_STEP_SYNC remains the sole boundary/snap source. Never RX. */
+/* [SUBSTEP-REVERTED] CMD_STEP_PHASE — RESERVED, not emitted.  It was a ~20 Hz
+ * device→App sub-step phase echo (v14 = (step6<<8)|phase8) meant to refine the App
+ * PLL playhead, but snapping the App's anchor to the reported phase produced a
+ * visible per-step forward jiggle on late STEP_SYNC delivery.  The App's plain
+ * per-cell glide is already 1:1 with the hardware step and smooth, so the echo was
+ * dropped (firmware no longer emits it; the App has no handler).  The ID is kept
+ * reserved so wire IDs never renumber; do not repurpose without a protocol bump. */
 static constexpr uint8_t CMD_STEP_PHASE = 194;
 static constexpr uint8_t CMD_COUNT = 195; /* total command count              */
 

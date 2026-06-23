@@ -22,7 +22,7 @@
  *                             no new persisted fields, so 6.0.00 NVS loads as-is)
  * CMD_COUNT         195       (sysex indices 0-194; … 186-189 harp arp;
  *                              190-192 drum insert FX; 193 seq restart;
- *                              194 step-phase, device→App PLL refinement)
+ *                              194 step-phase RESERVED/unused — see §3)
  *
  * ─────────────────────────────────────────────────────────────────────────────
  * WHAT CHANGED IN v6.0 (vs v5.3.x)
@@ -372,13 +372,11 @@
  *   191 D_FX_P1      fx.drumInsert.p1      v14 0–16383 → 0..30  (rate/time)
  *   192 D_FX_P2      fx.drumInsert.p2      v14 0–16383 → 0..250 (depth/swing)
  *   193 SEQ_RESTART  seq_restart_from_step_zero()  App→ESP; no-op when stopped
- *   194 STEP_PHASE   [v6.0.01] device→App ONLY: PLL sub-step refinement.
- *                    v14 = (step6<<8)|phase8 (step 0–63 bits 13-8, phase 0–255
- *                    bits 7-0 = tick%TICKS_PER_STEP scaled).  Emitted ~20 Hz from
- *                    SeqSysexOut while playing; the App nudges its _pllAnchorTime
- *                    within the CURRENT step (forward-only) so interpolation tracks
- *                    the true phase despite USB/drain latency.  STEP_SYNC keeps sole
- *                    step/page/wrap authority; phase is refinement only.  Never RX.
+ *   194 STEP_PHASE   [v6.0.01] RESERVED — not emitted/handled.  Was a ~20 Hz PLL
+ *                    sub-step echo (v14 = (step6<<8)|phase8) but snapping the App's
+ *                    anchor to the reported phase caused a per-step forward jiggle on
+ *                    late STEP_SYNC delivery.  Dropped: the App's plain per-cell glide
+ *                    is already 1:1 with the hardware step.  ID kept reserved.
  *
  * ═══════════════════════════════════════════════════════════════════════════
  * 4. ADDING A NEW GLOBAL PARAMETER (step-by-step)

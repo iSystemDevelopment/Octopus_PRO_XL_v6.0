@@ -1438,6 +1438,11 @@ static void reset_persist_task(void*) {
 /* handleScopedReset — apply RAM wipe, persist, restart.
  * Boot OC+SCALE combo: blocking 16 KB save task (NvsWorker not running yet). */
 void handleScopedReset(ResetScope scope) {
+  /* [SAVE-WEDGE-FIX] Heal stale persist flags BEFORE the guards below — a wedged
+   * g_saveArmed/g_resetInProgress (crash mid-write) otherwise made every RESET hit
+   * the saveInProgress() / g_resetInProgress guard and NACK forever ("always
+   * FAILED!"), exactly like the SAVE path. */
+  recoverWedgedPersistFlags();
   if (g_resetInProgress.exchange(true, std::memory_order_acq_rel)) {
     oledPersistFailed();
     txSysexPersistReply(CMD_SCOPED_RESET, 0u);

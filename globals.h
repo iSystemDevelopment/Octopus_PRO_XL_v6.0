@@ -1221,24 +1221,40 @@ inline std::atomic<bool> g_saveLastOk{ true };
 /** millis() until which a transient oledStatusLines message is held; 0 = none. */
 inline std::atomic<uint32_t> g_oledStatusHoldMs{ 0 };
 
-/** Arm a scoped NVS save. scope: 0=FULL 1=BANKS_PATTERNS 2=MOTION 3=SETTINGS.
- *  Returns true if the request was queued; false if a save is already in flight.
- *  [FIX-H1] Callers must check the return value and send a NACK to the App when
- *  false — the previous silent drop caused the App to think the save was queued. */
-static inline bool requestScopedSave(uint8_t scope) {
-  /* Recover stale flags left by an aborted persist (NACK without cleanup, etc.). */
+/** [SAVE-WEDGE-FIX] Self-heal persist flags left stuck by a crash / TWDT-kill
+ *  mid-write.  A wedged g_saveArmed or g_resetInProgress otherwise makes EVERY
+ *  subsequent SAVE/RESET/LOAD hit an early `saveInProgress()` / g_resetInProgress
+ *  guard and NACK forever → the field-reported "Save/Reset always FAILED!".
+ *
+ *  This recovery used to live ONLY inside requestScopedSave(), which the App save
+ *  path reaches AFTER its own early NACK guard and which handleScopedReset()/the
+ *  LOAD path never reach at all — so the recovery was effectively unreachable.
+ *  Pulling it into a shared helper lets every persist entry point call it FIRST.
+ *
+ *  Safe to call unconditionally: it clears a flag only when NO real operation is
+ *  in flight (a genuine save always has g_saveRequest set while it runs).        */
+static inline void recoverWedgedPersistFlags() {
+  /* g_saveArmed set without g_saveRequest ⇒ the worker died after arming but the
+   * request was already consumed — stale park/arm. */
+  if (g_saveArmed.load(std::memory_order_acquire) &&
+      !g_saveRequest.load(std::memory_order_acquire)) {
+    g_saveArmed.store(false, std::memory_order_release);
+    g_loopParked.store(false, std::memory_order_release);
+  }
+  /* g_resetInProgress with nothing queued/armed ⇒ an aborted reset. */
   if (g_resetInProgress.load(std::memory_order_acquire) &&
       !g_saveRequest.load(std::memory_order_acquire) &&
       !g_saveArmed.load(std::memory_order_acquire)) {
     g_resetInProgress.store(false, std::memory_order_release);
   }
-  /* [SAVE-FIX15] Wedged g_saveArmed (crash/abort mid-write) makes saveInProgress()
-   * true forever → every SAVE/RESET gets instant NACK + FAILED toast. */
-  if (!g_saveRequest.load(std::memory_order_acquire) &&
-      g_saveArmed.load(std::memory_order_acquire)) {
-    g_saveArmed.store(false, std::memory_order_release);
-    g_loopParked.store(false, std::memory_order_release);
-  }
+}
+
+/** Arm a scoped NVS save. scope: 0=FULL 1=BANKS_PATTERNS 2=MOTION 3=SETTINGS.
+ *  Returns true if the request was queued; false if a save is already in flight.
+ *  [FIX-H1] Callers must check the return value and send a NACK to the App when
+ *  false — the previous silent drop caused the App to think the save was queued. */
+static inline bool requestScopedSave(uint8_t scope) {
+  recoverWedgedPersistFlags();   /* [SAVE-WEDGE-FIX] heal stale flags before the guard */
   if (g_resetInProgress.load(std::memory_order_acquire) ||
       g_saveRequest.load(std::memory_order_acquire) ||
       g_saveArmed.load(std::memory_order_acquire))
