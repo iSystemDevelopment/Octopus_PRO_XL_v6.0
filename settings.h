@@ -125,6 +125,11 @@
  * sync can persist/restore the SEQ view page without pulling in groovebox.h.  */
 extern std::atomic<int> seqUI_page;
 
+/* [BLOB-PACK] Pack all settings structs to 1-byte alignment to eliminate padding
+ * and ensure consistent CRC across compilations. Padding bloat can exceed NVS
+ * partition limits (~20 KB) and cause corrupt writes. */
+#pragma pack(push, 1)
+
 /* [INC-3] Namespace kept as "octopus_v5" deliberately — stable across OTA so
  * the partition is not orphaned; version mismatch is handled by SETTINGS_VERSION
  * verify(), not the namespace name. */
@@ -434,6 +439,15 @@ struct AllSettings {
 };
 
 inline AllSettings g_settings;
+
+#pragma pack(pop)
+
+/* [BLOB-SIZE-CHECK] Assert struct sizes to catch future padding/layout issues.
+ * If this fails to compile, struct padding bloat has occurred. */
+static_assert(sizeof(AllSettings) <= 2000, "AllSettings too large — NVS blob will fail");
+static_assert(sizeof(PatternsBlob) <= 2560, "PatternsBlob too large");
+static_assert(sizeof(BanksBlob) <= 14600, "BanksBlob too large");
+static_assert(sizeof(MotionBlob) <= 8704, "MotionBlob too large");
 
 /* ═══════════════════════════════════════════════════════════════════════════
  * DIRECTION REFERENCE
@@ -1695,6 +1709,11 @@ static inline bool settings_save_scoped(ResetScope scope) {
                   (int)scope, step, (int)err, esp_err_to_name(err),
                   (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
                   (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
+    /* [BLOB-DIAG] Report blob sizes to help diagnose NVS layout issues. */
+    if (strcmp(step, "settings") == 0) {
+      Serial.printf("[NVS] settings blob: sizeof(AllSettings)=%zu, CRC=%08x\n",
+                    sizeof(AllSettings), (unsigned)g_settings.crc32);
+    }
   }
   if (ok) settings_dirty.store(false, std::memory_order_release);
   return ok;
