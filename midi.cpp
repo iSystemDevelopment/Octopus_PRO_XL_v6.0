@@ -932,25 +932,13 @@ void handleSysexCommand(uint8_t cmd, uint16_t v14) {
       if (v14 == 16383u) break;
       if (v14 < 1u || v14 > 4u) {
         txSysexPersistReply(CMD_SESSION_SAVE, 0u);
-        linkExtendPersistWindow(12000u);
-        linkTouchAppHeartbeat();
-        requestFullStateSync(true, false);
         break;
       }
-      /* [SAVE-WEDGE-FIX] No early saveInProgress()/g_resetInProgress NACK here.  That
-       * guard ran BEFORE any wedge recovery, so a stuck g_saveArmed/g_resetInProgress
-       * (crash/abort mid-write) made EVERY save NACK forever ("always FAILED!").
-       * requestScopedSave() now self-heals stale flags (recoverWedgedPersistFlags)
-       * FIRST, then returns false only if a save is genuinely in flight — one NACK
-       * path, recovery always reachable. */
       oledPersistWorking();
       if (!requestScopedSave((uint8_t)((v14 - 1u) & 3u))) {
         oledPersistFailed();
         txSysexPersistReply(CMD_SESSION_SAVE, 0u);
         oledPersistRestore();
-        linkExtendPersistWindow(30000u);
-        linkTouchAppHeartbeat();
-        requestFullStateSync(true, false);
       }
       break;
     case CMD_SESSION_LOAD:

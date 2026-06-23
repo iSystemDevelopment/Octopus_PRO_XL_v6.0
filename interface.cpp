@@ -838,9 +838,6 @@ void updateHardwareInterface() {
           txSysexPersistReply(CMD_SCOPED_RESET, 0u);
         else if (wasSave)
           txSysexPersistReply(CMD_SESSION_SAVE, 0u);
-        linkExtendPersistWindow(15000u);
-        linkTouchAppHeartbeat();
-        requestFullStateSync(true, false);
         oledPersistFailed();
         oledPersistRestore();
         s_saveStuckSince = 0u;
@@ -1413,23 +1410,13 @@ static void reset_persist_task(void*) {
 
   const bool got =
       g_saveDoneSem &&
-      (xSemaphoreTake(g_saveDoneSem, pdMS_TO_TICKS(45000)) == pdTRUE);
+      (xSemaphoreTake(g_saveDoneSem, pdMS_TO_TICKS(15000)) == pdTRUE);
 
-    if (!got || !g_saveLastOk.load(std::memory_order_acquire)) {
-      g_restartAfterSave.store(false, std::memory_order_release);
-      g_resetAckPending.store(false, std::memory_order_release);
-      rollbackResetRam(s_resetPersistScope);
-      /* [SAVE-TIMEOUT-FIX] On error, use SHORT timeout (5s) to recover quickly
-       * instead of freezing the system for 60s. The error will be reported to the
-       * App and the connection can immediately recover. */
-      linkExtendPersistWindow(5000u);
-      linkTouchAppHeartbeat();
-      requestFullStateSync(true, false);
-      for (int burst = 0; burst < 8; ++burst) {
-        txSysexPersistReply(CMD_SCOPED_RESET, 0u);
-        midi_drain_tx_retry();
-        vTaskDelay(pdMS_TO_TICKS(25));
-      }
+  if (!got || !g_saveLastOk.load(std::memory_order_acquire)) {
+    g_restartAfterSave.store(false, std::memory_order_release);
+    g_resetAckPending.store(false, std::memory_order_release);
+    rollbackResetRam(s_resetPersistScope);
+    txSysexPersistReply(CMD_SCOPED_RESET, 0u);
     g_resetInProgress.store(false, std::memory_order_release);
     oledPersistFailed();
     oledPersistRestore();
@@ -1461,12 +1448,6 @@ void handleScopedReset(ResetScope scope) {
   }
 
   oledPersistWorking();
-  /* [SAVE-TIMEOUT-FIX] Reduce persist window from 60s to 12s (see globals.h).
-   * The NVS write typically completes in 1-3 seconds; 60s was freezing the entire
-   * system. 12s gives safe headroom while keeping the system responsive. */
-  linkExtendPersistWindow(12000u);
-  linkTouchAppHeartbeat();
-
   /* [FIX-M3] Silence voices and stop the sequencer before wiping RAM. */
   allNotesOff();
   seq_stop();
