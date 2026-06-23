@@ -1596,112 +1596,54 @@ static inline bool settings_persist_blocking(ResetScope scope, uint32_t timeoutM
 
 static inline bool settings_save_scoped(ResetScope scope) {
 
-  /* [DIAG] Report NVS capacity up front — this reveals the ACTUAL partition size
-   * regardless of what the IDE menu / partitions.csv claim.  A stock 20 KB nvs
-   * shows total_entries ≈ 630; the bundled 256 KB shows ≈ 8000.  If a FULL save
-   * fails, compare free_entries against what the blobs need (~50 KB ≈ 1600
-   * entries) to tell partition-too-small apart from a code/heap fault.        */
-  {
-    nvs_stats_t st;
-    if (nvs_get_stats(NULL, &st) == ESP_OK) {
-      Serial.printf("[NVS] stats: total=%u used=%u free=%u (partition %s)\n",
-                    (unsigned)st.total_entries, (unsigned)st.used_entries,
-                    (unsigned)st.free_entries,
-                    st.total_entries < 2000u ? "TOO SMALL (~20KB)!" : "ok");
-      if (st.total_entries < 2000u) {
-        Serial.println(F("[NVS] FULL save needs ~1600 free entries — use bundled partitions.csv"));
-        return false;
-      }
-    }
-    Serial.printf("[NVS] save begin scope=%d  DRAMfree=%u PSRAMfree=%u\n",
-                  (int)scope,
-                  (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
-                  (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
-  }
-
   nvs_handle_t h;
   const esp_err_t openErr = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &h);
-  if (openErr != ESP_OK) {
-    Serial.printf("[NVS] save: nvs_open FAILED err=%d (%s)\n",
-                  (int)openErr, esp_err_to_name(openErr));
-    return false;
-  }
-
-  /* Feed the Task-WDT between blob writes (a FULL commit can take seconds).
-   * SELF-GUARDED: only reset when THIS task is actually subscribed, so the
-   * blocking/boot-seed path (NvsBlk) can never flood
-   * "task_wdt: esp_task_wdt_reset(): task not found" regardless of whether the
-   * caller registered with the WDT. */
-#define WDT_RESET_SAVE() do { if (esp_task_wdt_status(NULL) == ESP_OK) esp_task_wdt_reset(); } while (0)
+  if (openErr != ESP_OK) return false;
 
   esp_err_t err = ESP_OK;
-  const char* step = "open";   /* names the failing blob in the error log below */
   switch (scope) {
     case ResetScope::FULL:
       settings_sync_from_ssot();
       g_settings.crc32 = g_settings.calculate_crc();
-      step = "settings"; err = nvs_set_blob(h, "settings", &g_settings, sizeof(AllSettings));
-      if (err != ESP_OK) break; WDT_RESET_SAVE();
-      step = "patterns"; err = patterns_save_h(h);
-      if (err != ESP_OK) break; WDT_RESET_SAVE();
-      step = "banks"; err = banks_save_h(h);
-      if (err != ESP_OK) break; WDT_RESET_SAVE();
-      step = "usrnames"; err = usrnames_save_h(h);
-      if (err != ESP_OK) break; WDT_RESET_SAVE();
-      step = "usrpat"; err = usrpat_save_h(h);
-      if (err != ESP_OK) break; WDT_RESET_SAVE();
-      step = "usrpatnames"; err = usrpatnames_save_h(h);
-      if (err != ESP_OK) break; WDT_RESET_SAVE();
-      step = "motion"; err = motion_save_h(h);
-      WDT_RESET_SAVE();
+      err = nvs_set_blob(h, "settings", &g_settings, sizeof(AllSettings));
+      if (err != ESP_OK) break;
+      err = patterns_save_h(h);
+      if (err != ESP_OK) break;
+      err = banks_save_h(h);
+      if (err != ESP_OK) break;
+      err = usrnames_save_h(h);
+      if (err != ESP_OK) break;
+      err = usrpat_save_h(h);
+      if (err != ESP_OK) break;
+      err = usrpatnames_save_h(h);
+      if (err != ESP_OK) break;
+      err = motion_save_h(h);
       break;
     case ResetScope::SETTINGS:
       settings_sync_from_ssot();
       g_settings.crc32 = g_settings.calculate_crc();
-      step = "settings"; err = nvs_set_blob(h, "settings", &g_settings, sizeof(AllSettings));
-      WDT_RESET_SAVE();
+      err = nvs_set_blob(h, "settings", &g_settings, sizeof(AllSettings));
       break;
     case ResetScope::BANKS_PATTERNS:
-      step = "patterns"; err = patterns_save_h(h);
-      if (err != ESP_OK) break; WDT_RESET_SAVE();
-      step = "banks"; err = banks_save_h(h);
-      if (err != ESP_OK) break; WDT_RESET_SAVE();
-      step = "usrnames"; err = usrnames_save_h(h);
-      if (err != ESP_OK) break; WDT_RESET_SAVE();
-      step = "usrpat"; err = usrpat_save_h(h);
-      if (err != ESP_OK) break; WDT_RESET_SAVE();
-      step = "usrpatnames"; err = usrpatnames_save_h(h);
-      WDT_RESET_SAVE();
+      err = patterns_save_h(h);
+      if (err != ESP_OK) break;
+      err = banks_save_h(h);
+      if (err != ESP_OK) break;
+      err = usrnames_save_h(h);
+      if (err != ESP_OK) break;
+      err = usrpat_save_h(h);
+      if (err != ESP_OK) break;
+      err = usrpatnames_save_h(h);
       break;
     case ResetScope::MOTION:
-      step = "motion"; err = motion_save_h(h);
-      WDT_RESET_SAVE();
+      err = motion_save_h(h);
       break;
   }
-  if (err == ESP_OK) step = "commit";
-
-#undef WDT_RESET_SAVE
 
   if (err == ESP_OK) err = nvs_commit(h);
-
   nvs_close(h);
 
   const bool ok = (err == ESP_OK);
-  if (!ok) {
-    /* Name the exact failing blob + error so the cause is unambiguous:
-     *   ESP_ERR_NO_MEM            → heap exhaustion (DRAM+PSRAM both too low)
-     *   ESP_ERR_NVS_NOT_ENOUGH_SPACE → nvs partition too small / wrong scheme
-     * Also report free heap so a borderline DRAM condition is visible.       */
-    Serial.printf("[NVS] save scope=%d step=%s FAILED err=%d (%s)  DRAMfree=%u PSRAMfree=%u\n",
-                  (int)scope, step, (int)err, esp_err_to_name(err),
-                  (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
-                  (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
-    /* [BLOB-DIAG] Report blob sizes to help diagnose NVS layout issues. */
-    if (strcmp(step, "settings") == 0) {
-      Serial.printf("[NVS] settings blob: sizeof(AllSettings)=%zu, CRC=%08x\n",
-                    sizeof(AllSettings), (unsigned)g_settings.crc32);
-    }
-  }
   if (ok) settings_dirty.store(false, std::memory_order_release);
   return ok;
 }

@@ -530,7 +530,7 @@ void IRAM_ATTR display_refresh_task(void* pvParameters) {
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
- * settings_save_task — Core 1, priority 9  [NvsWorker]
+ * settings_save_task — Core 1, priority 3  [NvsWorker]
  *
  * NVS save handshake:
  *   1. g_saveRequest fires → ramp master volume to 0 (click-free)
@@ -546,7 +546,7 @@ void IRAM_ATTR display_refresh_task(void* pvParameters) {
  * ─────────────────────────────────────────────────────────────────────────────*/
 void settings_save_task(void* pvParameters) {
   (void)pvParameters;
-  esp_task_wdt_add(NULL);   /* [SAVE-FIX3] long NVS commits must feed TWDT */
+  esp_task_wdt_add(NULL);
   while (!g_systemReady.load(std::memory_order_acquire))
     vTaskDelay(pdMS_TO_TICKS(1));
 
@@ -560,28 +560,17 @@ void settings_save_task(void* pvParameters) {
     /* ── Step 1: ramp volume to silence ───────────────────────────────── */
     const float savedVol = masterVol.load(std::memory_order_relaxed);
     masterVol.store(0.0f, std::memory_order_relaxed);
-    /* [CLICK-FREE] ~15 ms master-gain smoother time constant + I2S DMA drain. */
     vTaskDelay(pdMS_TO_TICKS(40));
 
-    /* [SAVE-FIX7] Own the I2C bus for the WHOLE write window — closes the TOCTOU
-     * race behind the assert.  Checking g_saveArmed in the OLED tasks is not
-     * enough: the display task can pass that check and START a Wire transfer the
-     * instant before the flash write disables the cache + IPC-stalls the other
-     * core, leaving the Wire mutex released from the wrong context
-     * (xTaskPriorityDisinherit).  Taking i2cMutex here BLOCKS until any in-flight
-     * render finishes and then locks every OLED task out for the duration; we
-     * take and give on this same task, so there is no ownership violation. */
+    /* [SAVE-FIX7] Own the I2C bus for the WHOLE write window. */
     const bool haveI2c =
         (i2cMutex && xSemaphoreTake(i2cMutex, pdMS_TO_TICKS(250)) == pdTRUE);
 
     /* ── Step 2: arm save window, wait for laser to park ─────────────── */
     g_saveArmed.store(true, std::memory_order_release);
-    std::atomic_thread_fence(std::memory_order_seq_cst);  /* full fence */
+    std::atomic_thread_fence(std::memory_order_seq_cst);
 
-    /* [FIX-WRAP] millis()+500u overflows at ~49-day uptime: deadline wraps to
-     * ~0 so the loop condition (millis() < deadline) is immediately false and
-     * the laser park wait is skipped entirely.  Use elapsed-time comparison
-     * (millis()-startMs) which is wrap-safe by unsigned subtraction.          */
+    /* [FIX-WRAP] Use elapsed-time comparison to avoid millis()+500u overflow. */
     const uint32_t parkStartMs = millis();
     while (!g_loopParked.load(std::memory_order_acquire) &&
            (uint32_t)(millis() - parkStartMs) < 500u) {
@@ -590,18 +579,11 @@ void settings_save_task(void* pvParameters) {
     }
 
     const bool parked = g_loopParked.load(std::memory_order_acquire);
-    if (!parked) {
-      /* Laser didn't park in time — log the anomaly and proceed anyway.
-       * IDF flash-driver multicore safety (esp_ipc + cache suspend) still
-       * protects the write; the only risk is one partial beam-scan step. */
+    if (!parked)
       Serial.println(F("[NVS] WARN: laser park timeout — saving anyway"));
-    }
 
-    /* [SAVE-FIX6] Restore the REAL master volume BEFORE the blob sync.
-     * settings_sync_from_ssot() (inside settings_save_scoped) reads masterVol;
-     * if it is still 0.0 (the click-free mute), NVS persists volume=0 → SILENT
-     * after reboot.  Audio output stays muted during the write via g_saveArmed
-     * (effect.cpp returns silence), so restoring the atomic here is click-safe. */
+    /* [SAVE-FIX6] Restore the REAL master volume BEFORE the blob sync so
+     * settings_sync_from_ssot() does not persist volume=0. */
     masterVol.store(savedVol, std::memory_order_relaxed);
 
     /* ── Step 3: write NVS ────────────────────────────────────────────── */
@@ -613,91 +595,38 @@ void settings_save_task(void* pvParameters) {
     g_persistScope.store((uint8_t)ResetScope::FULL, std::memory_order_relaxed);
     g_saveLastOk.store(ok, std::memory_order_release);
     if (!ok) {
-      /* settings_save_scoped() already printed the exact failing step + err. */
+      Serial.println(F("[NVS] Save FAILED — check NVS partition size"));
       g_saveFailFlashMs.store(millis() + 1500u, std::memory_order_relaxed);
       displayDirty.store(true, std::memory_order_relaxed);
-      oledPersistRestore();
     } else {
-      Serial.printf("[NVS] save scope=%d OK\n", (int)scope);
       g_saveFailFlashMs.store(0u, std::memory_order_relaxed);
-      /* Visible "DONE!" pill in every view for 1.2 s. */
       g_saveFlashMs.store(millis() + 1200u, std::memory_order_relaxed);
       displayDirty.store(true, std::memory_order_relaxed);
     }
 
-    /* ── Step 4: clear flags ─────────────────────────────────────────── */
-    /* Extend link BEFORE dropping g_saveArmed — otherwise isAppConnected()
-     * goes false for one window and PING replies + state echoes are dropped. */
-    if (!ok) {
-      linkExtendPersistWindow(8000u);
-    } else {
-      linkExtendPersistWindow(12000u);
-    }
-    linkTouchAppHeartbeat();
+    /* ── Step 4: clear flags and restore volume ───────────────────────── */
     std::atomic_thread_fence(std::memory_order_release);
     g_loopParked.store(false, std::memory_order_release);
     g_saveArmed .store(false, std::memory_order_release);
-    /* [SAVE-FIX13] Always request a beam re-home after the write — the laser
-     * runs this whether or not it managed to park, so the flash-write glitch is
-     * always cleaned up.  Set it AFTER clearing g_saveArmed so the laser's park
-     * loop exits first and picks this up on its very next iteration. */
+    /* [SAVE-FIX13] Request beam re-home AFTER clearing g_saveArmed so the
+     * laser's park loop exits first and picks this up on its next iteration. */
     g_beamRecover.store(true, std::memory_order_release);
     std::atomic_thread_fence(std::memory_order_release);
 
-    /* [FIX-VOL-DOUBLE] masterVol is already restored at the SAVE-FIX6 point
-     * above (before the NVS sync) and must NOT be forced back to savedVol here:
-     * on no-reboot save paths (requestBanksOnlySave) the MIDI/CC task can
-     * legitimately change the volume during the write, and this late restore
-     * would silently undo the user's change.                                 */
+    masterVol.store(savedVol, std::memory_order_relaxed);
     g_saveRequest.store(false, std::memory_order_release);
-    g_resetInProgress.store(false, std::memory_order_release);
-    g_oledStatusHoldMs.store(0u, std::memory_order_release);
+    Serial.println(F("[BEAM] save complete → beam-recover requested"));
 
     /* [SAVE-FIX7] Release the I2C bus — OLED tasks may render again. */
     if (haveI2c) xSemaphoreGive(i2cMutex);
 
     if (g_saveDoneSem) xSemaphoreGive(g_saveDoneSem);
 
-    /* Echo ACK or NACK to App (BEFORE any restart so the ACK is received).
-     * Reset path uses CMD_SCOPED_RESET; save path uses CMD_SESSION_SAVE.
-     *
-     * NACK is sent unconditionally on failure — isAppConnected() can be
-     * false if the NVS write took >4.5 s (MidiUsbRx is blocked during the
-     * flash write, heartbeats pile up, the 4.5 s window expires).  The App
-     * modal must unblock regardless of the reported connection state.
-     *
-     * [SAVE-FIX16] Burst the ACK several times + longer USB drain — a single
-     * frame was often lost to the reboot/enumeration gap on Windows Web MIDI. */
-    const bool wasReset = g_resetAckPending.exchange(false, std::memory_order_acq_rel);
-    const uint8_t ackCmd = wasReset ? CMD_SCOPED_RESET : CMD_SESSION_SAVE;
-    const uint16_t ackVal = ok ? 16383u : 0u;
-    if (ok) {
-      for (int burst = 0; burst < 6; ++burst) {
-        txSysexPersistReply(ackCmd, ackVal);
-        midi_drain_tx_retry();
-        delay(25);
-      }
-    } else {
-      for (int burst = 0; burst < 6; ++burst) {
-        txSysexPersistReply(ackCmd, 0u);
-        midi_drain_tx_retry();
-        delay(25);
-      }
-      requestFullStateSync(true, false);
-    }
+    /* Send ACK to App on success only. On failure the reset_persist_task sends
+     * the NACK; for a plain save the App's 90 s timeout unblocks the modal. */
+    if (ok && isAppConnected()) txSysex(CMD_SESSION_SAVE, 16383u);
 
-    /* Drain any queued persist ACK before reboot so the App is not left on FAILED. */
-    if (ok) {
-      for (int i = 0; i < 60; ++i) {
-        midi_drain_tx_retry();
-        delay(15);
-      }
-    }
-
-    /* [SAVE-FIX14] Restart after a good commit — used by the scoped RESET menu,
-     * the async reset task, AND now every runtime save (requestScopedSave sets
-     * g_restartAfterSave) so the laser beams re-init cleanly via the boot path.
-     * The 700 ms delay lets the "DONE!" OLED toast flash before the reboot. */
+    /* [SAVE-FIX14] Restart after a good commit so laser beams re-init cleanly. */
     if (g_restartAfterSave.exchange(false, std::memory_order_acq_rel)) {
       if (ok) {
         delay(700);
