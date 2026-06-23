@@ -737,7 +737,7 @@ static constexpr UBaseType_t TASK_PRIO_OLED      = 18; /* OledRender     (C0)   
 static constexpr UBaseType_t TASK_PRIO_CONTROL   = 16; /* ControlPoll    (C0)               */
 static constexpr UBaseType_t TASK_PRIO_SEQ_SYSEX = 14; /* SeqSysexOut    (C1)               */
 static constexpr UBaseType_t TASK_PRIO_MIDI_RX   = 12; /* MidiUsbRx      (C1)               */
-static constexpr UBaseType_t TASK_PRIO_NVS       = 3;  /* NvsWorker      (C1)               */
+static constexpr UBaseType_t TASK_PRIO_NVS       = 9;  /* NvsWorker      (C1)               */
 static constexpr UBaseType_t TASK_PRIO_FULLSYNC  = 8;  /* FullSyncOut    (C1)               */
 
 inline TaskHandle_t hAudioTask = nullptr;   /* Core 0, TASK_PRIO_RT        (24) */
@@ -747,7 +747,7 @@ inline TaskHandle_t hSeqBgTask = nullptr;   /* Core 1, TASK_PRIO_SEQ_SYSEX (14) 
 inline TaskHandle_t hControlTask = nullptr; /* Core 0, TASK_PRIO_CONTROL   (16) */
 inline TaskHandle_t hDisplayTask = nullptr; /* Core 0, TASK_PRIO_OLED      (18) */
 inline TaskHandle_t hLaserTask = nullptr;   /* Core 1, TASK_PRIO_RT        (24) */
-inline TaskHandle_t hNvsTask = nullptr;     /* Core 1, TASK_PRIO_NVS       (3)  */
+inline TaskHandle_t hNvsTask = nullptr;     /* Core 1, TASK_PRIO_NVS       (9)  */
 
 /* ═══════════════════════════════════════════════════════════════════════════
  * SECTION 7 — CORE RUNTIME MODE & UI STATE

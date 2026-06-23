@@ -649,7 +649,8 @@
         .drum-scope-canvas {
             width: 100%;
             height: 100%;
-            display: block
+            display: block;
+            transform: translateZ(0)
         }
 
         .arp-on-btn {
@@ -908,7 +909,8 @@
             border-radius: 3px;
             cursor: pointer;
             position: relative;
-            box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.04), 0 1px 1px rgba(0, 0, 0, 0.6)
+            box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.04), 0 1px 1px rgba(0, 0, 0, 0.6);
+            contain: layout style paint
         }
 
         .seq-step:hover {
@@ -3297,17 +3299,8 @@
                 this._hidePersistWait();
                 if (this._persistTimeoutId) { clearTimeout(this._persistTimeoutId); this._persistTimeoutId = null; }
                 if (!ok) {
-                    this._healLinkAfterPersistFail(this._persistKind + ' failed');
-                    // [SAVE-DIAG] A FAILED here is a device-side NACK (the NVS write
-                    // returned an error) — not a link drop.  Point the user at the real
-                    // causes so they aren't left guessing at a blind "FAILED!".
                     this.log('⚠ ' + (this._persistKind || 'persist').toUpperCase() +
-                        ' NACK from device — the NVS write failed. Most common causes: ' +
-                        '(1) firmware flashed WITHOUT the partition table + flash-erase ' +
-                        '(re-flash with partitions.csv at 0x8000 and erase NVS); ' +
-                        '(2) low heap — STOP playback before saving; ' +
-                        '(3) wrong partition scheme. Check the device UART0 serial log for ' +
-                        'the exact line "[NVS] save … FAILED err=… / [NVS] stats: total=…".');
+                        ' FAILED — check device UART log for [NVS] error details.');
                 }
                 this._persistBusy = false;
                 this._persistKind = '';
@@ -3329,41 +3322,8 @@
                     if (el) el.style.display = 'none';
                     this._hidePersistBanner();
                     this._hidePersistWait();
-                    if (ok) {
-                        if (reboot) {
-                            this._prepareForDeviceReboot();
-                        } else {
-                            this._healLinkAfterPersistFail('save/load complete');
-                        }
-                    }
-                    /* Failure: link heal already fired on NACK handler (before this modal). */
+                    if (ok && reboot) this._prepareForDeviceReboot();
                 }, ms);
-            },
-            /** After any persist failure (or non-reboot save), restore BPM/transport echoes. */
-            _healLinkAfterPersistFail(reason) {
-                const now = Date.now();
-                /* [HEAL-TIMEOUT-FIX] Grace was 60s, which blocked transport health checks
-                 * for a full minute after any failure — BPM/transport appeared lost.
-                 * 8s matches the _linkDegradedUntil cooldown so health checks resume
-                 * promptly once the firmware finishes its recovery burst. */
-                this._linkGraceUntil = now + 8000;
-                this._linkDegradedUntil = now + 5000;
-                this._lastDeviceRxMs = now;
-                this._connOnline = true;
-                this.updateConnBadge(true);
-                this._syncBurstExpected = true;
-                this._syncBurstActive = false;
-                if (this.midiOut && this._portLive(this.midiOut)) {
-                    /* Send ONE PING + ONE APP_SYNC_REQ — not 5×. The firmware already
-                     * calls requestFullStateSync() on its own after a NACK; flooding it
-                     * with 5 more APP_SYNC_REQs causes a massive echo storm that delays
-                     * the BPM/transport echoes we're trying to restore. */
-                    this.txSysex(CMD.PING, 0);
-                    this.txSysex(CMD.APP_SYNC_REQ, 0);
-                    this.log('Link heal — ' + (reason || 'resync') + ' (PING + APP_SYNC_REQ).');
-                } else {
-                    this.log('Link heal skipped — MIDI output unavailable.');
-                }
             },
             _clearPersist() {
                 this._persistBusy = false;

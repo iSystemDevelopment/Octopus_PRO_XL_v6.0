@@ -9,8 +9,6 @@
  * audio.cpp — v6.0.00
  * ═════════════════════════════════════════════════════════════════════════════ */
 #include "audio.h"
-/* esp_log.h removed — ESP_LOGI debug calls were leftover agent instrumentation
- * that blocked the NvsWorker task during saves via Serial.flush(). */
 
 /* Ensure laser symbols available even if include order varies */
 #include "laser.h"
@@ -530,7 +528,7 @@ void IRAM_ATTR display_refresh_task(void* pvParameters) {
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
- * settings_save_task — Core 1, priority 3  [NvsWorker]
+ * settings_save_task — Core 1, priority 9  [NvsWorker]
  *
  * NVS save handshake:
  *   1. g_saveRequest fires → ramp master volume to 0 (click-free)
