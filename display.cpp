@@ -1,45 +1,16 @@
 /* ═════════════════════════════════════════════════════════════════════════════
- * Octopus PRO XL v6.0.00 — Laser Harp Groovebox
+ * Octopus PRO XL v6.1.00 — Laser Harp Groovebox
  * © 2026 DIODAC ELECTRONICS / iSystem. All Rights Reserved.
  *
  * PROPRIETARY AND CONFIDENTIAL. Unauthorized copying, distribution, modification,
  * or use of this software or firmware, in whole or in part, is strictly prohibited
  * without prior written permission from DIODAC ELECTRONICS.
- * ═════════════════════════════════════════════════════════════════════════════
- * display.cpp — v6.0.00  OLED RENDERING ENGINE
+ * display.cpp — v6.1.00  OLED UI — SINGLE WRITER
  *
- * Changes vs v5.1.01:
- *
- *  [R1] wires.h removed — appSyncActive, checkWireAuthority from patches.h.
- *
- *  [R2] Case 7 seqUI_renderSettings() REMOVED from renderUIState.
- *       Case 7 is now AUX FX — rendered through the standard drawMenuL3 path.
- *
- *  [R3] formatParamValueString case 2: +3 mute items (l2 18/19/20).
- *
- *  [R4] formatParamValueString case 7: completely rewritten for AUX FX
- *       (14 items: aux bus × 4, insert sends × 4, FX slots × 6).
- *
- *  [R5] formatParamValueString case 9: 41 items (5 params × 8 voices + kit selector).
- *       Wave param shows kWaves[] name via safeWaveName().
- *
- *  [R6] getSliderPct updated for cases 2, 4, 7, 9 to match item counts.
- *
- *  [R7] drawMenuL3 isToggle extended for mute items (l1==2, l2 18–20).
- *       Value string now rendered via drawScrollingText for L3 value area.
- *
- *  [R8] drawSeqDashboard redesigned: shows BPM, bank, chain name, step
- *       length, transpose, octave shift, and mute status indicators.
- *
- *  [R9] drawHarpDashboard redesigned: shows preset name with patch#, scale
- *       name from SCALES[].name, play mode, D-BEAM route, octave shift.
- *
- *  [R10] All array accesses use safe* accessors from display.h — no raw
- *        index arithmetic that could crash on bad values.
- *
- *  Retained from v5.1.01: [A] scopeWritePtr relaxed load, [B] curve % 5,
- *  [C] preset index tracking, [D] no pollSyncHeartbeat in renderer,
- *  [E] shortened help text, [F] getSliderPct normalization (extended).
+ * renderUIState() is the only runtime draw entry (display_refresh_task, Core 0).
+ * Dashboards: LASER HARP, SEQUENCER, APP CONNECTED splash.  Menus L1/L2/L3,
+ * song editor, SEQ matrix delegate, telemetry scopes, transport glyphs.
+ * displayFlushDiff() — page-dirty I2C updates under i2cMutex.
  * ═════════════════════════════════════════════════════════════════════════════ */
 #include "display.h"
 #include "interface.h"
@@ -49,14 +20,12 @@
 #include "effect.h"
 #include "assets.h"
 #include "dbeam.h"
-#include "groovebox.h"  /* [GB-MERGE] seqUI_renderMatrix + cursor state, NUM_*_PATS (was sequencer.h+patterns.h) */
-#include "patches.h"    /* [R1] appSyncActive, syncLivePatchFromAtomics  */
-#include "fog.h"        /* [FOG] fogRejectEnabled / fogRejectMargin       */
-/* wires.h removed — absorbed into patches.h [R1]                        */
+#include "groovebox.h"
+#include "patches.h"
+#include "fog.h"
 
 /* ── File-scope helpers ──────────────────────────────────────────────────── */
 static const char kChainTokens[4] = { 'A', 'B', 'C', 'D' };
-/* [V5.3-CONS] kChainName removed — chain is pinned to 0; banks shown as A-D. */
 
 /* Panel is a 1.3" SH1106 128x64 — the SH1106G driver applies the SH1106's
  * 2-pixel column offset internally.  (An SH1107 driver leaves the panel blank.) */
@@ -66,22 +35,6 @@ Adafruit_SH1106G display = Adafruit_SH1106G(128, 64, &Wire);
 static void drawTransportGlyph(int16_t x, int16_t y, bool playing,
                                bool recording, uint16_t color);
 
-/* ═══════════════════════════════════════════════════════════════════════════
- * [PERF] PAGE-DIFF FLUSH  — universal partial display update
- *
- * The renderer still draws whole frames into the GFX RAM buffer (cheap), but
- * this flush pushes ONLY the 128-byte SH1106 pages that actually changed since
- * the previous flush over I2C.  A static frame costs 0 bytes; a moved playhead
- * ~2 pages; a full redraw still the whole 8.  The old display.display() blasted
- * the entire 1 KB buffer every refresh (~9 ms blocking on the audio core), so
- * this turns every element — BPM, scale, preset, menu cursor, sliders, the
- * telemetry trace, the D-BEAM bar — into a cheap region update with no
- * per-element bookkeeping.  We keep a shadow copy and diff page-by-page.
- *
- * SH1106 note: the controller has 132 columns; a 128-px panel is centred, so
- * the visible window starts at column +2 (matches the SH1106G library offset).
- * If a future panel shows a 2-px horizontal shift, set kColOfs to 0.
- * ═══════════════════════════════════════════════════════════════════════════ */
 static uint8_t s_oledShadow[SCREEN_W * (SCREEN_H / 8)];
 static bool    s_oledShadowValid = false;
 
@@ -110,11 +63,7 @@ void displayFlushDiff() {
     Wire.write((uint8_t)(0x10 | (kColOfs >> 4)));  /* higher column nibble        */
     Wire.endTransmission();
 
-    /* [IDM-OPT1] Data stream (control 0x40) in 64-byte chunks via bulk
-     * Wire.write(ptr,n).  1 ctrl byte + 64 data = 65 B ≤ 128 B ESP32 Wire
-     * buffer.  Cuts beginTransmission/endTransmission from 8→2 per page and
-     * replaces 128 single-byte Wire.write() calls with 2 bulk copies — far
-     * less per-page I2C bus-hold time blocking Core 0. */
+    /* Data stream in 64-byte Wire chunks (reduces I2C overhead per page). */
     static constexpr int kChunkSz = 64;
     for (int col = 0; col < SCREEN_W; col += kChunkSz) {
       Wire.beginTransmission(I2C_ADDR_OLED);
@@ -127,31 +76,23 @@ void displayFlushDiff() {
   s_oledShadowValid = true;
 }
 
-/* [PERSIST-UI] drawSaveToastIfActive — small persist pill, top-centre, drawn OVER
- * whatever view is on screen for ~1.2 s after NVS save completes (or fails). */
+/* drawSaveToastIfActive — SAVING / SAVED / FAIL pill overlay after NVS persist. */
 void drawSaveToastIfActive() {
-  /* Three states share the same pill:
-   *   • g_saveRequest pending  → "WAIT…"
-   *   • g_saveFailFlashMs      → "FAILED!" (~1.5 s after a failed commit)
-   *   • g_saveFlashMs active   → "DONE!"   (~1.2 s after success)
-   * WAIT takes precedence; FAILED shows only when not actively saving.       */
-  const bool saving = g_saveRequest.load(std::memory_order_acquire) ||
-      g_resetInProgress.load(std::memory_order_acquire);
+  /* SAVING (g_saveRequest) → FAIL (g_saveFailFlashMs) → SAVED (g_saveFlashMs). */
+  const bool saving = g_saveRequest.load(std::memory_order_acquire);
   const bool failed = !saving &&
       (int32_t)(g_saveFailFlashMs.load(std::memory_order_relaxed) - millis()) > 0;
-  const bool done   = !saving && !failed &&
+  const bool saved  = !saving && !failed &&
       (int32_t)(g_saveFlashMs.load(std::memory_order_relaxed) - millis()) > 0;
-  if (!saving && !done && !failed) return;
+  if (!saving && !saved && !failed) return;
 
-  const int16_t w = saving ? 40 : (failed ? 52 : 46), h = 13;
+  const int16_t w = saving ? 54 : (failed ? 40 : 46), h = 13;
   const int16_t x = (SCREEN_W - w) / 2, y = 1;
   display.fillRoundRect(x, y, w, h, 3, SH110X_WHITE);
   display.setTextColor(SH110X_BLACK);
   display.setTextSize(1);
-  display.setCursor(x + (failed ? 4 : (saving ? 9 : 6)), y + 3);
-  /* ASCII only — Adafruit GFX has no glyph for the UTF-8 ellipsis (…), which
-   * rendered as garbage bytes after the word.  Plain "WAIT". */
-  display.print(saving ? F("WAIT") : (failed ? F("FAILED!") : F("DONE!")));
+  display.setCursor(x + (failed ? 8 : 6), y + 3);
+  display.print(saving ? F("SAVING") : (failed ? F("FAIL!") : F("SAVED")));
   display.setTextColor(SH110X_WHITE);
 }
 
@@ -164,13 +105,10 @@ static inline void readPresetName(int pi, char* buf) {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
- * TELEMETRY — stack / heap page (encoder view 6)
- * g_stackStats refreshed every 5 s by updateTaskStackStats().
+ * TELEMETRY — system report (TelemetryView::STACK_STATS)
+ * g_stackStats + g_audio_load_pct refreshed every 5 s by updateTaskStackStats().
  * ═══════════════════════════════════════════════════════════════════════════ */
 static void drawStackStatsTelemetry() {
-  /* [sysreport] Trimmed to the essentials: CPU load, DRAM/PSRAM free and the
-   * laser beam modulation carrier.  (Per-task stack HWMs were diagnostic noise.)
-   * A one-line stack-low warning is still surfaced when actually triggered.   */
   const TaskStackStats& s = g_stackStats;
   const unsigned cpu = (unsigned)g_audio_load_pct.load(std::memory_order_relaxed);
 
@@ -198,10 +136,7 @@ static void drawStackStatsTelemetry() {
 /* ═══════════════════════════════════════════════════════════════════════════
  * TELEMETRY — DC SERVO BIAS value box (encoder view 2)
  *
- * [dcbox] A scrolling scope of a slow DC servo level is uninformative (it is a
- * near-flat line), so DC_LEVEL is rendered as a large numeric read-out instead.
- * Shows the averaged per-string DC bias in volts (3.3 V / 12-bit ref) plus raw
- * counts — exactly the quantity the laser AGC servos toward 1.65 V mid-rail.
+ * Numeric DC servo bias readout (volts + raw ADC counts).
  * ═══════════════════════════════════════════════════════════════════════════ */
 static void drawDcValueBox() {
   /* Average the snapshot DC level across all strings (patchMux-protected). */
@@ -237,7 +172,7 @@ static void drawDcValueBox() {
 /* ═══════════════════════════════════════════════════════════════════════════
  * TELEMETRY OSCILLOSCOPE
  *
- * [scope] Plot area y=12..63 (h=51, mid≈37).  Graticule uses larger divisions
+ * Plot area y=12..63. Graticule divisions sized for beam amplitude views.
  * (16 px = bigger time/div feel) with a dashed centre line marking the 1.65 V
  * mid-rail.  RAW_AC is drawn AC-coupled: zero signal rests on the centre line
  * and the envelope is mirrored above/below it (true AC look).  The unipolar
@@ -247,17 +182,7 @@ static constexpr int SCOPE_TOP = 12;
 static constexpr int SCOPE_BOT = 63;
 static constexpr int SCOPE_MID = (SCOPE_TOP + SCOPE_BOT) / 2;   /* ≈37 */
 
-/* [TELEMETRY] DAC AGC THRESHOLD — 8 per-string vertical bargraphs.
- *
- * The old CAL_BASELINE view streamed getHardwareDACThreshold(currentString) into
- * the single shared 128-sample scope ring, so the trace just cycled through the
- * 8 strings as the galvo swept — impossible to read a per-string level off it.
- * For a real threshold measurement we need one bar PER string, side by side.
- * getHardwareDACThreshold(s) is a pure read of dac_calibration[s], safe to poll
- * for all 8 here.  [SCALE-FIX] Bars are drawn against the FIXED full-scale 12-bit
- * DAC range (0..4095) so each bar shows its TRUE absolute level — the old
- * auto-range (scale = tallest) always pinned the highest bar to the ceiling,
- * hiding the real headroom.  The numeric "mx" readout still gives the peak.    */
+/* DAC AGC threshold — 8 per-string bars (fixed 12-bit scale 0..4095). */
 static void drawDacThresholdBars() {
   display.setTextSize(1);
   display.setTextColor(SH110X_WHITE);
@@ -291,22 +216,11 @@ static void drawDacThresholdBars() {
   }
 }
 
-/* [EDGE] EDGE COMP editor — 8 per-string vertical bars (telemetry-AGC style).
- *
- * One bar per string = its edge-compensation multiplier (EDGE_COMP_PCT_MIN..MAX,
- * 100 = ×1.00).  A dashed line marks the ×1.00 reference so it's obvious which
- * strings sit below unity (more sensitive — the edge-string fix).  The SELECTED
- * string (SCALE button) has an inverted number label + live readout in the
- * header.  Any string whose beam is CURRENTLY broken (stringActive[]) renders
- * inverted, so you can wave a hand and instantly see which strings register —
- * the whole point of revising edge detection on the outer strings.            */
+/* Edge-comp editor — 8 per-string vertical bars (telemetry-style). */
 static void drawEdgeCompEditor() {
   display.setTextSize(1);
   display.setTextColor(SH110X_WHITE);
-  /* [EDGE-PERSCALE] Header = the active scale NAME (OC scrolls + selects it live).
-   * Shown full + uncluttered (the name itself says "Rainbow" where relevant).
-   * The selected string's value is compact + right-aligned; WHICH string is
-   * selected is shown by the inverted number on the bottom row. */
+  /* Header: active scale name (OC scrolls); selected string value right-aligned. */
   const int      escale = edgeEditScale.load(std::memory_order_relaxed) & (NUM_SCALES - 1);
   const uint8_t* edge   = edgeCompFor(escale);
   const int      sel    = edgeEditSel.load(std::memory_order_relaxed) & 7;
@@ -358,14 +272,7 @@ static void drawEdgeCompEditor() {
   }
 }
 
-/* [FOG] FOG REJECT view — the isolated fog-branch (g_fogAmp[]) as 8 per-string
- * bars, auto-ranged so the differential is easy to read.  Two reference lines:
- *   • dotted  = common-mode fog FLOOR (fogFloor(), the 2nd-smallest string)
- *   • dashed  = ACCEPT threshold (floor + margin) — only when fog reject is ON.
- * Strings whose amplitude clears the accept line render INVERTED = they would
- * pass the gate as a real hand.  Wave a hand and watch one bar pop above the
- * dashed line while the rest sit on the dotted floor → that gap IS your margin
- * headroom, so you can tune Fog Margin until only true hands cross it.          */
+/* Fog reject — 8 per-string bars (g_fogAmp[], auto-ranged with floor/accept lines). */
 static void drawFogRejectBars() {
   display.setTextSize(1);
   display.setTextColor(SH110X_WHITE);
@@ -444,23 +351,10 @@ static void drawTelemetryOscilloscope() {
   switch (av) {
   case TelemetryView::RAW_AC:       display.print(F("TRUE RMS SCOPE")); break;
   case TelemetryView::CC_OUT_14BIT: display.print(F("DBEAM EXPR"));   break;
-  case TelemetryView::SIGNAL_SNR:   display.print(F("SIGNAL SNR DB"));  break;
+  case TelemetryView::SIGNAL_SNR:   display.print(F("SIGNAL SNR"));  break;
   default: return;
   }
-  /* [DBEAM-SCOPE-FIX] DBEAM EXPR shows a live 0..100 % expression read-out (the
-   * fixed-scale trace's numeric reference) instead of the generic "CPU0" tag, so
-   * the absolute level is readable off the now-stable waveform. */
-  if (av == TelemetryView::CC_OUT_14BIT) {
-    const uint16_t amp = (uint16_t)std::min<uint32_t>(16383u,
-                         dbeamAmplitude.load(std::memory_order_relaxed));
-    const int pct = (int)(((uint32_t)amp * 100u) / 16383u);
-    char hdr[6];
-    snprintf(hdr, sizeof hdr, "%3d%%", pct);
-    display.setCursor(SCREEN_W - 4 * CHAR_W, 0);
-    display.print(hdr);
-  } else {
-    display.setCursor(92, 0); display.print(F("CPU0"));
-  }
+  display.setCursor(92, 0); display.print(F("CPU0"));
   display.drawFastHLine(0, 10, SCREEN_W, SH110X_WHITE);
 
   const bool acCoupled = (av == TelemetryView::RAW_AC);
@@ -478,16 +372,16 @@ static void drawTelemetryOscilloscope() {
     display.drawFastHLine(0, SCOPE_BOT, SCREEN_W, SH110X_WHITE);
   }
 
-  /* [FIX-A] relaxed load for scope write pointer */
   int rp = scopeWritePtr.load(std::memory_order_relaxed);
-  auto mapY = [acCoupled](uint8_t v) -> int {
+  const int plotH = SCOPE_BOT - SCOPE_TOP;
+  auto mapY = [acCoupled, plotH](uint8_t v) -> int {
     if (acCoupled) {
-      /* ±half-height around the centre; full-scale (255) → ±25 px */
-      const int dev = (int)(((float)v * 25.f) / 255.f);
+      const int half = plotH / 2;
+      const int dev = (int)(((float)v * (float)half) / 255.f);
       return std::min(SCOPE_BOT, std::max(SCOPE_TOP, SCOPE_MID - dev));
     }
     return std::min(SCOPE_BOT, std::max(SCOPE_TOP,
-                    SCOPE_BOT - (int)(((float)v * 50.f) / 255.f)));
+                    SCOPE_BOT - (int)(((float)v * (float)plotH) / 255.f)));
   };
 
   int px = 0, py = mapY(scopeHistory[rp]);
@@ -528,21 +422,17 @@ static void drawDbeamBargraph() {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
- * SEQUENCER DASHBOARD  [R8]
+ * SEQUENCER DASHBOARD
  *
  * Layout (128×64):
- *   y= 0  SEQUENCER  [PLY]    status header
+ *   y= 0  SEQ  [kit]              transport glyph (●/▶/■)
  *   y=10  divider
- *   y=12  [BK:01 SYNTH LEN:16] inverted highlight band
- *   y=30  TRSP: +0    OCT: +0  transport params
- *   y=41  H■ S■ D■   BPM:120  mute indicators + BPM
- *   y=53  page pips (when LEN>16) + full-width 16-cell playhead at y=56
+ *   y=12  [BANK:A  LEN:16]        inverted highlight band
+ *   y=30  TRSP:+0                 root note (right)
+ *   y=41  BPM:120  H■ S■ D■       muted buses only
+ *   y=56  full-width 16-cell playhead (+ page pips when LEN>16)
  * ═══════════════════════════════════════════════════════════════════════════ */
-/* [UI-CLEAN] Tracker-style absolute root note (e.g. "C-4").  Replaces the old
- * "Oct:+0" relative read-out the user found noisy.
- * [OPT root-note] The letter is now DERIVED from a base MIDI note instead of a
- * hard-coded "C", so it stays correct if a scale ever roots off C.  Every current
- * scale roots on MIDI 60 (C-4), so the rendered text is unchanged today. */
+/* Tracker-style absolute root note (e.g. "C-4") from base MIDI + octave shift. */
 static inline const char* midiRootNote(int baseMidi, int shift) {
   static const char* const NN[12] =
     { "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" };
@@ -581,41 +471,53 @@ static void drawSeqDashboard() {
   display.fillRect(0, DASH_PATCH_Y, SCREEN_W, DASH_PATCH_H, SH110X_WHITE);
   display.setTextColor(SH110X_BLACK);
   display.setCursor(LABEL_X, DASH_PATCH_Y + 4);
-  /* [V5.3-CONS] Banks A-D; chain pinned 0 (slot holds synth + drums together) */
+  /* Banks A-D; active pattern chain pinned to SEQ_UI_CHAIN (0). */
   const int  bank  = std::min(3, (int)seqActiveBank.load(std::memory_order_relaxed) & 15);
   const int  len   = (int)seqLength.load(std::memory_order_relaxed);
   display.printf("BANK:%c  LEN:%02d", 'A' + bank, len);
   display.setTextColor(SH110X_WHITE);
 
-  /* [UI-CLEAN] Transpose + root note (was "OCT:+0" → now absolute "C-4") */
+  /* Transpose + root note */
   display.setCursor(0, DASH_LINE2_Y);
   display.printf("TRSP:%+d", (int)seqTranspose.load(std::memory_order_relaxed));
   const char* sroot = midiRootNote(60, (int)octaveShift[1].load(std::memory_order_relaxed));
   display.setCursor(SCREEN_W - CHAR_W * (int)strlen(sroot), DASH_LINE2_Y);
   display.print(sroot);
 
-  /* Mute status mini-bars + BPM */
+  /* Line 3 — BPM first; H/S/D + filled square only when that bus is muted */
   display.setCursor(0, DASH_LINE3_Y);
-  display.print(F("H"));
-  DRAW_MINIBAR(11, DASH_LINE3_Y, 8, mixHarpMute .load(std::memory_order_relaxed));
-  display.setCursor(22, DASH_LINE3_Y); display.print(F("S"));
-  DRAW_MINIBAR(33, DASH_LINE3_Y, 8, mixSeqMute  .load(std::memory_order_relaxed));
-  display.setCursor(44, DASH_LINE3_Y); display.print(F("D"));
-  DRAW_MINIBAR(55, DASH_LINE3_Y, 8, mixDrumsMute.load(std::memory_order_relaxed));
-  display.setCursor(68, DASH_LINE3_Y);
   display.printf("BPM:%d", (int)seqBpm.load(std::memory_order_relaxed));
+  int muteX = display.getCursorX() + CHAR_W;
+
+  if (mixHarpMute.load(std::memory_order_relaxed)) {
+    display.setCursor(muteX, DASH_LINE3_Y);
+    display.print(F("H"));
+    DRAW_MINIBAR(muteX + CHAR_W, DASH_LINE3_Y, 8, true);
+    muteX += CHAR_W + 8 + CHAR_W;
+  }
+  if (mixSeqMute.load(std::memory_order_relaxed)) {
+    display.setCursor(muteX, DASH_LINE3_Y);
+    display.print(F("S"));
+    DRAW_MINIBAR(muteX + CHAR_W, DASH_LINE3_Y, 8, true);
+    muteX += CHAR_W + 8 + CHAR_W;
+  }
+  if (mixDrumsMute.load(std::memory_order_relaxed)) {
+    display.setCursor(muteX, DASH_LINE3_Y);
+    display.print(F("D"));
+    DRAW_MINIBAR(muteX + CHAR_W, DASH_LINE3_Y, 8, true);
+  }
 
   /* Full-width page-aware playhead (matches App P1-P4 paging for >16-step patterns) */
   DRAW_STEP_BARGRAPH(0, 56, SCREEN_W,
                      (uint16_t)seqCurrentStep.load(std::memory_order_relaxed),
-                     (uint16_t)len);   /* [IDM-OPT2] reuse cached len (line 425) */
+                     (uint16_t)len);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
- * HARP DASHBOARD  [R9]
+ * HARP DASHBOARD
  *
  * Layout (128×64):
- *   y= 0  LASER HARP      LOCAL  or REMOTE
+ *   y= 0  LASER HARP
  *   y=10  divider
  *   y=12  [#001 Preset Name     ] inverted highlight (with scrolling name)
  *   y=30  Scale: 01 Major  Oct:+0
@@ -629,9 +531,6 @@ static void drawHarpDashboard() {
 
   /* Header */
   display.setCursor(0, HEADER_Y); display.print(F("LASER HARP"));
-  display.setCursor(SCREEN_W - (6 * CHAR_W), HEADER_Y);
-  /* [FIX-D] Direct atomic read — no pollSyncHeartbeat side-effect */
-  display.print(appSyncActive.load(std::memory_order_relaxed) ? F("REMOTE") : F(" LOCAL"));
   display.drawFastHLine(0, DIVIDER_Y, SCREEN_W, SH110X_WHITE);
 
   /* Highlight band: patch index + scrolling preset name */
@@ -643,15 +542,11 @@ static void drawHarpDashboard() {
   display.setCursor(LABEL_X, DASH_PATCH_Y + 2);
   display.printf("#%03d ", pi + 1);
   /* Scrolling preset name — fits in remaining width */
-  /* [IDM-BUG1b] Slot 2 — dedicated to the dashboard preset name.
-   * Slot 0 = L3 key, slot 1 = L3 value; using slot 0 here caused a scroll
-   * position reset every time the user entered / exited the menu. */
   drawScrollingText(LABEL_X + 28, DASH_PATCH_Y + 2,
-                    SCREEN_W - LABEL_X - 28, pname, now, 2);
+                    SCREEN_W - LABEL_X - 28, pname, now);
   display.setTextColor(SH110X_WHITE);
 
-  /* [UI-CLEAN] Line 2 — scale name (no "Scl:" prefix) + root note, RIGHT-anchored
-   * so the variable-width scale name can't shove it around. */
+  /* Line 2 — scale name + root note, right-anchored */
   const int si = harpScaleIndex.load(std::memory_order_relaxed) & (NUM_SCALES - 1);
   display.setCursor(0, DASH_LINE2_Y);
   display.print(SCALES[si].name);
@@ -660,9 +555,7 @@ static void drawHarpDashboard() {
   display.setCursor(SCREEN_W - CHAR_W * (int)strlen(root), DASH_LINE2_Y);
   display.print(root);
 
-  /* [UI-CLEAN] Line 3 — play-mode name at x=0; BEAM ON/OFF ANCHORED at a fixed
-   * column so the play-mode name (POLY8/STRINGS/SOLO, different widths) can no
-   * longer push it around.  The route detail still shows in the D-BEAM bargraph. */
+  /* Line 3 — play mode + fixed-position BEAM ON/OFF */
   const uint8_t pm = (uint8_t)std::min<uint8_t>(2u,
     (uint8_t)currentPlayMode.load(std::memory_order_relaxed));
   display.setCursor(0, DASH_LINE3_Y);
@@ -710,8 +603,7 @@ static void drawScrollList(const char* title, const char* const* arr,
 }
 
 static void drawMenuL1() {
-  /* [D7] navigate/draw in regrouped display order; currentMenuL1 holds the
-   * fixed category id, so convert it to its display slot for centring. */
+  /* L1 menu uses regrouped display order (kL1Order). */
   const int slot = l1SlotForCat(
                      (int)currentMenuL1.load(std::memory_order_relaxed));
   drawScrollList("MAIN MENU", kL1NamesOrdered, kL1Count, slot);
@@ -725,7 +617,6 @@ static void drawMenuL2() {
 
 /* ═══════════════════════════════════════════════════════════════════════════
  * formatParamValueString — human-readable value for L3 edit screen.
- * [R3–R5] New cases and items; all array accesses via safe* accessors.
  * ═══════════════════════════════════════════════════════════════════════════ */
 static void formatParamValueString(int l1, int l2, char* out, size_t maxB) {
   if (!out || maxB == 0) return;
@@ -748,14 +639,14 @@ static void formatParamValueString(int l1, int l2, char* out, size_t maxB) {
     case 6: snprintf(out, maxB, "B %u",  scaleB[si]);               return;
     /* [margin] Show which scale this per-scale margin belongs to. */
     case 7: snprintf(out, maxB, "%u  %s", scaleMargin[si], SCALES[si].name); return;
-    /* [STUCK-FIX] Anti-stuck release timeout (0 = disabled). */
+    /* Anti-stuck release timeout (0 = disabled). */
     case 8: if (beamStuckReleaseMs == 0u) snprintf(out, maxB, "OFF");
             else snprintf(out, maxB, "%u ms", (unsigned)beamStuckReleaseMs);
             return;
     /* [FOG] Fog-reject enable + differential margin. */
     case 10: snprintf(out, maxB, "%s", fogRejectEnabled.load(std::memory_order_relaxed) ? "ON" : "OFF"); return;
     case 11: snprintf(out, maxB, "%d mV", fogRejectMargin.load(std::memory_order_relaxed)); return;
-    /* [LASER-SHOW v2] Closed-harp idle screensaver toggle (moved from LASER SHOW). */
+    /* Closed-harp idle screensaver toggle. */
     case 12: snprintf(out, maxB, "%s", laserScreensaver.load(std::memory_order_relaxed) ? "ON" : "OFF"); return;
     } break;
 
@@ -773,7 +664,7 @@ static void formatParamValueString(int l1, int l2, char* out, size_t maxB) {
     case 7: snprintf(out, maxB, "%s",   safeDbeamTargetName((int)currentDbeamTarget.load(std::memory_order_relaxed))); return;
     } break;
 
-  /* ── 2: MASTER — [R3] +3 mute items at l2 18/19/20 ──────────────────── */
+  /* ── 2: MASTER ─────────────────────────────────────────────────────────── */
   case 2:
     switch (l2) {
     case 0:  snprintf(out, maxB, "%d%%",   (int)(masterVol.load()   *100.f)); return;
@@ -821,14 +712,13 @@ static void formatParamValueString(int l1, int l2, char* out, size_t maxB) {
     case 13: snprintf(out, maxB, "%d%%",   (int)(harpEnvCutAmount.load()*100.f)); return;
     case 14: snprintf(out, maxB, "%s",     safeFxName(harpFxIndex.load()  & 15)); return;
     case 15: snprintf(out, maxB, "%s",     safeDynName(harpFxIndexB.load() & 15)); return;
-    /* [DISP-OPT1] Direct float read — no spinlock needed.  On Xtensa ESP32, 32-bit
-     * aligned reads are hardware-atomic.  A slightly stale display value is fine. */
-    case 16: { snprintf(out, maxB, "%d%%", (int)(fx.harpInsert.dly_send * 100.f)); return; }
-    case 17: { snprintf(out, maxB, "%d%%", (int)(fx.harpInsert.rev_send * 100.f)); return; }
+    case 16: { portENTER_CRITICAL(&patchMux); float v = fx.harpInsert.dly_send;
+               portEXIT_CRITICAL(&patchMux); snprintf(out, maxB, "%d%%", (int)(v*100.f)); return; }
+    case 17: { portENTER_CRITICAL(&patchMux); float v = fx.harpInsert.rev_send;
+               portEXIT_CRITICAL(&patchMux); snprintf(out, maxB, "%d%%", (int)(v*100.f)); return; }
     case 18: { const int pi = harpPatchIndex.load(std::memory_order_relaxed) & (NUM_PATCHES - 1);
                char nm[16]; readPresetName(pi, nm);
                snprintf(out, maxB, "#%03d %s", pi + 1, nm); return; }
-    /* [USER-SLOTS] 19 Save Slot / 20 Load Slot — show the cursor slot name. */
     case 19: case 20: { char nm[16];
                userSlotName(0u, userSlotCursor[0].load(std::memory_order_relaxed), nm, sizeof(nm));
                snprintf(out, maxB, "%s", nm); return; }
@@ -858,40 +748,41 @@ static void formatParamValueString(int l1, int l2, char* out, size_t maxB) {
                 seqUI_page.load(std::memory_order_relaxed) ? "Drum" : "Synth"); return;
     case 2: snprintf(out, maxB, "%+d semi",  (int)seqTranspose.load()); return;
     case 3: snprintf(out, maxB, "%d steps",  (int)seqLength.load());    return;
-    /* [FIX-C] Show last loaded pattern index */
     case 4: snprintf(out, maxB, "Syn %d/%d",
                 (int)g_lastSynthPreset.load() + 1, NUM_SYNTH_PATS); return;
     case 5: snprintf(out, maxB, "Drm %d/%d",
                 (int)g_lastDrumPreset.load()  + 1, NUM_DRUM_PATS);  return;
-    case 6: snprintf(out, maxB, "Press ENC"); return;  /* [SEQ-CLEAR] action item */
-    case 7: snprintf(out, maxB, "Press ENC"); return;  /* [SOFT-RESET] action item */
-    case 8: case 9: {
+    case 6: snprintf(out, maxB, "Press ENC"); return;  /* Clear — confirm on ENC */
+    case 7: case 8: {
       char nm[16];
       userPatName((uint8_t)userPatCursor.load(std::memory_order_relaxed), nm, sizeof(nm));
       snprintf(out, maxB, "%s", nm);
       return;
     }
-    case 10: snprintf(out, maxB, "%s", seqArpEnabled.load() ? "ON" : "OFF"); return;
-    case 11: snprintf(out, maxB, "%s", arp::patternName(seqArpPattern.load())); return;
-    case 12: snprintf(out, maxB, "%s", arp::rateName(seqArpRate.load())); return;
-    case 13: snprintf(out, maxB, "%d%%", (int)arp::GATE_PCT[std::min(7, (int)seqArpGate.load())]); return;
+    case 9: snprintf(out, maxB, "%s", seqArpEnabled.load() ? "ON" : "OFF"); return;
+    case 10: snprintf(out, maxB, "%s", arp::patternName(seqArpPattern.load())); return;
+    case 11: snprintf(out, maxB, "%s", arp::rateName(seqArpRate.load())); return;
+    case 12: snprintf(out, maxB, "%d%%", (int)arp::GATE_PCT[std::min(7, (int)seqArpGate.load())]); return;
     } break;
 
   /* ── 6: SEQ MATRIX ────────────────────────────────────────────────────── */
   case 6: snprintf(out, maxB, "Press ENC"); return;
 
-  /* ── 7: AUX FX — [R4] replaces dead SEQ SETTINGS ─────────────────────── */
+  /* ── 7: AUX FX ───────────────────────────────────────────────────────── */
   case 7:
     switch (l2) {
     case 0: snprintf(out, maxB, "%.2fs",  masterAuxDlyTime.load()); return;
     case 1: snprintf(out, maxB, "%d%%",   (int)(masterAuxDlyFb.load() /0.95f*100.f)); return;
     case 2: snprintf(out, maxB, "%.2f",   masterAuxRevSize.load()); return;
     case 3: snprintf(out, maxB, "%d%%",   (int)(masterAuxRevDamp.load() *100.f)); return;
-    /* [DISP-OPT1] Direct float reads — no spinlock (see case 3 comment above). */
-    case 4: { snprintf(out, maxB, "%d%%", (int)(fx.harpInsert.dly_send * 100.f)); return; }
-    case 5: { snprintf(out, maxB, "%d%%", (int)(fx.harpInsert.rev_send * 100.f)); return; }
-    case 6: { snprintf(out, maxB, "%d%%", (int)(fx.seqInsert.dly_send  * 100.f)); return; }
-    case 7: { snprintf(out, maxB, "%d%%", (int)(fx.seqInsert.rev_send  * 100.f)); return; }
+    case 4: { portENTER_CRITICAL(&patchMux); float v = fx.harpInsert.dly_send;
+               portEXIT_CRITICAL(&patchMux); snprintf(out, maxB, "%d%%", (int)(v*100.f)); return; }
+    case 5: { portENTER_CRITICAL(&patchMux); float v = fx.harpInsert.rev_send;
+               portEXIT_CRITICAL(&patchMux); snprintf(out, maxB, "%d%%", (int)(v*100.f)); return; }
+    case 6: { portENTER_CRITICAL(&patchMux); float v = fx.seqInsert.dly_send;
+               portEXIT_CRITICAL(&patchMux); snprintf(out, maxB, "%d%%", (int)(v*100.f)); return; }
+    case 7: { portENTER_CRITICAL(&patchMux); float v = fx.seqInsert.rev_send;
+               portEXIT_CRITICAL(&patchMux); snprintf(out, maxB, "%d%%", (int)(v*100.f)); return; }
     case 8:  snprintf(out, maxB, "%s", safeFxName(harpFxIndex.load()  & 15)); return;
     case 9:  snprintf(out, maxB, "%s", safeDynName(harpFxIndexB.load() & 15)); return;
     case 10: snprintf(out, maxB, "%s", safeFxName(seqFxIndex.load()   & 15)); return;
@@ -919,13 +810,13 @@ static void formatParamValueString(int l1, int l2, char* out, size_t maxB) {
     case 13: snprintf(out, maxB, "%d%%",  (int)(seqEnvCutAmount.load()*100.f)); return;
     case 14: snprintf(out, maxB, "%s",    safeFxName(seqFxIndex.load()  & 15)); return;
     case 15: snprintf(out, maxB, "%s",    safeDynName(seqFxIndexB.load() & 15)); return;
-    /* [DISP-OPT1] Direct float reads — no spinlock (see case 3 comment above). */
-    case 16: { snprintf(out, maxB, "%d%%", (int)(fx.seqInsert.dly_send * 100.f)); return; }
-    case 17: { snprintf(out, maxB, "%d%%", (int)(fx.seqInsert.rev_send * 100.f)); return; }
+    case 16: { portENTER_CRITICAL(&patchMux); float v = fx.seqInsert.dly_send;
+               portEXIT_CRITICAL(&patchMux); snprintf(out, maxB, "%d%%", (int)(v*100.f)); return; }
+    case 17: { portENTER_CRITICAL(&patchMux); float v = fx.seqInsert.rev_send;
+               portEXIT_CRITICAL(&patchMux); snprintf(out, maxB, "%d%%", (int)(v*100.f)); return; }
     case 18: { const int pi = seqPatchIndex.load(std::memory_order_relaxed) & (NUM_PATCHES - 1);
                char nm[16]; readPresetName(pi, nm);
                snprintf(out, maxB, "#%03d %s", pi + 1, nm); return; }
-    /* [USER-SLOTS] 19 Save Slot / 20 Load Slot — show the cursor slot name. */
     case 19: case 20: { char nm[16];
                userSlotName(1u, userSlotCursor[1].load(std::memory_order_relaxed), nm, sizeof(nm));
                snprintf(out, maxB, "%s", nm); return; }
@@ -939,9 +830,6 @@ static void formatParamValueString(int l1, int l2, char* out, size_t maxB) {
       return;
     }
     if (l2 == 41) { snprintf(out, maxB, "x%.2f", drumPitchMult.load()); return; }
-    /* [IDM-BUG3] l2==40 already returned above, so l2 is 0-39 here → ch is
-     * 0-7 and the old `if (ch >= 8 || l2 >= 40) break;` guard was always
-     * false (dead).  Removed. */
     const int ch    = l2 / 5;
     const int param = l2 % 5;
     switch (param) {
@@ -973,14 +861,10 @@ static void formatParamValueString(int l1, int l2, char* out, size_t maxB) {
     case 8: snprintf(out, maxB, "%.3fs", hueRelease.load()); return;
     } break;
 
-  /* ── 11: TELEMETRY ────────────────────────────────────────────────────── */
+  /* ── 11: TELEMETRY — L2 opens scope; values shown live on scope pages ─── */
   case 11:
-    switch (l2) {
-    case 0: snprintf(out, maxB, "%u%%",  (unsigned)g_audio_load_pct.load()); return;
-    case 1: snprintf(out, maxB, "%uB",   (unsigned)g_stackStats.minFree); return;
-    case 2: snprintf(out, maxB, "%uB",   (unsigned)g_stackStats.dramFree); return;
-    case 3: snprintf(out, maxB, "%uB",   (unsigned)g_stackStats.psramFree); return;
-    } break;
+    snprintf(out, maxB, "Press ENC");
+    return;
 
   default: break;
   }
@@ -988,7 +872,7 @@ static void formatParamValueString(int l1, int l2, char* out, size_t maxB) {
 
 /* ═══════════════════════════════════════════════════════════════════════════
  * getSliderPct — normalise any parameter to [0,1] for DRAW_SLIDER_POT.
- * [R6] Cases 2/7/9 updated.  Returns 0.5 for toggle/special params.
+ * Returns 0.5 for toggle/special params.
  * ═══════════════════════════════════════════════════════════════════════════ */
 static float getSliderPct(int l1, int l2) {
   if (l1 < 0 || l1 >= kL1Count || l2 < 0 || l2 >= l2CountFor(l1)) return 0.5f;
@@ -1074,14 +958,13 @@ static float getSliderPct(int l1, int l2) {
     case 4: return (NUM_SYNTH_PATS > 1) ? (float)g_lastSynthPreset.load() / (float)(NUM_SYNTH_PATS - 1) : 0.f;
     case 5: return (NUM_DRUM_PATS  > 1) ? (float)g_lastDrumPreset .load() / (float)(NUM_DRUM_PATS  - 1) : 0.f;
     case 6: return 1.f;                                                             /* Clear (action) */
-    case 7: return 1.f;                                                             /* Soft Reset (action) */
-    case 8: case 9: return (NUM_USER_PAT_SLOTS > 1)
+    case 7: case 8: return (NUM_USER_PAT_SLOTS > 1)
                 ? (float)userPatCursor.load(std::memory_order_relaxed)
                   / (float)(NUM_USER_PAT_SLOTS - 1) : 0.f;
-    case 10: return seqArpEnabled.load() ? 1.f : 0.f;
-    case 11: return (float)std::min(7, (int)seqArpPattern.load()) / 7.f;
-    case 12: return (float)std::min(7, (int)seqArpRate.load()) / 7.f;
-    case 13: return (float)std::min(7, (int)seqArpGate.load()) / 7.f;
+    case 9: return seqArpEnabled.load() ? 1.f : 0.f;
+    case 10: return (float)std::min(7, (int)seqArpPattern.load()) / 7.f;
+    case 11: return (float)std::min(7, (int)seqArpRate.load()) / 7.f;
+    case 12: return (float)std::min(7, (int)seqArpGate.load()) / 7.f;
     } break;
 
   case 3:  /* HARP SYNTH */
@@ -1102,9 +985,10 @@ static float getSliderPct(int l1, int l2) {
     case 13: return harpEnvCutAmount.load();
     case 14: return (float)(harpFxIndex.load()  & 15) / 15.f;
     case 15: return (float)(harpFxIndexB.load() & 15) / 15.f;
-    /* [DISP-OPT1] Direct float reads for slider pct — no spinlock needed. */
-    case 16: return fx.harpInsert.dly_send;
-    case 17: return fx.harpInsert.rev_send;
+    case 16: { portENTER_CRITICAL(&patchMux); float v = fx.harpInsert.dly_send;
+               portEXIT_CRITICAL(&patchMux); return v; }
+    case 17: { portENTER_CRITICAL(&patchMux); float v = fx.harpInsert.rev_send;
+               portEXIT_CRITICAL(&patchMux); return v; }
     case 18: return (float)(std::min(harpPatchIndex.load() & (NUM_PATCHES - 1),
                             NUM_NAMED_PRESETS - 1)) / (float)(NUM_NAMED_PRESETS - 1);
     case 19: case 20: return (float)userSlotCursor[0].load(std::memory_order_relaxed)
@@ -1115,17 +999,20 @@ static float getSliderPct(int l1, int l2) {
     case 24: return (float)std::min(3, (int)harpArpGate.load()) / 3.f;
     } break;
 
-  case 7:  /* AUX FX [R6] */
+  case 7:  /* AUX FX */
     switch (l2) {
     case 0: return masterAuxDlyTime.load() / 1.5f;
     case 1: return masterAuxDlyFb.load()   / 0.95f;
     case 2: return masterAuxRevSize.load() / 0.95f;
     case 3: return masterAuxRevDamp.load();
-    /* [DISP-OPT1] Direct float reads — no spinlock needed for slider display. */
-    case 4: return fx.harpInsert.dly_send;
-    case 5: return fx.harpInsert.rev_send;
-    case 6: return fx.seqInsert.dly_send;
-    case 7: return fx.seqInsert.rev_send;
+    case 4: { portENTER_CRITICAL(&patchMux); float v = fx.harpInsert.dly_send;
+              portEXIT_CRITICAL(&patchMux); return v; }
+    case 5: { portENTER_CRITICAL(&patchMux); float v = fx.harpInsert.rev_send;
+              portEXIT_CRITICAL(&patchMux); return v; }
+    case 6: { portENTER_CRITICAL(&patchMux); float v = fx.seqInsert.dly_send;
+              portEXIT_CRITICAL(&patchMux); return v; }
+    case 7: { portENTER_CRITICAL(&patchMux); float v = fx.seqInsert.rev_send;
+              portEXIT_CRITICAL(&patchMux); return v; }
     case 8:  return (float)(harpFxIndex.load()  & 15) / 15.f;
     case 9:  return (float)(harpFxIndexB.load() & 15) / 15.f;
     case 10: return (float)(seqFxIndex.load()   & 15) / 15.f;
@@ -1152,9 +1039,10 @@ static float getSliderPct(int l1, int l2) {
     case 13: return seqEnvCutAmount.load();
     case 14: return (float)(seqFxIndex.load()  & 15) / 15.f;
     case 15: return (float)(seqFxIndexB.load() & 15) / 15.f;
-    /* [DISP-OPT1] Direct float reads — no spinlock needed for slider display. */
-    case 16: return fx.seqInsert.dly_send;
-    case 17: return fx.seqInsert.rev_send;
+    case 16: { portENTER_CRITICAL(&patchMux); float v = fx.seqInsert.dly_send;
+               portEXIT_CRITICAL(&patchMux); return v; }
+    case 17: { portENTER_CRITICAL(&patchMux); float v = fx.seqInsert.rev_send;
+               portEXIT_CRITICAL(&patchMux); return v; }
     case 18: return (float)(std::min(seqPatchIndex.load() & (NUM_PATCHES - 1),
                             NUM_NAMED_PRESETS - 1)) / (float)(NUM_NAMED_PRESETS - 1);
     case 19: case 20: return (float)userSlotCursor[1].load(std::memory_order_relaxed)
@@ -1203,7 +1091,7 @@ static float getSliderPct(int l1, int l2) {
 /* ═══════════════════════════════════════════════════════════════════════════
  * drawMenuL3 — parameter edit screen
  *
- * [R7] isToggle extended for mute items.
+ * isToggle — true when L3 bar should not track a continuous value.
  *      Value string rendered via drawScrollingText.
  * ═══════════════════════════════════════════════════════════════════════════ */
 /* [DB-CURVE] D-BEAM response-curve transfer function (input 0..1 → output 0..1).
@@ -1285,7 +1173,7 @@ static void drawMenuL3() {
     display.setCursor((SCREEN_W - ktw) / 2, 13);
     display.print(key);
   } else {
-    drawScrollingText(0, 13, SCREEN_W, key, now, 0);  /* [IDM-BUG1] key slot */
+    drawScrollingText(0, 13, SCREEN_W, key, now, 0);
   }
 
   /* [DB-CURVE] D-BEAM Curve (l1=1, l2=2): show the transfer-function preview
@@ -1298,21 +1186,15 @@ static void drawMenuL3() {
   /* Value string — scrolling if needed, e.g. long waveform names */
   char valStr[24] = {};
   formatParamValueString(l1, l2, valStr, sizeof(valStr));
-  drawScrollingText(LABEL_X, 26, SCREEN_W - LABEL_X * 2, valStr, now, 1);  /* [IDM-BUG1] value slot */
+  drawScrollingText(LABEL_X, 26, SCREEN_W - LABEL_X * 2, valStr, now, 1);
 
   /* Widget — toggle switch for boolean params, slider for everything else */
-  /* [R7] Extended for mute toggles at l1==2, l2 18-20 */
-  /* [FIX-TOGGLE] Added l1=3/l2=21 (Harp Arp Enable) and l1=5/l2=10 (Seq Arp Enable).
-   * Both are boolean on/off values wired through applyHarpArpEnable / applySeqArpEnable
-   * with CMD_HARP_ARP_EN / CMD_SEQ_ARP_EN SysEx.  They were showing a slider pot
-   * instead of the correct toggle switch widget.                                */
-  const bool isToggle = (l1 == 1  && l2 == 3)                   /* D-BEAM enable       */
-                     || (l1 == 0  && (l2 == 10 || l2 == 12))    /* Fog Reject + Scrnsvr*/
-                     || (l1 == 2  && l2 >= 18 && l2 <= 20)      /* Mutes               */
-                     || (l1 == 3  && l2 == 21)                   /* Harp Arp On/Off     */
-                     || (l1 == 4  && l2 == 1)                    /* PB Enable           */
-                     || (l1 == 5  && l2 == 10)                   /* Seq Arp On/Off      */
-                     || (l1 == 10 && (l2 == 0 || l2 == 1));     /* Laser show/midihue  */
+  /* Mute toggles at l1==2, l2 18-20 */
+  const bool isToggle = (l1 == 1  && l2 == 3)                   /* D-BEAM enable */
+                     || (l1 == 0  && (l2 == 10 || l2 == 12))    /* [FOG] Fog Reject + Screensaver */
+                     || (l1 == 2  && l2 >= 18 && l2 <= 20)      /* Mutes         */
+                     || (l1 == 4  && l2 == 1)                    /* PB Enable (reindexed) */
+                     || (l1 == 10 && (l2 == 0 || l2 == 1));     /* Laser show/midihue toggles */
   if (isToggle) {
     bool st = false;
     if (l1 == 0 && l2 == 10)       st = fogRejectEnabled.load(std::memory_order_relaxed);
@@ -1321,10 +1203,7 @@ static void drawMenuL3() {
     if (l1 == 2 && l2 == 18)       st = mixHarpMute  .load();
     if (l1 == 2 && l2 == 19)       st = mixSeqMute   .load();
     if (l1 == 2 && l2 == 20)       st = mixDrumsMute .load();
-    /* [FIX-TOGGLE] Arp enable state reads — newly added to isToggle. */
-    if (l1 == 3 && l2 == 21)       st = harpArpEnabled.load(std::memory_order_relaxed);
     if (l1 == 4)                    st = pbMapping.enabled.load(std::memory_order_relaxed);
-    if (l1 == 5 && l2 == 10)       st = seqArpEnabled .load(std::memory_order_relaxed);
     if (l1 == 10 && l2 == 0)       st = laserShowMode .load();
     if (l1 == 10 && l2 == 1)       st = midiHueControl.load();
     DRAW_SWITCH_TOGGLE(LABEL_X, 41, "State", st);
@@ -1349,7 +1228,6 @@ static void drawMenuL3() {
 
   /* Instruction line — keep ≤ 19 chars = 114 px to stay inside 128 px */
   display.setCursor(LABEL_X, 55);
-  /* [USER-SLOTS] Save Slot commits on ENC; Load Slot recalls live on turn. */
   if ((l1 == 3 || l1 == 8) && l2 == 19)      display.print(F("Turn=Pick ENC=Save"));
   else if ((l1 == 3 || l1 == 8) && l2 == 20) display.print(F("Turn=Load  ENC=Back"));
   else                                       display.print(F("Turn=Edit  ENC=Back"));
@@ -1361,8 +1239,7 @@ static void drawMenuL3() {
 
 /* drawTransportGlyph — tiny live transport icon (6×7 px).
  *   recording → ● filled disc   playing → ▶ triangle   stopped → ■ square
- * `color` lets it sit on either a white header fill (BLACK) or a normal dark
- * dashboard (WHITE).  recording takes priority over playing. [v6.0] */
+ * `color` for header fill (BLACK) or dark dashboard (WHITE). Recording wins over play. */
 static void drawTransportGlyph(int16_t x, int16_t y, bool playing,
                                bool recording = false,
                                uint16_t color = SH110X_BLACK) {
@@ -1377,14 +1254,14 @@ static void drawTransportGlyph(int16_t x, int16_t y, bool playing,
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
- * drawAppConnectedPage — [A5] shown when OctopusApp is connected.
+ * drawAppConnectedPage — static splash while OctopusApp is connected.
  *
  * The App is the full control surface; the OLED only mirrors live transport
  * state (no parameter echo churn, no data-entry temptation).  Transport is
  * hardware-owned even while connected: SCALE=play/stop, OC short=record,
- * ENC=BPM, ENC long=save.  Layout (128×64):
- *   y0-9   header  "APP CONNECTED"            + transport glyph (●/▶/■, right)
- *   y14    BPM 120   BANK A                    (record shown in header glyph only)
+ * ENC turn=BPM.  ENC long is ignored.  Layout (128×64):
+ *   y0-9   header  "APP CONNECTED"     + transport glyph (●/▶/■, right)
+ *   y14    BPM 120   BANK A
  *   y25    Voices/Song/Pattern context  ·  Len
  *   y36    BEAM  <D-BEAM amplitude bar>      (separate row — never overdrawn)
  *   y56    full-width page-aware step playhead
@@ -1400,31 +1277,20 @@ void drawAppConnectedPage() {
   display.print(F("APP CONNECTED"));
   drawTransportGlyph(SCREEN_W - 10, 1,
                      seqPlaying.load(std::memory_order_relaxed),
-                     seqRecording.load(std::memory_order_relaxed),
-                     SH110X_BLACK);
+                     seqRecording.load(std::memory_order_relaxed));
   display.setTextColor(SH110X_WHITE);
 
-  /* Line 1 — clock + bank (record state: header glyph ●, same as SEQ dashboard) */
+  /* Line 1 — clock + bank */
   display.setCursor(0, 14);
   display.printf("BPM %-3d  BANK %c",
     (int)seqBpm.load(std::memory_order_relaxed),
     (char)('A' + std::min(3, (int)seqActiveBank.load() & 15)));
 
-  /* Line 2 — mute state (when any muted) + context (voices/song/pattern/len).
-   * [MUTE-SPLASH] App mute buttons toggle mixHarpMute/mixSeqMute/mixDrumsMute.
-   * Show which engines are muted directly on the connected splash so the
-   * performer can see audio routing status at a glance without reading the App. */
+  /* Line 2 — context: live voices / song position / idle pattern + length */
   display.setCursor(0, 25);
-  const bool mH = mixHarpMute.load(std::memory_order_relaxed);
-  const bool mS = mixSeqMute.load(std::memory_order_relaxed);
-  const bool mD = mixDrumsMute.load(std::memory_order_relaxed);
   const int nVoices = seq_active_voice_count();
-  const int slen    = (int)seqLength.load(std::memory_order_relaxed);  /* [IDM-OPT2] cache once */
-  if (mH || mS || mD) {
-    /* At least one engine muted — show which, then Len for quick reference. */
-    display.printf("MUTE:%s%s%s  Len %-2d",
-      mH ? "H" : "", mS ? "S" : "", mD ? "D" : "", slen);
-  } else if (songModeActive.load(std::memory_order_relaxed)) {
+  const int slen    = (int)seqLength.load(std::memory_order_relaxed);
+  if (songModeActive.load(std::memory_order_relaxed)) {
     display.printf("SONG %d   step %d",
       (int)activeSongSlot.load() + 1,
       (int)songCurrentStep.load() + 1);
@@ -1450,7 +1316,7 @@ void drawAppConnectedPage() {
   /* Bottom — full-width page-aware playhead (matches App P1-P4 paging) */
   DRAW_STEP_BARGRAPH(0, 56, SCREEN_W,
                      (uint16_t)seqCurrentStep.load(std::memory_order_relaxed),
-                     (uint16_t)slen);   /* [IDM-OPT2] reuse cached slen */
+                     (uint16_t)slen);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -1510,9 +1376,7 @@ static void drawSongEditor() {
   }
 }
 
-/* [CONFIRM] Reusable YES/NO modal popup.  Centred box, message per action, and
- * two buttons — the selected one inverted.  Encoder selects (right=YES/left=NO),
- * ENC click commits, ENC double cancels (input handled in interface.cpp).       */
+/* YES/NO confirm modal — encoder selects, ENC commits (interface.cpp). */
 static void drawConfirmDialog() {
   const uint8_t       sel    = confirmSel.load(std::memory_order_relaxed);
   const ConfirmAction a      = confirmActionId.load(std::memory_order_relaxed);
@@ -1524,17 +1388,12 @@ static void drawConfirmDialog() {
   const char*         line1 = "";
   const char*         line2 = "";
   const char*         line3 = "";
-  char                slotName[16] = {};       /* [USER-SLOTS] backing for line1 */
+  char                slotName[16] = {};
   switch (a) {
     case ConfirmAction::SEQ_CLEAR:
       title = "CLEAR";
       line1 = "Clear pattern +";
       line2 = "reset sounds?";
-      break;
-    case ConfirmAction::SOFT_RESET:
-      title = "SOFT RESET";
-      line1 = "Restore initial";
-      line2 = "working image?";
       break;
     case ConfirmAction::SAVE:
       title = "SAVE";
@@ -1553,14 +1412,14 @@ static void drawConfirmDialog() {
       line1 = kScope[arg];
       line2 = "reload from NVS?";
       break;
-    case ConfirmAction::USR_SOUND_SAVE:        /* [USER-SLOTS] arg = eng<<6 | idx */
+    case ConfirmAction::USR_SOUND_SAVE:
       title = "SAVE SOUND";
       userSlotName((uint8_t)((rawArg >> 6) & 1u), (uint8_t)(rawArg & 63u),
                    slotName, sizeof(slotName));
       line1 = slotName;
       line2 = "overwrite slot?";
       break;
-    case ConfirmAction::USR_PAT_SAVE:          /* [USER-PAT-SLOTS] arg = idx */
+    case ConfirmAction::USR_PAT_SAVE:
       title = "SAVE PATTERN";
       userPatName((uint8_t)(rawArg & 63u), slotName, sizeof(slotName));
       line1 = slotName;
@@ -1608,7 +1467,7 @@ void renderUIState() {
   display.setTextSize(1);
   display.setTextColor(SH110X_WHITE);
 
-  /* [CONFIRM] Modal popup owns the screen while open (drawn over everything). */
+  /* Confirm modal owns the screen while open. */
   if (confirmOpen.load(std::memory_order_relaxed)) {
     drawConfirmDialog();
     return;
@@ -1627,13 +1486,12 @@ void renderUIState() {
     drawSongEditor();
     return;
   }
-  /* [EDGE] EDGE COMP editor — full-screen 8-bar page (HARP SETUP → Edge Comp) */
+  /* Edge-comp full-screen editor. */
   if (edgeEditOpen.load(std::memory_order_relaxed)) {
     drawEdgeCompEditor();
     return;
   }
-  /* [R2] Case 7 is now AUX FX — rendered via standard drawMenuL3 path.
-   * seqUI_renderSettings() call REMOVED.                                  */
+  /* AUX FX (l1=7) uses standard drawMenuL3. */
 
   /* Telemetry oscilloscope */
   if (currentScopeView.load(std::memory_order_relaxed) != TelemetryView::OFF) {
@@ -1641,7 +1499,7 @@ void renderUIState() {
     return;
   }
 
-  /* App connected: static page only — no menu tree [A5] */
+  /* App connected: static page only — no menu tree */
   if (isAppConnected()) {
     drawAppConnectedPage();
     return;
@@ -1656,66 +1514,6 @@ void renderUIState() {
   case MenuState::MENU_L2: drawMenuL2(); break;
   case MenuState::MENU_L3: drawMenuL3(); break;
   }
-}
-
-/* ─────────────────────────────────────────────────────────────────────────────
- * renderDbeamBarIfVisible — [PERF] partial D-BEAM bargraph region redraw.
- *
- * Mirrors renderStepBarRegionIfVisible() for the harp dashboard.  When only
- * the D-BEAM amplitude changes (no encoder turn, no menu state change), this
- * repaints just the 9-px D-BEAM bar strip (y=DASH_DBEAM_Y..SCREEN_H-1) in-place
- * — no display.clearDisplay(), no full dashboard render.  The following
- * displayFlushDiff() pushes only the 1 changed page (page 6, y=48-55 or page 7,
- * y=56-63) over I2C.
- *
- * Returns true if it drew (caller must flush); false if the harp dashboard
- * is not the current view (caller skips the I2C transaction entirely). */
-bool renderDbeamBarIfVisible() {
-  if (!hasOLED) return false;
-  if (confirmOpen.load(std::memory_order_relaxed)) return false;
-  if (currentScopeView.load(std::memory_order_relaxed) != TelemetryView::OFF) return false;
-
-  /* APP CONNECTED splash: repaint the BEAM row (y=34..53) in-place.
-   * Does not touch the header, BPM row, voices row, or step bar. */
-  if (isAppConnected()) {
-    display.setTextSize(1);
-    display.setTextColor(SH110X_WHITE);
-    display.fillRect(0, 34, SCREEN_W, 20, SH110X_BLACK);
-    display.setCursor(0, 37);
-    display.print(F("BEAM"));
-    if (dbeamEnabled.load(std::memory_order_relaxed)) {
-      const uint16_t amp = (uint16_t)dbeamAmplitude.load(std::memory_order_relaxed);
-      DRAW_BAR_GRAPH(30, 36, SCREEN_W - 30, 7, (float)amp, 16383.f);
-    } else {
-      display.setCursor(34, 37);
-      display.print(F("- bypassed -"));
-    }
-    return true;
-  }
-
-  if (edgeEditOpen.load(std::memory_order_relaxed)) return false;
-  if (menuState.load(std::memory_order_relaxed) != MenuState::IDLE) return false;
-  if (activeDashboard.load() != DashboardMode::HARP) return false;
-  display.fillRect(0, DASH_DBEAM_Y, SCREEN_W, SCREEN_H - DASH_DBEAM_Y, SH110X_BLACK);
-  drawDbeamBargraph();
-  return true;
-}
-
-/* renderBpmRowIfVisible — partial BPM+BANK row update for APP CONNECTED splash.
- * Repaints only y=11..23 so BPM encoder changes don't flicker the full screen. */
-bool renderBpmRowIfVisible() {
-  if (!hasOLED) return false;
-  if (!isAppConnected()) return false;
-  if (confirmOpen.load(std::memory_order_relaxed)) return false;
-  if (currentScopeView.load(std::memory_order_relaxed) != TelemetryView::OFF) return false;
-  display.setTextSize(1);
-  display.setTextColor(SH110X_WHITE);
-  display.fillRect(0, 11, SCREEN_W, 13, SH110X_BLACK);
-  display.setCursor(0, 14);
-  display.printf("BPM %-3d  BANK %c",
-    (int)seqBpm.load(std::memory_order_relaxed),
-    (char)('A' + std::min(3, (int)seqActiveBank.load() & 15)));
-  return true;
 }
 
 /* viewHasStepBar — is the bottom (0,56) step playhead actually on screen right
@@ -1751,16 +1549,8 @@ bool viewIsSeqMatrix() {
   return (l1 == 6 && mst != MenuState::MENU_L1);
 }
 
-/* renderStepBarRegionIfVisible — [PERF] partial playhead refresh.
- *
- * The audio-core display task calls this on a bare step change (no full
- * displayDirty).  We leave the rest of the framebuffer intact and repaint ONLY
- * the 11 px bar band (y 53..63), keeping the GFX render cost tiny; the following
- * displayFlushDiff() then ships just the ~2 changed pages over I2C — smooth
- * BPM-locked motion at a fraction of the Core-0 cost.
- *
- * Returns true if it drew (caller should flush); false if the current view has
- * no step bar (caller flushes nothing, saving the whole transaction). */
+/* renderStepBarRegionIfVisible — partial playhead refresh (SEQ MATRIX bar band).
+ * Returns true if drawn (caller should flush); false if view has no step bar. */
 bool renderStepBarRegionIfVisible() {
   if (!hasOLED || !viewHasStepBar()) return false;
   display.setTextSize(1);

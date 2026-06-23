@@ -1,18 +1,23 @@
 /* ═════════════════════════════════════════════════════════════════════════════
- * Octopus PRO XL v6.0.00 — Laser Harp Groovebox
+ * Octopus PRO XL v6.1.00 — Laser Harp Groovebox
  * © 2026 DIODAC ELECTRONICS / iSystem. All Rights Reserved.
  *
  * PROPRIETARY AND CONFIDENTIAL. Unauthorized copying, distribution, modification,
  * or use of this software or firmware, in whole or in part, is strictly prohibited
  * without prior written permission from DIODAC ELECTRONICS.
  * ═════════════════════════════════════════════════════════════════════════════
- * arp.h — v6.0.00  SHARED ARPEGGIATOR ENGINE  (seq + harp adapters)
+ * arp.h — v6.1.00  SHARED ARPEGGIATOR ENGINE  (seq + harp adapters)
+ *
+ * Single Engine struct used by groovebox (seq melody, voice 7) and harp.
+ * Cross-core reset uses reset_pending (Core 1/MIDI → Core 0 audio via
+ * check_reset()).  Pattern/rate/gate tables shared; harp UI maps subsets.
  * ═════════════════════════════════════════════════════════════════════════════ */
 #pragma once
 #ifndef ARP_H
 #define ARP_H
 
 #include <algorithm>
+#include <atomic>
 #include <cstdint>
 #include <cstring>
 
@@ -94,12 +99,9 @@ constexpr uint8_t GATE_PCT[8] = { 100, 75, 50, 38, 25, 19, 13, 6 };
 struct Engine {
   int8_t  notes[MAX_NOTES];      /* sorted ascending for Up/Down patterns   */
   int8_t  raw[MAX_NOTES];        /* latch order for As-Played               */
-  int8_t  rows[MAX_NOTES];       /* source grid row per SORTED note (notes[i]) */
-  /* [FIX-ASPLAYED-ROW] Source grid row per LATCH-order note (raw[i]).  rows[]
-   * is permuted to follow the sorted notes[], so it is the WRONG row for the
-   * latch-order raw[] used by AS_PLAYED.  Keeping the unsorted rows here lets
-   * AS_PLAYED report the beam that actually played each note. */
-  int8_t  raw_rows[MAX_NOTES];   /* source grid row per latch-order note     */
+  int8_t  rows[MAX_NOTES];       /* source grid row per sorted note (notes[i]) */
+  int8_t  raw_rows[MAX_NOTES];   /* source row per latch-order note (raw[i]) —
+                                  * required for AS_PLAYED; rows[] follows sort order */
   int8_t  count = 0;
   int8_t  step_idx = 0;
   uint32_t last_period = UINT32_MAX;
@@ -110,13 +112,8 @@ struct Engine {
   int8_t   last_play_idx = 0;
   int8_t   last_play_row = 0;
   uint32_t rng = 0xA5A5A5A5u;
-  /* [FIX-ARP-RACE] reset_pending decouples cross-core reset requests from
-   * the audio task's read of non-atomic Engine fields.  seq_stop() and
-   * harpArpCommitLatch(n=0) run on Core 1 (MIDI task); the Engine fields
-   * (count, gate_open, step_idx…) are non-atomic and read by the audio task
-   * on Core 0.  Instead of writing them directly from Core 1 (data race),
-   * the caller only sets this flag (release) and the audio task applies the
-   * reset at the next safe point (acquire) — exclusively on its own core.  */
+  /* Cross-core reset flag: non-audio tasks call request_reset(); the audio task
+   * applies reset_safe() at the next check_reset() (Core 0 only). */
   std::atomic<bool> reset_pending{ false };
 
   /* reset_safe() — call ONLY from the audio task (Core 0). */
@@ -167,16 +164,11 @@ struct Engine {
     for (int i = 0; i < count; ++i) {
       raw[i]      = midi[i];
       rows[i]     = src_rows[i];
-      raw_rows[i] = src_rows[i];   /* [FIX-ASPLAYED-ROW] latch-order copy, never sorted */
+      raw_rows[i] = src_rows[i];
       notes[i]    = midi[i];
     }
-    /* [FIX-2] Sort notes[] ascending AND keep rows[] in sync — rows[i] must
-     * always be the source beam for notes[i] after sorting.  Without this
-     * swap, rowForIndex(idx) returns the row for a different note (the one
-     * that was originally latched at that position), causing wrong beam
-     * lighting and hue on all sorted patterns (UP/DOWN/UP_DOWN/DOWN_UP/
-     * UP_OCT/DOWN_OCT).  raw[] is deliberately NOT sorted — it keeps the
-     * latch order for AS_PLAYED.                                           */
+    /* Sort notes[] ascending; swap rows[] in lockstep so rowForIndex() stays
+     * aligned.  raw[] / raw_rows[] keep latch order for AS_PLAYED. */
     for (int i = 0; i + 1 < count; ++i) {
       for (int j = i + 1; j < count; ++j) {
         if (notes[j] < notes[i]) {
@@ -233,17 +225,11 @@ struct Engine {
       const int cycle = 2 * count - 2;
       const int pos = step_idx % cycle;
       if (pattern == UP_DOWN) {
-        /* [FIX-1] UP_DOWN: ascend 0→n-1 then descend n-2→1 (bottom→top→bottom).
-         * Example count=3: 0,1,2,1,0,1,2,1... (C,E,G,E,C,E,G,E...)           */
+        /* UP_DOWN: 0→n-1→1→0… (bottom→top→bottom) */
         if (pos < count) idx = pos;
         else             idx = (2 * count - 2) - pos;
       } else {
-        /* [FIX-1] DOWN_UP: descend n-1→0 then ascend 1→n-2 (top→bottom→top).
-         * Example count=3: 2,1,0,1,2,1,0,1... (G,E,C,E,G,E,C,E...)
-         * Previous code: (cycle-pos)%cycle produced the SAME sequence as UP_DOWN
-         * because the formula maps pos=0→0, pos=1→3, pos=2→2, pos=3→1 which
-         * after the existing idx formula gives identical notes. Fixed formula:
-         * mirror the position within the sorted array so step 0 = highest note. */
+        /* DOWN_UP: n-1→0→1→n-2… (top→bottom→top) — mirror of UP_DOWN */
         if (pos < count) idx = (count - 1) - pos;
         else             idx = pos - (count - 1);
       }
@@ -252,8 +238,6 @@ struct Engine {
     }
     case RANDOM: {
       rng = rng * 1664525u + 1013904223u;
-      /* [FIX-RANDOM] Defensive: guard against count==0 reaching the modulo even
-       * if the caller's early-exit is bypassed by a compiler edge case.         */
       idx = (int)(rng % (uint32_t)std::max(1, (int)count));
       break;
     }
@@ -261,9 +245,7 @@ struct Engine {
       idx = step_idx % count;
       step_idx = (int8_t)((step_idx + 1) % count);
       last_play_idx = (int8_t)idx;
-      /* [FIX-ASPLAYED-ROW] AS_PLAYED returns raw[idx] (latch order), so its row
-       * must come from the latch-order raw_rows[], NOT the sorted rows[]. */
-      last_play_row = raw_rows[idx];
+      last_play_row = raw_rows[idx]; /* latch-order row for AS_PLAYED */
       return noteAtPatternIndex(AS_PLAYED, idx);
     default:
       idx = step_idx % count;
@@ -275,9 +257,7 @@ struct Engine {
     return noteAtPatternIndex(pattern, idx);
   }
 
-  /* Look up the source beam of a latched MIDI note.  Searches raw[] (latch
-   * order), so it must return the latch-order raw_rows[i] — not the sorted
-   * rows[i], which belongs to notes[i].  [FIX-ASPLAYED-ROW] */
+  /* Beam row for a latched MIDI note — searches raw[] / raw_rows[] (latch order). */
   int8_t rowForMidi(int8_t midi) const {
     if (count <= 0) return 0;
     for (int i = 0; i < count; ++i)

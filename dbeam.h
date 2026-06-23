@@ -1,36 +1,19 @@
 /* ═════════════════════════════════════════════════════════════════════════════
- * Octopus PRO XL v6.0.00 — Laser Harp Groovebox
+ * Octopus PRO XL v6.1.00 — Laser Harp Groovebox
  * © 2026 DIODAC ELECTRONICS / iSystem. All Rights Reserved.
  *
  * PROPRIETARY AND CONFIDENTIAL. Unauthorized copying, distribution, modification,
  * or use of this software or firmware, in whole or in part, is strictly prohibited
  * without prior written permission from DIODAC ELECTRONICS.
  * ═════════════════════════════════════════════════════════════════════════════
- * dbeam.h — v6.0.00  SPATIAL EXPRESSION & HIGH-SPEED ADC DMA DRIVER
+ * dbeam.h — v6.1.00  SPATIAL EXPRESSION & HIGH-SPEED ADC DMA DRIVER
  *
- * FIXES vs v5.1.00:
- *  [A] g_sensor_state: volatile SensorState → std::atomic<SensorState>.
- *      Cross-core writes need acquire/release semantics, not just volatile.
+ * Core 0 task adc_dma_processing_task (prio 19): continuous ADC DMA, per-string
+ * Kalman filter, D-BEAM expression, fogPublishAmp() copy for fog.h.
+ * initDBeamSensor() is the sole ADC init entry (called from setup()).
  *
- *  [B] SensorHealth: last_valid_read_ms and snr are written by Core 0
- *      (adc_dma_processing_task) and read by Core 1 (check_adc_dma_health,
- *      display).  Both are now under patchMux in dbeam.cpp; header updated
- *      to remove misleading 'volatile' that gave false safety impression.
- *
- *  [C] g_dbeam_snapshot_version moved here from a per-TU declaration.
- *      Already declared inline (C++17) — no change needed; just explicit doc.
- *
- *  [D] EDGE_COMP_NORMAL/RAINBOW and GLOBAL_RAINBOW_R/G/B moved here
- *      from laser.h.  These constants are dbeam calibration data; laser.h
- *      now includes dbeam.h to access them.  No functional change.
- *
- * COMPATIBILITY NOTES:
- *  — globals.h v5.0.04: setupDMA_ADC() is a thin wrapper around
- *    initDBeamSensor().  Do NOT call both in setup(); use initDBeamSensor()
- *    directly.  setupDMA_ADC() will be removed in a future globals cleanup.
- *    The double-call was the root cause of the GDMA boot error.
- *  — audio.h v5.2.02: hDBeamTask is now correctly assigned the handle from
- *    xTaskCreatePinnedToCore(adc_dma_processing_task, ...).
+ * EDGE_COMP_* / GLOBAL_RAINBOW_* calibration tables live here; laser.h includes
+ * this header.  Runtime beam thresholds use edgeComp[NUM_SCALES][8] from NVS.
  * ═════════════════════════════════════════════════════════════════════════════ */
 #pragma once
 #ifndef DBEAM_H
@@ -66,39 +49,22 @@ static constexpr float KALMAN_R_AC = 5.0f;  /* measurement noise */
 static constexpr float MIN_SNR = 1.15f;
 
 /* ═══════════════════════════════════════════════════════════════════════════
- * BEAM GEOMETRY COMPENSATION ARRAYS  [moved from laser.h]
+ * BEAM GEOMETRY COMPENSATION ARRAYS
  *
- * These constants belong in dbeam.h because they are ONLY consumed by
- * computeHardwareDACThreshold() — they are physics-based calibration values
- * for the 8-string frame geometry, not laser rendering parameters.
+ * Factory reference tables for edge compensation and rainbow beam colours.
+ * Runtime detection uses edgeComp[NUM_SCALES][8] (globals.h, persisted in NVS);
+ * computeHardwareDACThreshold() reads edgeComp[scale][string], not these arrays
+ * directly (EDGE_COMP_RAINBOW asymmetry is no longer applied to detection).
  *
- * EDGE_COMP_*: outer strings (0 and 7) receive shallower beam angles and
- *   smaller reflection apertures, requiring lower detection thresholds.
- *   Normal scale: symmetric roll-off (0.70 outer → 1.00 centre).
- *   Rainbow scale: asymmetric — slightly stronger left-side compensation
- *   because the red (lowest frequency) string has a larger beam waist.
- *
- * GLOBAL_RAINBOW_R/G/B: per-string RGB assignment for the two rainbow
- *   scales (indices 14–15).  Used both here (colour compensation weight)
- *   and in laser.h (PWM colour drive).  Declared inline in dbeam.h so that
- *   laser.h can include dbeam.h to get them without a separate header.
- *
- * DO NOT duplicate these in laser.h — include dbeam.h instead.
+ * GLOBAL_RAINBOW_R/G/B: per-string RGB for rainbow scales — also used by
+ * laser.h for PWM colour drive.  Do not duplicate in laser.h.
  * ═══════════════════════════════════════════════════════════════════════════ */
 
-/* Per-string threshold multipliers: index [0]=leftmost, [7]=rightmost.
- * Values tuned for a 500 mm frame with 60 mm string spacing.
- * [EDGE] SUPERSEDED at runtime by the editable per-scale edgeComp[NUM_SCALES][8]
- * (globals.h), seeded from EDGE_COMP_FACTORY[] and adjustable live in HARP SETUP →
- * Edge Comp (OC scrolls scales).  These constants are kept only as the documented
- * factory reference; computeHardwareDACThreshold() reads edgeComp[scale][string]
- * (the rainbow asymmetry table below is no longer applied to detection).      */
+/* Factory edge-comp reference (symmetric normal scale). */
 static constexpr float EDGE_COMP_NORMAL[8] = {
   0.70f, 0.80f, 1.00f, 1.00f, 1.00f, 1.00f, 0.80f, 0.70f
 };
-/* Rainbow-scale compensation — asymmetric due to red string beam waist.
- * String 5 (magenta/purple) gets 0.60 not 1.00 due to mixed-wavelength
- * extinction cross-section for the photosensor at that position.          */
+/* Factory edge-comp reference (rainbow scale — asymmetric). */
 static constexpr float EDGE_COMP_RAINBOW[8] = {
   0.55f, 0.80f, 1.00f, 1.00f, 1.00f, 0.60f, 0.80f, 0.55f
 };
@@ -131,8 +97,8 @@ struct DACThresholdCalibration {
   uint16_t final_dac_voltage = 300;
 };
 
-/* SensorHealth fields are updated by Core 0 (DMA task) under patchMux.
- * Readers on any core must also take patchMux or read via g_last_good_data. */
+/* SensorHealth updated by Core 0 DMA task under patchMux; readers must
+ * hold patchMux or use the g_last_good_data snapshot. */
 struct SensorHealth {
   SensorState state = SensorState::UNINIT;
   uint32_t error_count = 0;
@@ -161,7 +127,7 @@ inline std::atomic<uint8_t> g_dbeam_snapshot_version{ 0 };
  *  where hardware is already running.  Returns false on hardware failure. */
 bool initDBeamSensor();
 
-/** Periodically call from loop() or a slow task to detect ADC watchdog. */
+/** Optional ADC watchdog — implemented in dbeam.cpp (not wired in v6.1 boot path). */
 void check_adc_dma_health();
 
 /** DMA ADC processing task — pin to Core 0 at priority 19. */
@@ -180,7 +146,7 @@ uint16_t IRAM_ATTR getHardwareDACThreshold(int stringIdx);
 static inline void applyDbeamRouteHW(uint8_t mode_v14) {
   const DbeamRoute mode = (DbeamRoute)(mode_v14 & 3u);
   const DbeamRoute prev = currentDbeamRoute.load(std::memory_order_relaxed);
-  /* [DBEAM-VOL] Mirror applyDbeamRoute's volume-pedal baseline housekeeping. */
+  /* Volume-pedal baseline: capture bus levels entering VOLUME route; restore on exit. */
   if (mode == DbeamRoute::VOLUME && prev != DbeamRoute::VOLUME) {
     dbeamVolBaseHarp.store(mixHarpVol.load(std::memory_order_relaxed), std::memory_order_relaxed);
     dbeamVolBaseSeq .store(mixSeqVol .load(std::memory_order_relaxed), std::memory_order_relaxed);
@@ -189,8 +155,7 @@ static inline void applyDbeamRouteHW(uint8_t mode_v14) {
     mixSeqVol .store(dbeamVolBaseSeq .load(std::memory_order_relaxed), std::memory_order_release);
   }
   currentDbeamRoute.store(mode, std::memory_order_release);
-  /* [ROUTE-FIX] Clear ALL addends (harp + seq) on every change so a previous
-   * target can't stay stuck-modulated.  Mirrors applyDbeamRoute (patches.h). */
+  /* Clear harp + seq addends on every route change (no stale modulation). */
   dbeam_svf_cutoff.store(0, std::memory_order_release);
   dbeam_mod_depth.store(0, std::memory_order_release);
   dbeam_seq_svf_cutoff.store(0, std::memory_order_release);

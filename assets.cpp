@@ -1,12 +1,15 @@
 /* ═════════════════════════════════════════════════════════════════════════════
- * Octopus PRO XL v6.0.00 — Laser Harp Groovebox
+ * Octopus PRO XL v6.1.00 — Laser Harp Groovebox
  * © 2026 DIODAC ELECTRONICS / iSystem. All Rights Reserved.
  *
  * PROPRIETARY AND CONFIDENTIAL. Unauthorized copying, distribution, modification,
  * or use of this software or firmware, in whole or in part, is strictly prohibited
  * without prior written permission from DIODAC ELECTRONICS.
- * ═════════════════════════════════════════════════════════════════════════════
- * assets.cpp — v6.0.00 ISOLATED FACTORY IMMUTABLE STORAGE ALLOCATION DATA UNIT
+ * assets.cpp — v6.1.00  PROGMEM WAVETABLES + FACTORY SOUND BANK
+ *
+ * 256-sample wavetables (WT_*) and SOUND_BANK factory presets (SP macro).
+ * seedFactoryBanks() copies ROM → RAM userBank/seqBank at boot.  NUM_FACTORY_PATCHES
+ * authored slots; browse index clamped so blank slots are unreachable.
  * ═════════════════════════════════════════════════════════════════════════════ */
 #include "assets.h"
 /* ── COMPREHENSIVE DSP WAVETABLE ARRAY REGISTERS ── */
@@ -856,7 +859,6 @@ const WaveTableEntry WAVE_TABLE_DIR[NUM_WAVE_TABLES] PROGMEM = {
   { WT_FLUTE, 256 }, { WT_PAD_WARM, 256 }, { WT_MOOG_BASS, 256 }, { WT_TABLA, 256 }, { WT_DIDGERIDOO, 256 }
 };
 
-/* ── RAM wavetable mirror [PERF] — see assets.h ────────────────────────────── */
 int16_t WAVE_TABLE_RAM[NUM_WAVE_TABLES][WAVE_TABLE_LEN];
 
 void wavetables_init_ram() {

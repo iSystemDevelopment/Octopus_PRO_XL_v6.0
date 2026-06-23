@@ -1,74 +1,18 @@
 /* ═════════════════════════════════════════════════════════════════════════════
- * Octopus PRO XL v6.0.00 — Laser Harp Groovebox
+ * Octopus PRO XL v6.1.00 — Laser Harp Groovebox
  * © 2026 DIODAC ELECTRONICS / iSystem. All Rights Reserved.
  *
  * PROPRIETARY AND CONFIDENTIAL. Unauthorized copying, distribution, modification,
  * or use of this software or firmware, in whole or in part, is strictly prohibited
  * without prior written permission from DIODAC ELECTRONICS.
  * ═════════════════════════════════════════════════════════════════════════════
- * dbeam.cpp — v6.0.00  ARBITRATED HIGH-SPEED ADC KERNEL & SIGNAL SMOOTHER
+ * dbeam.cpp — v6.1.00  D-BEAM ADC + EXPRESSION
  *
- * FIXES vs v5.1.00:
- *  [A] GDMA DOUBLE-INIT / BOOT CRASH: initDBeamSensor() added idempotent
- *      guard.  Previous code had no guard — calling it twice (once via
- *      setupDMA_ADC() and once directly in setup()) attempted to create a
- *      second adc_continuous_handle for the same ADC peripheral, which the
- *      IDF GDMA manager rejected: "peripheral 8 is already used by another
- *      channel".  Guard: if g_dma_adc_handle != nullptr, return true.
- *      BOOT FIX: remove the redundant initDBeamSensor() call from setup()
- *      (the one printed as "Initializing D-BEAM sensor..."); keep only the
- *      setupDMA_ADC() / initDBeamSensor() call in Phase 7.
- *
- *  [B] DATA RACE — g_health and g_kalman_ac: both were written outside any
- *      lock in adc_dma_processing_task while readable from Core 1 without
- *      synchronisation.  All writes to g_health[] and g_kalman_ac[] are now
- *      inside portENTER_CRITICAL(&patchMux), consistent with g_last_good_data.
- *
- *  [C] DATA RACE — checkDbeamThreshold: read g_kalman_ac[].x without any
- *      lock (Core 1 reader, Core 0 writer).  Now reads the same value from
- *      g_last_good_data[].acAmplitude which is already snapshot-protected.
- *
- *  [D] routeDbeamExpression (was routeDbeamMidi): now applies the full-scale
- *      0..1 expression directly to the local harp DSP atomics (cutoff / mod /
- *      volume).  External MIDI CC output was removed with the DIN bus (v6.0).
- *
- *  [E] ADC channel validation added: each parsed sample is verified to come
- *      from DBEAM_ADC_CHANNEL.  Rejects samples from unexpected channels
- *      (defensive against IDF driver quirks with conv_mode changes).
- *
- *  [F] scaleIsRainbowFlag: hardcoded (scaleIdx >= 14) replaced with
- *      SCALES[scaleIdx].isRainbow from patches.h — the authoritative source.
- *
- *  [G] SensorData fully zero-initialised in initSensorArrays().
- *      Previously dcLevel, acAmplitude, confidence had UB values on first
- *      read by updateDbeamExpression() before the DMA task produced data.
- *
- *  [H] check_adc_dma_health(): reads g_health under patchMux to match the
- *      writer's locking convention.
- *
- *  [I] g_sensor_state: volatile SensorState → std::atomic<SensorState>.
- *
- *  [J] applyExpressionHysteresis(): the original dead-band logic accepted
- *      only |delta| > 3.0 mV, leaving output frozen for sub-3mV changes.
- *      Replaced with a proper exponential smoothing tracker (α=0.25) which
- *      always follows the signal but attenuates jitter.  The 3mV threshold
- *      is kept only for final clamping to zero to suppress sub-floor noise.
- *
- * v5.3 additions:
- *
- *  [K] laser.h / audio.h / effect.h includes removed — these translation
- *      units have no usage in dbeam.cpp.  EDGE_COMP_* and GLOBAL_RAINBOW_*
- *      arrays moved to dbeam.h; laser.h now includes dbeam.h.
- *
- *  [L] D-BEAM is now a LOCAL laser-harp controller only: routeDbeamExpression writes
- *      the harp DSP atomics (dbeam_svf_cutoff / dbeam_mod_depth / mixHarpVol)
- *      directly and no longer emits external MIDI CC or echoes to the App.
- *      VOLUME mode still sets displayDirty for the OLED dashboard bargraph.
- *
- *  [M] computeHardwareDACThreshold() hardened for FreeRTOS dual-core:
- *      scaleMargin/scaleR/G/B snapshots are now taken under patchMux
- *      (same lock used by Core 0 writers in interface.cpp).  FP computation
- *      runs entirely outside the lock.  Functional result unchanged.
+ * adc_dma_processing_task (Core 0, prio 19): continuous ADC DMA, per-string Kalman,
+ * peak envelope → g_dbeam_global_ac for Core-1 laser expression reads.
+ * Three isolated paths (see code_info.h §H): digital trigger latch (laser.cpp),
+ * per-string telemetry/threshold, continuous expression envelope.  D-BEAM routes
+ * locally to harp/seq DSP — no MIDI CC output.
  * ═════════════════════════════════════════════════════════════════════════════ */
 /* dbeam.h now owns EDGE_COMP_* and GLOBAL_RAINBOW_* — laser.h includes dbeam.h */
 #include "dbeam.h"

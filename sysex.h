@@ -1,12 +1,12 @@
 /* ═════════════════════════════════════════════════════════════════════════════
- * Octopus PRO XL v6.0.00 — Laser Harp Groovebox
+ * Octopus PRO XL v6.1.00 — Laser Harp Groovebox
  * © 2026 DIODAC ELECTRONICS / iSystem. All Rights Reserved.
  *
  * PROPRIETARY AND CONFIDENTIAL. Unauthorized copying, distribution, modification,
  * or use of this software or firmware, in whole or in part, is strictly prohibited
  * without prior written permission from DIODAC ELECTRONICS.
  * ═════════════════════════════════════════════════════════════════════════════
- * sysex.h — v6.0.00  OCTOPUS SYSEX WIRE PROTOCOL  (command IDs)
+ * sysex.h — v6.1.00  OCTOPUS SYSEX WIRE PROTOCOL  (command IDs)
  *
  * Single source of truth for the OctopusApp ⇄ device SysEx command table.
  * Extracted from midi.h so the protocol identity lives in one small, dependency-
@@ -20,7 +20,7 @@
  *   sub 0x01 = cmd 128–163     (cmd-base = cmd − 128)
  *   v14 = (v14hi << 7) | v14lo   (0–16383)
  *
- * [BLOB] Variable-length PATCH BLOB (one atomic full-preset transfer):
+ * PATCH BLOB — variable-length full-preset transfer:
  *   { 0xF0, ID, 0x02, engine, p0hi,p0lo, … p15hi,p15lo, 0xF7 }   (37 bytes)
  *     engine 0 = harp, 1 = seq;  16 params × (hi7,lo7) in SynthParam order.
  *   Replaces the old 16-message per-param echo on preset recall so the App's
@@ -40,31 +40,27 @@
 /* ─────────────────────────────────────────────────────────────────────────────
  * SysEx command table
  *
- * CMD  0–127   sub-byte 0x00  (backward-compatible with v28.9 OctopusApp)
- * CMD 128–163  sub-byte 0x01  value on wire = cmd - 128
+ * CMD  0–127   sub-byte 0x00
+ * CMD 128+     sub-byte 0x01  (wire cmd-base = full_cmd − 128)
  *
  * Block layout:
- *   0– 15  Harp synth params  (P_WAVEFORM … P_SPARE2, maps to SynthParam enum)
+ *   0– 15  Harp synth params  (P_WAVEFORM … P_SPARE2, SynthParam enum order)
  *  16– 31  Seq synth params   (same layout)
  *  32– 63  Drum params        (8 drums × 4: tune/decay/vol/noise)
  *  64– 96  Master / FX        (vol, pitch, EQ, tube, DJ, D-BEAM, octave…)
  *  97–127  Transport / system (BPM, bank, grid, patterns, FX slots…)
- * 128–137  v5 Laser / wire    (laser show, hue, MIDI channel routing)
- * 138–147  v5.3 Extensions    (seq chain, mutes, aux FX, drum wave, D-BEAM route)
- * 148–163  v5.3.1+ Song / transport / pan / grid bulk
+ * 128–137  Laser / wire       (laser show, hue ADSR, MIDI channel routing)
+ * 138–147  Seq / mix / D-BEAM (chain, mutes, aux FX, drum wave, D-BEAM route)
+ * 148–163  Song / transport / pan / grid bulk
+ * 164–194  v6 extensions      (CPU load, play mode, scoped persist, user slots,
+ *                               arp, drum insert FX, seq restart; 194 reserved)
  * ─────────────────────────────────────────────────────────────────────────────*/
 
-/* [BLOB] SysEx sub-byte that marks a variable-length patch blob (see header). */
+/* Patch blob sub-byte (variable-length full-preset transfer — see module header). */
 static constexpr uint8_t SX_SUB_PATCH_BLOB     = 0x02;
 static constexpr uint8_t SX_SUB_USR_SOUND_NAME = 0x03; /* App→device / device→App */
 static constexpr uint8_t SX_SUB_USR_PAT_NAME   = 0x04;
-/* [FIX-GRID-ENC] Clean grid-row bulk frame (replaces CMD_GRID_ROW_LO/HI v14 encoding
- * which overlapped page bits with byte bits, corrupting step data for pages 1-3).
- * Frame: { F0, ID, 05, bank_row, page, lo_lo4, lo_hi4, hi_lo4, hi_hi4, F7 }
- *   bank_row = (bank<<4)|row  — 8 bits total, each field in its own byte position
- *   page     = 0–3
- *   lo/hi split into two 4-bit nibbles so all bytes are valid 7-bit MIDI data.
- * Direction-tagged like all frames: 0x7C device→App, 0x7D App→device.         */
+/* Grid-row bulk sub-byte (clean bank/row/page encoding — see SX_SUB_GRID_ROW frame). */
 static constexpr uint8_t SX_SUB_GRID_ROW       = 0x05;
 
 /* ── Harp synth (cmd 0–15) ──────────────────────────────────────────────── */
@@ -148,7 +144,7 @@ static constexpr uint8_t CMD_FETCH = 125;
 static constexpr uint8_t CMD_HARD_SAVE = 126;
 static constexpr uint8_t CMD_S_FX_IDX_B = 127;
 
-/* ── v5 Laser / wire (cmd 128–137, sub-byte 0x01, wire value = cmd-128) ── */
+/* ── Laser / wire (cmd 128–137, sub-byte 0x01, wire value = cmd−128) ── */
 static constexpr uint8_t CMD_LSR_SHOW = 128;
 static constexpr uint8_t CMD_MIDI_HUE = 129;
 static constexpr uint8_t CMD_HUE_BASE = 130;
@@ -160,7 +156,7 @@ static constexpr uint8_t CMD_WIRE_HARP_CH = 135;
 static constexpr uint8_t CMD_WIRE_SEQ_CH = 136;
 static constexpr uint8_t CMD_WIRE_DRUM_CH = 137;
 
-/* ── v5.3 Extensions (cmd 138–147, sub-byte 0x01, wire value = cmd-128) ── */
+/* ── Seq / mix / D-BEAM (cmd 138–147, sub-byte 0x01) ── */
 static constexpr uint8_t CMD_SEQ_CHAIN = 138;   /* seqActiveChain 0–3                */
 static constexpr uint8_t CMD_H_MUTE = 139;      /* mixHarpMute  0=off / 16383=mute   */
 static constexpr uint8_t CMD_S_MUTE = 140;      /* mixSeqMute                        */
@@ -171,7 +167,7 @@ static constexpr uint8_t CMD_DRUM_WAVE = 144;   /* drum body waveform: (ch<<5)|w
 static constexpr uint8_t CMD_DB_ROUTE = 145;  /* DbeamRoute 0=OFF 1=MOD 2=VOL 3=CUT */
 /* 146/147 (DB_CUT_CC/DB_MOD_CC) removed v6.0 — D-BEAM emits no MIDI (local DSP). */
 
-/* ── v5.3.1 Song mode + transport arbitration (sub-byte 0x01, wire 20-29) ── */
+/* ── Song mode + transport (sub-byte 0x01, wire 20–29 for 148–163) ── */
 static constexpr uint8_t CMD_SONG_MODE = 148;
 static constexpr uint8_t CMD_SONG_SLOT = 149;
 static constexpr uint8_t CMD_SONG_STEP = 150; /* [step:4][bank:4][chain:2][rpt:4] */
@@ -183,11 +179,11 @@ static constexpr uint8_t CMD_APP_SYNC_REQ = 155;
 static constexpr uint8_t CMD_SESSION_SAVE = 156;
 static constexpr uint8_t CMD_SESSION_LOAD = 157;
 static constexpr uint8_t CMD_DRUM_KIT = 158;  /* drum kit select: 0=909 1=808 2=Trap 3=House */
-/* [P6] Per-instrument pan −1..+1 (v14: 0=full L, 8192=centre, 16383=full R) */
+/* Per-instrument pan −1..+1 (v14: 0=full L, 8192=centre, 16383=full R) */
 static constexpr uint8_t CMD_H_PAN = 159;
 static constexpr uint8_t CMD_S_PAN = 160;
 static constexpr uint8_t CMD_D_PAN = 161;
-/* [G2] Grid bulk sync — absolute half-row state (NOT a toggle, unlike GRID_TOG).
+/* Grid bulk sync — absolute half-row state (not a toggle like GRID_TOG).
  *   v14 = (bank<<12) | (row<<8) | (page<<4) | byteMask
  *     bank 0-3 (bits 13-12), row 0-15 (bits 11-8), page 0-3 (bits 5-4),
  *     byteMask = 8 step bits within that page's half-row.
@@ -196,63 +192,39 @@ static constexpr uint8_t CMD_D_PAN = 161;
  *   echo; App→ESP optional bulk row write.                                    */
 static constexpr uint8_t CMD_GRID_ROW_LO = 162;
 static constexpr uint8_t CMD_GRID_ROW_HI = 163;
-/* [v6.0] Device→App telemetry: audio-core CPU load, 0–100 (raw %, not 14-bit
- * scaled).  Pushed by the sync supervisor (~600 ms) while the App is connected
- * so the header readout stays live without flooding the wire. App-only display. */
+/* Device→App telemetry: audio-core CPU load 0–100 (%). Pushed ~600 ms while
+ * App connected. App-only display. */
 static constexpr uint8_t CMD_CPU_LOAD = 164;
-/* [v6.0] Harp play-mode select (bidirectional): 0=POLY8 1=STRINGS 2=SOLO.
- * App→device sets the mode; device echoes it back (and on hardware OC-cycle)
- * so the App's POLY/STR/SOLO buttons always mirror currentPlayMode.          */
+/* Harp play-mode (bidirectional): 0=POLY8 1=STRINGS 2=SOLO. Device echoes on
+ * hardware OC-cycle so the App mirrors currentPlayMode. */
 static constexpr uint8_t CMD_PLAY_MODE = 165;
-/* [v6.0 WS1] Harp internal pitch-bend / manual tune (bidirectional, CONTINUOUS).
- * Wire v14 0..16383, centre 8192 = unity; ±1 octave: semis = (v14-8192)/8192*12,
- * harpPitchMult = 2^(semis/12).  A continuous tune knob suits the laser-harp far
- * better than discrete transpose/octave switches. */
+/* Harp manual tune (bidirectional): v14 centre 8192 = unity; ±1 octave range. */
 static constexpr uint8_t CMD_H_PITCH = 166;
-/* [LASER-SHOW v2] Projector animation controls (bidirectional).
- *   CMD_LSR_ANIM      — Anim Mode: v14 0..16383 maps to 4 modes (PULSE/CHASE/
- *                       STROBE/WAVE), i.e. mode = round(v14/16383*3).
- *   CMD_LSR_DRUMFLASH — drum-flash depth, v14 0..16383 → 0..1.                 */
+/* Laser show animation controls (bidirectional). */
 static constexpr uint8_t CMD_LSR_ANIM = 167;
 static constexpr uint8_t CMD_LSR_DRUMFLASH = 168;
-/* [SAVE/LOAD/RESET v2] App↔device parity for the scoped persistence menus.
- *   CMD_SESSION_SAVE / CMD_SESSION_LOAD / CMD_SCOPED_RESET encode scope as
- *   v14 = ResetScope + 1  (FULL=1, BANKS_PATTERNS=2, MOTION=3, SETTINGS=4).
- *   v14 = 0 is NACK; v14 = 16383 is ACK echo (ignored on RX).  Using scope+1
- *   avoids colliding FULL scope (0) with the NACK sentinel (0).
- *   CMD_SCOPED_RESET — device wipes RAM + persists + reboots.
- *   CMD_SEQ_CLEAR    — clear active pattern grid + P-locks + reset both sounds
- *                      to preset 0 (mirror of hardware SEQ SETUP → Clear).
- *   CMD_SOFT_RESET   — CLEAR extended: sounds + nav working image → initial
- *                      (RAM-only, no NVS, no reboot); ACK = 16383 when complete.*/
+/* Scoped persistence (App↔device parity for SAVE / LOAD / RESET menus).
+ *   CMD_SESSION_SAVE / CMD_SESSION_LOAD / CMD_SCOPED_RESET: v14 = ResetScope + 1
+ *     (FULL=1 … SETTINGS=4).  v14=0 NACK; v14=16383 ACK echo (ignored on RX).
+ *   CMD_SCOPED_RESET — RAM wipe + persist + reboot.
+ *   CMD_SEQ_CLEAR    — clear active pattern + reset companion sounds (mirror hardware).
+ *   CMD_SOFT_RESET (171) — retired v6.1; ignored on RX. */
 static constexpr uint8_t CMD_SCOPED_RESET = 169;
 static constexpr uint8_t CMD_SEQ_CLEAR    = 170;
-static constexpr uint8_t CMD_SOFT_RESET   = 171;
-/* [USER-SLOTS] App↔device parity for the user sound-slot save/load/name menus.
- *   CMD_USR_SOUND_SAVE — v14 = (engine<<13)|slot ; snapshot live patch → user
- *                        slot (128+slot) + persist (banks+names, no reboot).
- *   CMD_USR_SOUND_LOAD — v14 = (engine<<13)|slot ; recall user slot → live patch.
- *     engine 0 = harp, 1 = seq;  slot 0..63 (NUM_USER_SLOTS).
- *   CMD_USR_SOUND_NAME — App→device rename via the variable-length NAME BLOB
- *     (sub 0x03): { 0xF0,ID,0x03, engine, slot, n0..n14, 0xF7 } (15 name bytes).
- *     Reserved here; wired with the App slot browser (Step 12).               */
+static constexpr uint8_t CMD_SOFT_RESET   = 171; /* retired v6.1 — RX ignored */
+/* User sound slots (engine 0=harp, 1=seq; slot 0..63).
+ *   CMD_USR_SOUND_SAVE / LOAD — v14 = (engine<<13)|slot.
+ *   CMD_USR_SOUND_NAME — rename via NAME BLOB sub 0x03. */
 static constexpr uint8_t CMD_USR_SOUND_SAVE = 172;
 static constexpr uint8_t CMD_USR_SOUND_LOAD = 173;
 static constexpr uint8_t CMD_USR_SOUND_NAME = 174;
-/* [USER-PAT-SLOTS] App↔device parity for the user pattern-slot save/load/name.
- *   CMD_USR_PAT_SAVE — v14 = slot 0..63 ; snapshot active pattern → user slot +
- *                      persist (usrpat+usrpatnames, no reboot).
- *   CMD_USR_PAT_LOAD — v14 = slot 0..63 ; recall user slot → active bank/chain.
- *   CMD_USR_PAT_NAME — App→device rename via NAME BLOB sub 0x04 (Step 12).    */
+/* User pattern slots (slot 0..63; melody+drum grid + companion sounds).
+ *   CMD_USR_PAT_SAVE / LOAD — v14 = slot.
+ *   CMD_USR_PAT_NAME — rename via NAME BLOB sub 0x04. */
 static constexpr uint8_t CMD_USR_PAT_SAVE = 175;
 static constexpr uint8_t CMD_USR_PAT_LOAD = 176;
 static constexpr uint8_t CMD_USR_PAT_NAME = 177;
-/* [PHASE-3] MIDI I/O pitch-bend mapping + D-BEAM target synth (bidirectional).
- *   CMD_PB_RANGE  — v14 = ±semitones (0..24, symmetric up/down).
- *   CMD_PB_ENABLE — v14 0=OFF, 16383=ON (incoming USB MIDI pitch wheel).
- *   CMD_DB_TARGET — v14 0=Harp synth, 1=Melody synth (DbeamTarget).
- *   CMD_DRUM_PITCH — v14 encodeMasterPitch; drum-only pitch.
- *   CMD_SEQ_ARP_* — v14 enable/pattern/rate/gate (182–185).                   */
+/* Pitch-bend mapping + D-BEAM target + drum pitch + arp params (bidirectional). */
 static constexpr uint8_t CMD_PB_RANGE   = 178;
 static constexpr uint8_t CMD_PB_ENABLE  = 179;
 static constexpr uint8_t CMD_DB_TARGET  = 180;
@@ -269,17 +241,9 @@ static constexpr uint8_t CMD_HARP_ARP_GATE = 189; /* v14 0–3 gate duty index  
 static constexpr uint8_t CMD_D_FX_WET = 190; /* v14 0–16383 → fx_mix 0..1               */
 static constexpr uint8_t CMD_D_FX_P1  = 191; /* v14 0–16383 → p1 0..30 (rate/depth)     */
 static constexpr uint8_t CMD_D_FX_P2  = 192; /* v14 0–16383 → p2 0..250 (depth/swing)   */
-/* [RND-RESTART] App→device: reset step counter to 0 without stopping playback.
- * Sent by App after RND-H / RND-D randomisation so the new pattern plays from
- * beat 1 immediately.  Firmware-side: no-op when stopped.                    */
+/* App→device: reset step counter to 0 without stopping playback (post randomise). */
 static constexpr uint8_t CMD_SEQ_RESTART = 193;
-/* [SUBSTEP-REVERTED] CMD_STEP_PHASE — RESERVED, not emitted.  It was a ~20 Hz
- * device→App sub-step phase echo (v14 = (step6<<8)|phase8) meant to refine the App
- * PLL playhead, but snapping the App's anchor to the reported phase produced a
- * visible per-step forward jiggle on late STEP_SYNC delivery.  The App's plain
- * per-cell glide is already 1:1 with the hardware step and smooth, so the echo was
- * dropped (firmware no longer emits it; the App has no handler).  The ID is kept
- * reserved so wire IDs never renumber; do not repurpose without a protocol bump. */
+/* CMD_STEP_PHASE (194) — reserved; not emitted (sub-step PLL echo removed). */
 static constexpr uint8_t CMD_STEP_PHASE = 194;
 static constexpr uint8_t CMD_COUNT = 195; /* total command count              */
 

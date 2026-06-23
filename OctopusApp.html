@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <!--
-  OctopusApp v6.0.01 — Octopus PRO XL Web MIDI Console
+  OctopusApp v6.1.00 — Octopus PRO XL Web MIDI Console
   © 2026 DIODAC ELECTRONICS / iSystem. All Rights Reserved.
   PROPRIETARY AND CONFIDENTIAL. Unauthorized use prohibited.
 -->
@@ -9,7 +9,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>OctopusApp v6.0.01 — OCTOPUS PRO XL</title>
+    <title>OctopusApp v6.1.00 — OCTOPUS PRO XL</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
@@ -863,10 +863,11 @@
         #seq-grid-wrap {
             isolation: isolate;
             overflow: hidden;
+            contain: layout style paint;
             transform: translateZ(0)
         }
 
-        /* Playhead = absolute overlay on #seq-grid-wrap; position set only on step change. */
+        /* Playhead = dedicated compositor layer; never shares paint with grid cells. */
         #seq-playhead {
             position: absolute;
             top: 0;
@@ -879,7 +880,10 @@
             border: 1px solid rgba(207, 255, 255, 0.9);
             box-shadow: 0 0 8px rgba(6, 182, 212, 0.55), inset 0 0 8px rgba(6, 182, 212, 0.3);
             background: linear-gradient(180deg, rgba(120, 224, 255, 0.34), rgba(6, 182, 212, 0.10));
-            box-sizing: border-box
+            box-sizing: border-box;
+            will-change: transform;
+            transform: translateZ(0);
+            contain: strict
         }
 
         #seq-playhead.ph-visible {
@@ -1144,9 +1148,8 @@
 ═══════════════════════════════════════════════════════════════════════════ -->
     <header>
         <div class="brand-mark"><i class="fa-solid fa-bolt" style="color:var(--purple)"></i>OCTOPUS<span style="color:var(--cyan)">PRO</span></div>
-        <select class="display-box" id="midiOut" style="width:150px" title="USB MIDI output port"></select>
-        <button class="btn" id="btnConnect" style="color:var(--green);border-color:var(--green)" onclick="app.connectSelected()" title="Connect to the selected MIDI port"><i class="fa-solid fa-plug"></i>CONNECT</button>
-        <div id="connBadge" class="conn-badge" style="color:#444;border-color:#1a1a26"><i class="fa-solid fa-circle" style="font-size:6px"></i>OFFLINE</div>
+        <select class="display-box" id="midiOut" style="width:150px" title="USB MIDI output port (auto-connects when Octopus is detected)"></select>
+        <div id="connBadge" class="conn-badge" style="color:#444;border-color:#1a1a26"><i class="fa-solid fa-circle" style="font-size:6px"></i>Octopus Off</div>
 
         <div class="header-sep"></div>
         <!-- Transport (read-only reflectors — device owns play/stop/record/BPM) -->
@@ -1159,7 +1162,7 @@
         <button class="btn" style="color:var(--green);border-color:var(--green)" onclick="app.openSaveModal()" title="Save to ESP NVS"><i class="fa-solid fa-floppy-disk"></i>SAVE</button>
         <button class="btn" style="color:var(--cyan);border-color:var(--cyan)" onclick="app.openLoadModal()" title="Load session / song / factory pattern"><i class="fa-solid fa-folder-open"></i>LOAD</button>
         <button class="btn" style="color:var(--purple);border-color:var(--purple)" onclick="app.openSlotsModal()" title="User sound + pattern slots (save / load / rename)"><i class="fa-solid fa-box-archive"></i>SLOTS</button>
-        <button class="btn" style="color:var(--red);border-color:var(--red)" onclick="app.openResetModal()" title="Scoped reset / soft reset (mirrors hardware RESET menu)"><i class="fa-solid fa-rotate-left"></i>RESET</button>
+        <button class="btn" style="color:var(--red);border-color:var(--red)" onclick="app.openResetModal()" title="Scoped reset (mirrors hardware RESET menu)"><i class="fa-solid fa-rotate-left"></i>RESET</button>
         <select class="display-box" id="masterFxPreset" onchange="app.txSysexSoon(CMD.M_FX_IDX,this.value)" style="width:160px" title="Master FX preset"></select>
 
         <div class="header-sep"></div>
@@ -1473,7 +1476,7 @@
                 <button class="btn active-red" onclick="app.toggleHelp()">CLOSE</button>
             </div>
             <div style="font-size:10px;color:#aaa;overflow-y:auto;flex:1;line-height:1.65;padding-right:4px">
-                <p style="color:#fff;font-size:9px;border-bottom:1px solid #1c1c2e;padding-bottom:4px;margin-bottom:8px;font-family:'Orbitron',sans-serif">FIRMWARE 6.0.01 · OCTOPUSAPP v6.0.01</p>
+                <p style="color:#fff;font-size:9px;border-bottom:1px solid #1c1c2e;padding-bottom:4px;margin-bottom:8px;font-family:'Orbitron',sans-serif">FIRMWARE 6.1.00 · OCTOPUSAPP v6.1.00</p>
                 <p style="margin-top:0;font-size:9px;margin-bottom:10px">
                     <a href="https://octopus-info.isystem.app" target="_blank" rel="noopener" style="color:var(--purple)">Product site</a>
                     · <a href="https://octopus.isystem.app" style="color:var(--cyan)">octopus.isystem.app</a>
@@ -1487,7 +1490,7 @@
                 <b>Use with this App:</b> USB connects the module to Chrome or Edge. The App is a <b>1:1 parameter mirror</b> over Web MIDI SysEx — same patches, grid, mixer, motion lanes, and user slots as the hardware menus. MIDI never passes through the web server; your browser talks directly to the device over USB.<br>
                 <b>Requirements:</b> HTTPS origin (this site or localhost), SysEx permission, one browser tab at a time on Windows (only one tab can receive hardware echoes).</p>
 
-                <p style="margin-top:10px"><b style="color:var(--green)">WHAT'S NEW IN v6.0</b><br>
+                <p style="margin-top:10px"><b style="color:var(--green)">PLATFORM FEATURES</b><br>
                 • <b>64-step sequencer</b> — grid pages P1–P4 (16 steps each); live playhead on the SEQUENCER tab driven by STEP_SYNC.<br>
                 • <b>Song mode</b> — 16 chain slots × up to 16 steps (bank A–D + repeats); 🔗 toggle + PAT/EDIT chain editor.<br>
                 • <b>Seq arpeggiator</b> — 8 patterns / 8 rates / gate; single-note steps expand through the active scale motif.<br>
@@ -1500,22 +1503,26 @@
                 • <b>App telemetry</b> — CPU load in header; SYSEX MON panel (FILTER hides PING / STEP / CPU streams).<br>
                 • <b>USB-only MIDI</b> — DIN MIDI removed; v6.0 SysEx protocol (manufacturer 0x7C device→App, 0x7D App→device).</p>
 
-                <p style="margin-top:10px"><b style="color:var(--green)">WHAT'S NEW IN v6.0.01</b><br>
-                • <b>Playhead mirror</b> — the cyan bar tracks the hardware step 1:1 (discrete, driven by STEP_SYNC) so it never drifts or stutters under mouse movement / UI load.<br>
-                • <b>Connect-while-playing fix</b> — playhead no longer flashes to step 0 when the App connects mid-sequence.<br>
-                • <b>Bug fixes</b> — data race on beam-note array (atomic), kick click integer overflow, arp divide-by-zero guard, seqUI OOB row/col clamp, P-lock bank/chain range checks.</p>
+                <p style="margin-top:10px"><b style="color:var(--green)">WHAT'S NEW IN v6.1.00</b><br>
+                • <b>Auto-connect</b> — USB plug-in syncs automatically (no Connect button).<br>
+                • <b>Octopus ON / Off</b> — two-state connection badge.<br>
+                • <b>SAVE / LOAD / RESET</b> — scope decode fixed; App reloads and re-imports full hardware state after persist.<br>
+                • <b>Soft Reset removed</b> — use RESET → Settings for factory knob/mixer defaults.<br>
+                • <b>App-connected hardware</b> — SCALE play/stop · OC short record-arm · encoder BPM.<br>
+                • <b>Playhead GPU layer</b> — isolated from grid UI repaints.<br>
+                • <b>NVS namespace</b> <code>octopus</code> — legacy flash data migrates automatically on first boot.</p>
 
                 <p style="margin-top:10px"><b style="color:var(--cyan)">CONNECTION &amp; SYNC</b><br>
-                Select the ★ Octopus MIDI port → click <b>CONNECT</b> (or auto-connect when detected) → App sends CMD_APP_SYNC_REQ → device echoes full state. Badge shows LINKING then ONLINE once firmware replies. Heartbeat PING every ~800 ms keeps the OLED on "APP CONNECTED".<br>
-                <b>Hardware while connected:</b> SCALE = play/stop · OC short = record-arm · encoder = BPM · encoder long = SAVE menu.<br>
-                <b>Playhead:</b> switch to the <b>SEQUENCER</b> tab while playing — the cyan bar tracks the hardware step <b>1:1</b> (discrete, driven directly by STEP_SYNC, exactly like the device's 16-box bar). It never drifts or stutters when you move the mouse or the UI is busy. BPM range 40–240. ▶ / ■ / REC mirror device state only (clicking shows a hint). ▶<br>
+                Plug in USB — the App auto-connects to the ★ Octopus MIDI port, sends CMD_APP_SYNC_REQ, and imports the full device state. Badge shows <b>Octopus ON</b> once firmware replies. Heartbeat PING every ~800 ms keeps the OLED on "APP CONNECTED".<br>
+                <b>Hardware while connected:</b> SCALE = play/stop · OC short = record-arm · encoder turn = BPM.<br>
+                <b>Playhead:</b> switch to the <b>SEQUENCER</b> tab while playing — the cyan bar tracks the hardware step <b>1:1</b> (discrete, driven directly by STEP_SYNC, exactly like the device's 16-box bar). It never drifts or stutters when you move the mouse or the UI is busy. BPM range 40–240. ▶ / ■ / REC mirror device state only (clicking shows a hint).
                 <b>No inbound echo?</b> Close other OctopusApp tabs, hard-refresh (Ctrl+Shift+R), open MON with FILTER off — you must see ← lines when moving hardware controls.</p>
 
                 <p style="margin-top:10px"><b style="color:var(--orange)">DRUM KITS</b><br>
                 TR-909 / TR-808 / Trap / House — kit selection loads per-voice tuning (drum knobs follow). CC 70 on the drum MIDI channel switches kit live.</p>
 
                 <p style="margin-top:10px"><b style="color:var(--orange)">SAVE · LOAD · RESET · CLR</b><br>
-                Popups mirror hardware scopes: <b>Full</b> / <b>Banks+Pats</b> / <b>Motion</b> / <b>Settings</b>. SAVE and scoped RESET reboot (device resumes in place). LOAD reloads RAM with no reboot. Only one persist action at a time — save, reset, and load block each other while in flight (same as firmware). CLR = hardware Clear (active grid + P-locks + both sounds → preset 0). SOFT RESET = working image only, no NVS, no reboot. All destructive actions use YES/NO confirm.</p>
+                Popups mirror hardware scopes: <b>Full</b> / <b>Banks+Pats</b> / <b>Motion</b> / <b>Settings</b>. SAVE and scoped RESET reboot (device resumes in place); the App reloads and re-imports from hardware. LOAD reloads RAM with no reboot, then the App reloads. Only one persist action at a time. CLR = hardware Clear (active grid + P-locks + both sounds → preset 0). All destructive actions use YES/NO confirm.</p>
 
                 <p style="margin-top:10px"><b style="color:var(--purple)">USER SLOTS</b><br>
                 Header <b>SLOTS</b> — 64 harp sounds, 64 seq sounds, 64 patterns. Save / load / rename; custom names persist via SysEx name blobs and echo on connect.</p>
@@ -1592,7 +1599,7 @@
         </div>
     </div>
 
-    <!-- ── RESET popup: scoped reset / clear / soft reset (mirrors hardware RESET) ─── -->
+    <!-- ── RESET popup: scoped reset (mirrors hardware RESET) ─── -->
     <div class="modal" id="resetModal">
         <div class="modal-content" style="width:460px">
             <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #1c1c2e;padding-bottom:6px;margin-bottom:12px">
@@ -1600,16 +1607,11 @@
                 <button class="btn active-red" onclick="app.closeResetModal()">CLOSE</button>
             </div>
             <div style="display:flex;flex-direction:column;gap:10px">
-                <div style="color:#666;font-size:9px">Scoped reset wipes RAM, persists factory/empty state, then reboots — same scopes as the hardware RESET menu. Each is confirmed before sending.</div>
+                <div style="color:#666;font-size:9px">Scoped reset wipes RAM, persists factory/empty state, then reboots — same scopes as the hardware RESET menu. Each is confirmed before sending. The App reloads after completion.</div>
                 <button class="btn" style="color:var(--red);border-color:var(--red)" onclick="app.resetScoped(0)"><i class="fa-solid fa-rotate-left"></i>FULL RESET</button>
                 <button class="btn" style="color:var(--red);border-color:var(--red)" onclick="app.resetScoped(1)">BANKS + PATS RESET</button>
                 <button class="btn" style="color:var(--purple);border-color:var(--purple)" onclick="app.resetScoped(2)">MOTION CLEAR</button>
                 <button class="btn" style="color:var(--orange);border-color:var(--orange)" onclick="app.resetScoped(3)">SETTINGS RESET</button>
-                <div style="border-top:1px solid #1c1c2e;margin-top:6px;padding-top:8px">
-                    <div style="color:#fff;font-size:9px;margin-bottom:6px;font-family:'Orbitron',sans-serif;letter-spacing:1px">NON-DESTRUCTIVE</div>
-                    <button class="btn" style="color:var(--cyan);border-color:var(--cyan)" onclick="app.softReset()" title="CLEAR extended: sounds + nav working image → initial (RAM-only, no reboot)"><i class="fa-solid fa-broom"></i>SOFT RESET</button>
-                    <span style="margin-left:6px;color:#666;font-size:9px">sounds + view/bank/length/transpose → initial · no NVS · no reboot</span>
-                </div>
             </div>
         </div>
     </div>
@@ -1764,7 +1766,7 @@
             WIRE_HARP_CH: 135,
             WIRE_SEQ_CH: 136,
             WIRE_DRUM_CH: 137,
-            // v5.3 extensions 138-147 (sub 0x01)
+            // SysEx extensions 138-147 (sub 0x01)
             SEQ_CHAIN: 138,
             H_MUTE: 139,
             S_MUTE: 140,
@@ -1774,7 +1776,7 @@
             DRUM_WAVE: 144,
             DB_ROUTE: 145,
             /* 146/147 (DB_CUT_CC/DB_MOD_CC) removed v6.0 — D-BEAM is local DSP only */
-            // v5.3.1 song mode + transport 148-157 (sub 0x01)
+            // Song mode + transport 148-157 (sub 0x01)
             SONG_MODE: 148,
             SONG_SLOT: 149,
             SONG_STEP: 150,
@@ -1802,7 +1804,6 @@
             // [SAVE/LOAD/RESET v2] App↔device parity for the scoped persistence menus
             SCOPED_RESET: 169,  // v14 = ResetScope + 1 (0 = NACK, 16383 = ACK)
             SEQ_CLEAR: 170,     // clear active grid + P-locks + reset both sounds to preset 0
-            SOFT_RESET: 171,    // CLEAR extended: sounds + nav working image → initial (RAM-only)
             USR_SOUND_SAVE: 172, // v14 = (engine<<13)|slot 0..63
             USR_SOUND_LOAD: 173,
             USR_SOUND_NAME: 174, // NAME blob sub 0x03 (device echoes on sync)
@@ -2090,7 +2091,7 @@
         ];
 
         /* ─────────────────────────────────────────────────────────────────────────────
-         * KNOB DEFINITIONS — corrected CMDs for v5.3
+         * KNOB DEFINITIONS — SysEx CMD map (see code_info.h §3)
          * ─────────────────────────────────────────────────────────────────────────────*/
         const KNOBS = {
             laserShow: [{
@@ -3210,6 +3211,8 @@
             _ringDropWarned: false, // one-shot when bulk ring drop counter rises
             _plockStealWarned: false,
             _lastRingDrops: 0,
+            _reloadAfterReconnect: false,
+            _reloadTimer: null,
 
             // Match Octopus USB MIDI ports (Windows names vary wildly).
             _isOctopusPortName(name) {
@@ -3255,8 +3258,17 @@
                 if (!this._connOnline) {
                     this._connOnline = true;
                     this.updateConnBadge(true);
-                    this.log('Connected — adopting live device state (transport untouched).');
+                    this.log('Octopus connected — importing live device state.');
+                    if (this._reloadAfterReconnect) {
+                        this._reloadAfterReconnect = false;
+                        this._scheduleAppReload('device reconnected after save/reset');
+                    }
                 }
+            },
+            _scheduleAppReload(reason) {
+                if (this._reloadTimer) return;
+                this.log('Reloading App' + (reason ? ' (' + reason + ')' : '') + '…');
+                this._reloadTimer = setTimeout(() => { location.reload(); }, 400);
             },
             _touchTransportRx(kind) {
                 const now = Date.now();
@@ -3305,28 +3317,35 @@
                     this.log('⚠ ' + (this._persistKind || 'persist').toUpperCase() +
                         ' FAILED — check device UART log for [NVS] error details.');
                 }
+                const kind = this._persistKind;
                 this._persistBusy = false;
                 this._persistKind = '';
                 this._persistSince = 0;
                 this.closeSaveModal();
                 this.closeResetModal();
                 this.closeLoadModal();
-                const label = ok ? 'DONE!' : 'FAILED!';
-                this._persistBanner(label, ok ? 'ok' : 'fail');
-                const title = document.getElementById('doneModalTitle');
-                const el = document.getElementById('doneModal');
-                if (title) {
-                    title.textContent = label;
-                    title.style.color = ok ? 'var(--green)' : 'var(--red)';
+                if (!ok) {
+                    const label = 'FAILED!';
+                    this._persistBanner(label, 'fail');
+                    const title = document.getElementById('doneModalTitle');
+                    const el = document.getElementById('doneModal');
+                    if (title) {
+                        title.textContent = label;
+                        title.style.color = 'var(--red)';
+                    }
+                    if (el) el.style.display = 'flex';
+                    setTimeout(() => {
+                        if (el) el.style.display = 'none';
+                        this._hidePersistBanner();
+                    }, 2000);
+                    return;
                 }
-                if (el) el.style.display = 'flex';
-                const ms = ok ? 1500 : 2000;
-                setTimeout(() => {
-                    if (el) el.style.display = 'none';
-                    this._hidePersistBanner();
-                    this._hidePersistWait();
-                    if (ok && reboot) this._prepareForDeviceReboot();
-                }, ms);
+                if (reboot) {
+                    this._reloadAfterReconnect = true;
+                    this._prepareForDeviceReboot();
+                    return;
+                }
+                this._scheduleAppReload(kind + ' complete');
             },
             _clearPersist() {
                 this._persistBusy = false;
@@ -3396,7 +3415,7 @@
                 return cmd === CMD.STEP_SYNC || cmd === CMD.STEP_PHASE || cmd === CMD.TRANSPORT || cmd === CMD.TRIG_MODE
                     || cmd === CMD.BPM || cmd === CMD.SONG_POS
                     || cmd === CMD.SESSION_SAVE || cmd === CMD.SESSION_LOAD
-                    || cmd === CMD.SCOPED_RESET || cmd === CMD.SOFT_RESET;
+                    || cmd === CMD.SCOPED_RESET;
             },
             _rxIsLowPriority(cmd) {
                 return cmd === CMD.GRID_ROW_LO || cmd === CMD.GRID_ROW_HI;
@@ -3599,7 +3618,7 @@
                         }
                     }
                 });
-                this.log('OctopusApp v6.0.01 · ' + location.origin);
+                this.log('OctopusApp v6.1.00 · ' + location.origin);
             },
 
             // Long dropdown names: a closed <select> ellipsizes overflowing text, so
@@ -3801,10 +3820,8 @@
                     this._scanMidi = async () => {
                         const sel = document.getElementById('midiOut');
                         if (sel) {
-                            // First entry doubles as the explicit DISCONNECT action.
-                            sel.innerHTML = '<option value="">\u23CF Disconnect</option>';
+                            sel.innerHTML = '<option value="">— MIDI port —</option>';
                         }
-                        // RX before TX — inbound handlers must exist before APP_SYNC_REQ.
                         const inN = await this._bindMidiInputs(access);
                         let autoOut = null;
                         const outList = [...access.outputs.values()];
@@ -3813,14 +3830,13 @@
                                 const tag = this._isOctopusPortName(out.name) ? '\u2605 ' : '';
                                 sel.appendChild(new Option(tag + out.name, out.id));
                             }
-                            if (!autoOut && !this._userDisconnected && this._isOctopusPortName(out.name) &&
-                                this._portLive(out)) {
+                            if (!autoOut && this._isOctopusPortName(out.name) && this._portLive(out)) {
                                 autoOut = out;
                             } else if (this.midiOut && out.id === this.midiOut.id && sel) {
                                 sel.value = out.id;
                             }
                         }
-                        if (!autoOut && !this._userDisconnected)
+                        if (!autoOut)
                             autoOut = this._pickAutoOutput(access);
                         if (autoOut) {
                             const fresh = !this.midiOut || this.midiOut.id !== autoOut.id;
@@ -3829,7 +3845,7 @@
                             if (fresh) await this.onConnect();
                             else await this._bindMidiInputs(access);
                         } else if (outList.length) {
-                            this.log(`MIDI: ${outList.length} out / ${access.inputs.size} in — select port + CONNECT`);
+                            this.log(`MIDI: ${outList.length} out / ${access.inputs.size} in — plug in Octopus USB`);
                         } else {
                             this.log('No MIDI outputs — plug in Octopus via USB and allow Web MIDI');
                         }
@@ -3840,50 +3856,26 @@
                     access.onstatechange = () => { this._scanMidi(); };
                     const sel = document.getElementById('midiOut');
                     if (sel) sel.onchange = e => {
-                        if (!e.target.value) { this.disconnect(); return; } // ⏏ Disconnect
-                        this._userDisconnected = false;
+                        if (!e.target.value) return;
                         this.midiOut = access.outputs.get(e.target.value);
-                        if (this.midiOut) this.connectSelected();
+                        if (this.midiOut) this.onConnect();
                     };
                 } catch (e) {
                     this.log('MIDI access denied: ' + e.message);
                 }
             },
 
-            async connectSelected() {
-                const sel = document.getElementById('midiOut');
-                if (!this._midiAccess || !sel || !sel.value) {
-                    this.log('Pick the Octopus MIDI port from the list first');
-                    return;
-                }
-                this._userDisconnected = false;
-                this.midiOut = this._midiAccess.outputs.get(sel.value);
-                if (!this.midiOut) {
-                    this.log('MIDI port not found — try replugging USB');
-                    return;
-                }
-                await this.onConnect();
-            },
-
-            // Device reboots after FULL/SETTINGS SAVE and all scoped RESETs.  The USB
-            // port goes stale; drop the link and poll until the device re-enumerates.
+            // Device reboots after SAVE and scoped RESET. USB re-enumerates; auto-reconnect then reload.
             _prepareForDeviceReboot() {
                 this._hidePersistWait();
                 this._hidePersistBanner();
-                const el = document.getElementById('doneModal');
-                if (el) el.style.display = 'none';
                 this.stopHeartbeat();
                 this._connOnline = false;
                 this.updateConnBadge(false);
                 this.midiOut = null;
-                const sel = document.getElementById('midiOut');
-                if (sel) sel.value = '';
-                if (!this._userDisconnected) this._startReconnectPoll();
+                            this._startReconnectPoll();
             },
             async onConnect() {
-                const wasRebootPersist = this._persistBusy &&
-                    (this._persistKind === 'save' || this._persistKind === 'reset');
-                const kind = this._persistKind;
                 this._stopReconnectPoll();
                 this._loadSlotMeta();
                 this._sxRxBuf = null;
@@ -3907,13 +3899,13 @@
                 this._syncBurstActive = false;
                 this._gridModelDirty = false;
                 this._linkGraceUntil = Date.now() + 4000;
-                this.updateConnBadge('linking');
+                this.updateConnBadge(false);
                 if (this.midiOut) await this._openMidiPort(this.midiOut);
                 if (this._midiAccess) {
                     await this._openAllMidiPorts(this._midiAccess);
                     const inN = await this._bindMidiInputs(this._midiAccess);
                     if (inN === 0)
-                        this.log('Warning: no MIDI inputs — pick ★ Octopus port + CONNECT');
+                        this.log('Warning: no MIDI inputs — close other tabs using this device');
                 }
                 if (!this.midiOut || !this._portLive(this.midiOut)) {
                     this.updateConnBadge(false);
@@ -3922,22 +3914,7 @@
                 }
                 this.txSysex(CMD.APP_SYNC_REQ, 0);
                 this.startHeartbeat();
-                this.log('Connecting to ' + (this.midiOut.name || 'MIDI') + '…');
-                if (wasRebootPersist) {
-                    const title = document.getElementById('doneModalTitle');
-                    const el = document.getElementById('doneModal');
-                    if (title) {
-                        title.textContent = 'DONE!';
-                        title.style.color = 'var(--green)';
-                    }
-                    if (el) el.style.display = 'flex';
-                    this._persistBanner('DONE!', 'ok');
-                    setTimeout(() => {
-                        if (el) el.style.display = 'none';
-                        this._hidePersistBanner();
-                    }, 1500);
-                    this.log((kind === 'reset' ? 'RESET' : 'SAVE') + ' complete — device reconnected.');
-                }
+                this.log('Syncing with ' + (this.midiOut.name || 'MIDI') + '…');
             },
             // Periodic heartbeat: the firmware marks the link "connected" only while it
             // keeps receiving App sysex (CMD.PING refreshes lastWebSysexMs).  Sending a
@@ -3998,7 +3975,7 @@
                             this.stopHeartbeat();
                             this._connOnline = false;
                             this.updateConnBadge(false);
-                            if (!this._userDisconnected) this._startReconnectPoll();
+                            this._startReconnectPoll();
                             return;
                         }
                         this._hidePersistWait();
@@ -4006,7 +3983,7 @@
                         this._connOnline = false;
                         this.updateConnBadge(false);
                         this.log('Device disconnected — watching for reconnect…');
-                        if (!this._userDisconnected) this._startReconnectPoll();
+                        this._startReconnectPoll();
                         return;
                     }
                     const now = Date.now();
@@ -4024,7 +4001,7 @@
                             }
                             if (!this._linkWarned) {
                                 this._linkWarned = true;
-                                this.log('No device echo — select ★ Octopus port + CONNECT (or reflash firmware)');
+                                this.log('No device echo — check USB and pick the ★ Octopus port');
                             }
                         } else {
                             this._checkTransportHealth(now);
@@ -4061,7 +4038,7 @@
             _startReconnectPoll() {
                 if (this._reconnectTimer) return;
                 this._reconnectTimer = setInterval(async () => {
-                    if (this._userDisconnected || !this._midiAccess) { this._stopReconnectPoll(); return; }
+                    if (!this._midiAccess) { this._stopReconnectPoll(); return; }
                     const candidate = this._pickAutoOutput(this._midiAccess);
                     if (!candidate) return;
                     this._stopReconnectPoll();
@@ -4076,37 +4053,17 @@
             _stopReconnectPoll() {
                 if (this._reconnectTimer) { clearInterval(this._reconnectTimer); this._reconnectTimer = null; }
             },
-            // Temporary, session-preserving disconnect: stops the heartbeat so the
-            // ESP times out and hands transport back to the hardware OLED, but keeps
-            // ALL in-app state (knobs, grid, song) so reconnecting just re-syncs.
-            // Sticky (_userDisconnected) so a device rescan won't auto-reconnect.
-            disconnect() {
-                this._userDisconnected = true;
-                this._stopReconnectPoll();
-                this.stopHeartbeat();
-                this._connOnline = false;
-                this.midiOut = null;
-                this.updateConnBadge(false);
-                const sel = document.getElementById('midiOut');
-                if (sel) sel.value = '';
-                this.log('Disconnected — session kept. Pick the device + CONNECT to reconnect.');
-            },
-            updateConnBadge(connected) {
+            updateConnBadge(online) {
                 const b = document.getElementById('connBadge');
                 if (!b) return;
-                if (connected === 'linking') {
-                    b.style.color = 'var(--orange)';
-                    b.style.borderColor = 'var(--orange)';
-                    b.innerHTML = '<i class="fa-solid fa-circle" style="font-size:6px"></i>LINKING';
-                } else if (connected) {
+                if (online) {
                     b.style.color = 'var(--green)';
                     b.style.borderColor = 'var(--green)';
-                    b.innerHTML = '<i class="fa-solid fa-circle" style="font-size:6px"></i>ONLINE';
+                    b.innerHTML = '<i class="fa-solid fa-circle" style="font-size:6px"></i>Octopus ON';
                 } else {
                     b.style.color = '#444';
                     b.style.borderColor = '#1a1a26';
-                    b.innerHTML = '<i class="fa-solid fa-circle" style="font-size:6px"></i>OFFLINE';
-                    /* [v6.0] No device → CPU telemetry stops; clear the stale reading. */
+                    b.innerHTML = '<i class="fa-solid fa-circle" style="font-size:6px"></i>Octopus Off';
                     const v = document.getElementById('cpuLoadVal');
                     const cbox = document.getElementById('cpuLoad');
                     if (v) v.innerText = '--';
@@ -4237,6 +4194,8 @@
                         if (v14 === 16383) {
                             if (this._persistBusy && this._persistKind === 'save')
                                 this._persistFinished(true, true);
+                            else if (!this._persistBusy)
+                                this._scheduleAppReload('hardware save');
                         } else if (v14 === 0) {
                             if (this._persistBusy || this._persistKind === 'save')
                                 this._persistFinished(false, false);
@@ -4246,6 +4205,8 @@
                         if (v14 === 16383) {
                             if (this._persistBusy && this._persistKind === 'load')
                                 this._persistFinished(true, false);
+                            else if (!this._persistBusy)
+                                this._scheduleAppReload('hardware load');
                         } else if (v14 === 0) {
                             if (this._persistBusy || this._persistKind === 'load')
                                 this._persistFinished(false, false);
@@ -4255,15 +4216,11 @@
                         if (v14 === 16383) {
                             if (this._persistBusy && this._persistKind === 'reset')
                                 this._persistFinished(true, true);
+                            else if (!this._persistBusy)
+                                this._scheduleAppReload('hardware reset');
                         } else if (v14 === 0) {
                             if (this._persistBusy || this._persistKind === 'reset')
                                 this._persistFinished(false, false);
-                        }
-                    },
-                    [CMD.SOFT_RESET]: v14 => {
-                        if (v14 === 16383) {
-                            if (this._persistBusy || this._persistKind === 'soft')
-                                this._persistFinished(true, false);
                         }
                     },
                     [CMD.USR_SOUND_SAVE]: v14 => {
@@ -4423,11 +4380,11 @@
 
             // ── Transport (READ-ONLY REFLECTORS) ────────────────────────────────────────
             // [v6.0] Transport is owned exclusively by the device: SCALE = play/stop,
-            // OC short-press = record-arm, encoder = BPM, encoder long-press = save.
+            // OC short-press = record-arm, encoder turn = BPM.
             // These buttons only MIRROR the device state (set in applyIncoming); clicking
             // them does nothing but remind the user where transport lives.
             _transportHint() {
-                this.log('Transport is device-controlled — use the hardware: SCALE = play/stop, OC short = record, encoder = BPM, encoder long = save.');
+                this.log('Transport is device-controlled — use the hardware: SCALE = play/stop, OC short = record-arm, encoder turn = BPM.');
             },
             // [SYNC-FIX] Single source of truth for the transport trio. Always sets
             // ALL THREE buttons so they can never disagree: play lit when playing,
@@ -4586,13 +4543,6 @@
                 this._showPersistWait('reset', scope);
                 this.txSysex(CMD.SCOPED_RESET, this._encodePersistScope(scope));
             },
-            softReset() {
-                if (!confirm('SOFT RESET\nRestore initial working image (RAM-only, no reboot)?')) return;
-                if (!this._armPersist('soft')) return;
-                this._showPersistWait('soft', 0);
-                this.closeResetModal();
-                this.txSysex(CMD.SOFT_RESET, 0);
-            },
 
             // ── SLOTS popup (user sound + pattern library, 1:1 with hardware) ─────────
             _defaultSoundName(eng, idx) {
@@ -4747,6 +4697,7 @@
                 const eng = this.slotsTab & 1;
                 this.txSysex(CMD.USR_SOUND_LOAD, (eng << 13) | idx);
                 this.log('Loaded ' + (eng ? 'seq' : 'harp') + ' slot ' + (idx + 1) + ' → live patch');
+                setTimeout(() => this._scheduleAppReload('slot load'), 600);
             },
 
             // ── LOAD popup ─────────────────────────────────────────────────────────────
@@ -5576,7 +5527,6 @@
             _monOpen: false,
             _monFilter: true,                       // hide PING / STEP_SYNC / STEP_PHASE / CPU_LOAD / SONG_POS
             _monMax: 300,
-            _userDisconnected: false,               // sticky: survives device rescans
             _ac: null,                              // [LIVE-PERF] silent keep-alive AudioContext
             _acOsc: null,                           // [LIVE-PERF] its zero-gain oscillator
             _hbWorker: null,                        // [LIVE-PERF] off-thread heartbeat ticker

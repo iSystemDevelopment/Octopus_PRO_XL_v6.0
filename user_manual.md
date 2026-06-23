@@ -1,11 +1,11 @@
-# Octopus PRO XL v6.0 — User Manual
+# Octopus PRO XL v6.1 — User Manual
 
-**Laser Harp Groovebox · Firmware 6.0.01**
+**Laser Harp Groovebox · Firmware 6.1.00**
 
 | Field | Value |
 |-------|-------|
 | Document type | End-user & integrator reference |
-| Firmware | `6.0.01` (`SETTINGS_VERSION 0x0615` — unchanged from 6.0.00) |
+| Firmware | `6.1.00` · NVS namespace `octopus` · `SETTINGS_VERSION 0x0615` (struct layout) |
 | Companion app | [octopus.isystem.app](https://octopus.isystem.app) (Web MIDI / SysEx) |
 | Hardware UI | SH1106 OLED · rotary encoder · SCALE · OC |
 
@@ -43,7 +43,7 @@ When a host computer is available, **OctopusApp** provides a graphical editing e
 | Engine | Function | Primary I/O |
 |--------|----------|-------------|
 | **Harp** | 8-string laser instrument, scales, play modes, optional arp | Beam break → note; RGB galvo output |
-| **Sequencer** | Melody grid (rows 1–8) + drum grid (rows 9–16), 64 steps | Internal clock; optional USB MIDI out |
+| **Sequencer** | Melody grid (rows 1–8) + drum grid (rows 9–16), 64 steps | Internal clock; USB SysEx to OctopusApp |
 | **Drums** | 8-voice synthesis (kick … perc) | Grid row triggers; kit character presets |
 | **D-BEAM** | Hand-proximity expression | ADC → internal synth modulation only |
 | **FX bus** | Shared delay/reverb + per-engine inserts | I2S stereo master output |
@@ -61,18 +61,20 @@ Processing is partitioned across ESP32-S3 cores to isolate **galvo timing** from
 flowchart TB
   subgraph Core0["Core 0 — DSP & UI"]
     A[AudioSynth\nI2S + full mix]
+    D[dbeam_adc\nADC DMA + Kalman]
     C[ControlPoll\nencoder @ 200 Hz]
-    O[OledRender\n30 Hz]
+    O[OledRender\n~30 Hz]
   end
   subgraph Core1["Core 1 — Laser & I/O"]
-    L[LaserSweep\ngalvo ISR]
+    L[LaserSweep\ngalvo timing]
+    S[SeqSysexOut\nSTEP_SYNC + supervisor]
     M[MidiUsbRx\nSysEx parser]
-    D[dbeam_adc\n83 kHz ADC DMA]
     N[NvsWorker\nflash persist]
   end
   C --> O
   M --> A
   D --> A
+  S --> M
   A --> OUT[Audio output]
   L --> GALVO[Laser projection]
 ```
@@ -134,7 +136,7 @@ All parameter writes funnel through **`patches.h`** apply-functions so hardware 
 
 1. Connect USB. Firmware loads persisted settings from NVS and restores the last active dashboard (HARP or SEQUENCER).
 2. The laser harp gate defaults to **closed** at boot; open explicitly with **OC long-press** on the HARP dashboard.
-3. Launch **OctopusApp.html**, click **CONNECT**, and select the Octopus USB MIDI port.
+3. Open **[octopus.isystem.app](https://octopus.isystem.app)** — the App auto-connects when the Octopus USB MIDI port is detected (**Octopus ON** badge).
 
 ### 3.3 Factory reset at boot
 
@@ -154,9 +156,9 @@ When OctopusApp maintains an active Web MIDI connection, the OLED displays **APP
 | Control | Assigned function |
 |---------|-------------------|
 | **SCALE** (short) | Play / Stop |
-| **OC** (long) | Record arm toggle |
+| **OC** (short) | Record arm toggle |
 | **Encoder turn** | BPM adjustment (40–240) |
-| **Encoder long-press** | Full Save confirmation dialog |
+| **Encoder long-press** | No action (SAVE/LOAD use the App) |
 
 Parameter editing is performed exclusively in the App during this mode, preventing concurrent modification of the same atomic parameters from two surfaces.
 
@@ -309,7 +311,7 @@ Certain L2 selections bypass the standard L3 value screen:
 | HARP SETUP → Edge Comp | Per-string trigger height (8 bars × 16 scales) |
 | SEQ MATRIX → Open Grid | 16×8 step matrix with bank navigation |
 | SONG (L2 enter) | Chain row editor (bank + repeats) |
-| TELEMETRY (L2 enter) | Live CPU / memory telemetry scope |
+| TELEMETRY (L2 enter) | Live diagnostic scope (7 views — see [§8.13](#813-telemetry)) |
 
 ---
 
@@ -319,7 +321,7 @@ This section documents the **musical and signal-processing semantics** underlyin
 
 ### 7.1 Sequencer grid topology
 
-The sequencer stores patterns as **64 steps × 16 rows** per bank. Hardware and App present a **16×8 window** at a time; position within the full 64 steps is selected by **page** (App: P1–P4) or by horizontal cursor wrap in the matrix editor.
+The sequencer stores patterns as **64 steps × 16 rows** per bank. Hardware and App present a **16×8 window** at a time; position within the full 64 steps is selected by **page** (App: P1–P4). The hardware matrix editor currently covers **steps 1–16 only** — see [§12.C](#c-planned-upgrades-future-work).
 
 #### Row assignment
 
@@ -613,7 +615,7 @@ Per-scale beam triggering, colour, and idle behaviour (13 items).
 
 ### 8.3 SEQ SETUP
 
-Pattern management and sequencer arp (14 items).
+Pattern management and sequencer arp (**13 items**).
 
 | Item | Function |
 |------|----------|
@@ -623,7 +625,6 @@ Pattern management and sequencer arp (14 items).
 | Length | 16 / 32 / 48 / 64 steps |
 | Load Synth / Load Drum | Factory pattern recall |
 | Clear | Wipe active bank (confirm) |
-| Soft Reset | Reset sounds/nav; keep grid |
 | Save Pat / Load Pat | 64 user pattern slots |
 | Arp On / Type / Rate / Gate | Sequencer arpeggiator ([§7.2](#72-arpeggiator-pattern-reference)) |
 
@@ -698,7 +699,25 @@ Show Mode, MIDI Hue, Base Hue, Anim Mode (Pulse/Chase/Strobe/Wave), Drum Flash, 
 
 ### 8.13 TELEMETRY
 
-Audio Load, Stack Min, DRAM Free, PSRAM Free — L2 click opens live scope.
+Seven diagnostic views. From **MENU L1 → TELEMETRY**, scroll **MENU L2** with the encoder, then **encoder click** opens the selected view. While a view is active:
+
+| Control | Function |
+|---------|----------|
+| Encoder turn | Cycle views 1–7 (wraps) |
+| Encoder click | Exit to dashboard |
+| Encoder double-click | Exit to dashboard |
+
+| L2 item | On-screen content |
+|---------|-------------------|
+| **AC Scope** | AC-coupled beam amplitude trace (true RMS above noise floor) |
+| **DC Bias** | Average DC servo bias (volts + raw ADC counts, mid-rail ≈ 1.65 V) |
+| **DAC Thresh** | Eight per-string AGC threshold bars (12-bit DAC scale 0–4095) |
+| **D-BEAM Expr** | Post-curve expression magnitude (0–16383) |
+| **SNR** | Signal-to-noise ratio trace (`maMv / noise floor`) |
+| **System** | CPU load %, DRAM/PSRAM free, D-BEAM carrier freq, stack low warning |
+| **Fog Reject** | Eight amplitude bars with floor + accept lines (margin tuning aid) |
+
+The OLED refreshes continuously (~30 Hz) while any telemetry view is open. **System** stats update every 5 s. Scope traces (AC, D-BEAM, SNR) auto-range to recent peaks.
 
 ---
 
@@ -716,7 +735,7 @@ Same four scopes. SAVE persists to NVS (+ reboot). LOAD reloads from NVS without
 
 ## 9. OctopusApp companion
 
-Open **[octopus.isystem.app](https://octopus.isystem.app)** (or local `OctopusApp.html`) in Chrome or Edge over **HTTPS**. Product documentation lives at **[octopus-info.isystem.app](https://octopus-info.isystem.app)**; firmware and sources at **[GitHub](https://github.com/iSystemDevelopment/Octopus_PRO_XL_v6.0)**. Web MIDI carries SysEx (`0x7D` host→device, `0x7C` device→host). USB MIDI runs in your browser only — not through the web server.
+Open **[octopus.isystem.app](https://octopus.isystem.app)** in Chrome or Edge over **HTTPS**. The App auto-connects over USB MIDI SysEx (`0x7D` host→device, `0x7C` device→host). After SAVE, LOAD, or RESET the page reloads and re-imports the full device state.
 
 ### 9.1 View structure
 
@@ -788,12 +807,22 @@ SAVE · LOAD · RESET · SLOTS · CPY/PST · RND-H/RND-D · CLR · mutes · DBEA
 
 Cosmic Saw · Quantum Sq · Pulsar 25% · Stellar Tri · Nebula Organ · Astral Vocal · Chrono Bell · Aether String · Singular Sine · Pulsar 10% · Pulsar 40% · Hyper Glass · Cygnus Tine · Vortex Clav · Void Choir · Reso Quark · Photon Reed · Warp Cello · Nova Harm · Event Growl · Solar Flute · Plasma Pad · Moog Gravity · Meteor Tabla · Deep Drone
 
-### C. Document revision
+### C. Planned upgrades (future work)
+
+Authoritative list: **`code_info.h` §9**. Targets for the next upgrade:
+
+1. **Hardware matrix step pages** — on-device editing for steps 17–64 (App P1–P4 today).
+2. **OLED P-lock lane editor** — full-screen motion lane editing on hardware.
+3. **External MIDI OUT** — channel-voice output via a WiFi/BLE coprocessor path.
+4. **OctopusApp motion-matrix editor** — per-step P-lock editing in the browser.
+
+### D. Document revision
 
 | Version | Date | Notes |
 |---------|------|-------|
 | 1.0 | 2026-06-20 | Initial v6.0 manual — architecture diagrams, arp/FX/D-BEAM reference |
+| 1.1 | 2026-06-23 | v6.1.00 — auto-connect App, scoped persist/reboot, 7-view TELEMETRY; §12.C future work |
 
 ---
 
-*Octopus PRO XL v6.0 — © DIODAC ELECTRONICS / iSystem. Firmware labels: `display.h`. Protocol: `sysex.h`.*
+*Octopus PRO XL v6.1 — © DIODAC ELECTRONICS / iSystem. Firmware labels: `display.h`. Protocol: `sysex.h`.*

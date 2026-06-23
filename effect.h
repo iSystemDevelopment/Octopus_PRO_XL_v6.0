@@ -1,66 +1,23 @@
 /* ═════════════════════════════════════════════════════════════════════════════
- * Octopus PRO XL v6.0.00 — Laser Harp Groovebox
+ * Octopus PRO XL v6.1.00 — Laser Harp Groovebox
  * © 2026 DIODAC ELECTRONICS / iSystem. All Rights Reserved.
  *
  * PROPRIETARY AND CONFIDENTIAL. Unauthorized copying, distribution, modification,
  * or use of this software or firmware, in whole or in part, is strictly prohibited
  * without prior written permission from DIODAC ELECTRONICS.
  * ═════════════════════════════════════════════════════════════════════════════
- * effect.h — v6.0.00  CONSOLIDATED FX ENGINE  (3-instrument groovebox)
+ * effect.h — v6.1.00  CONSOLIDATED FX ENGINE  (3-instrument groovebox)
  *
- * Changes vs v5.1.01:
+ * Mono insert pipeline (harp / seq / drum) → shared aux bus (delay + reverb)
+ * → master bus (tube drive, glue comp, EQ3, limiter).  Per-instrument slots
+ * A→B in series: slot A = modulation FX bank, slot B = dynamics bank.
  *
- *  [H1] Drum aux send wired.
- *       fx.drumInsert.dly_send / rev_send are written every buffer by
- *       audio_synthesis_task (from drumRevSend / drumDlySend atomics) but
- *       were never read inside fx_process_multi_buf_safe.  The shared aux
- *       bus (reverb + delay) now correctly includes the drum contribution.
+ * Shared aux time/size/damping come from masterAux* atomics + NVS — loadInsert
+ * does not stomp them.  Drum aux sends wired; tail gate is amplitude-aware
+ * (FX_TAIL_* in effect.cpp), not a fixed 3 s counter.
  *
- *  [H2] Tail gate includes drum sends.
- *       The 3-second reverb tail counter was gated only on harp+seq sends.
- *       Kick and snare reverb never ran.  Fixed: any non-zero send from
- *       harp, seq, or drum extends the tail.
- *
- *  [H3] loadInsert no longer stomps shared aux parameters.
- *       Loading any instrument's FX-A slot previously overwrote
- *       masterAuxDlyTime / masterAuxDlyFb / masterAuxRevSize / masterAuxRevDamp
- *       for ALL instruments simultaneously.  These aux parameters are now
- *       set only via sysex (CMD_D_REV, CMD_D_DLY) and NVS recall — not by
- *       preset loading.  The InsertFxPreset dl_time/rv_size fields are
- *       preserved in the struct for future per-chain aux (not applied here).
- *
- *  [H4] Scratch float buffers try PSRAM first.
- *       [P0] Mono pipeline → 3 × FX_BUF_SIZE × 4 bytes = 6 KB (was 6 buffers).
- *       On boards with 8 MB PSRAM these live in SPI RAM, freeing internal DRAM
- *       for FreeRTOS stacks.  Sequential access keeps cache-prefetch latency low.
- *       Falls back to internal DRAM if PSRAM is unavailable.
- *
- *  [P0] effect.h split into effect.h (decls + hot inline) + effect.cpp (tables,
- *       global fx, scratch bufs, cold primitive config, fx_init, and the IRAM
- *       hot path).  Dead stereo process()/R-channel state/R scratch removed.
- *
- * Retained from v5.1.01 (all fixes preserved):
- *  [A] SynthFX FLANGE and RING_MOD implementations.
- *  [B] Tail gate rev_send check (partial — fully corrected by [H2]).
- *  [C] FxBiquad denormal flush on v1/v2.
- *  [D] FxCombFilter denormal flush on filterState.
- *  [E] SharedAux graceful delay-line size fallback (65536→16384→4096).
- *
- * Architecture summary (signal flow, left to right):
- *
- *   [harp mono] ─→ harpInsert(A→B) ──────────────────────────────────┐
- *   [seq  mono] ─→ seqInsert (A→B) ──────────────────────────────────┤
- *   [drum mono] ─→ DrumFX ─→ drumInsert(A→B) ────────────────────────┤
- *                                                                      ↓
- *                    dly_send/rev_send ──→ SharedAux ──→ wetL / wetR ─┤
- *                                                                      ↓
- *                             sumL/sumR = Σ(dry) + aux_wet ──→ MasterFX ─→ out
- *
- * PSRAM usage (8 MB board):
- *   SynthFX delay lines:  6 chains × 2 ch × 1024 samples × 4 B =   48 KB PSRAM
- *   SharedAux delay line: 65536 samples × 4 B                   =  256 KB PSRAM
- *   FX scratch buffers:   6 × 512 × 4 B                         =   12 KB PSRAM
- *   FxCombFilter / allpass: hot-path, 4+2 × ~1200 s × 4 B       =   29 KB DRAM
+ * Hot path: fx_process_multi_buf_safe() in effect.cpp (IRAM, Core 0).
+ * Single-pass sample loop — no DRAM scratch staging buffers.
  * ═════════════════════════════════════════════════════════════════════════════ */
 #pragma once
 #ifndef EFFECT_H
@@ -96,13 +53,8 @@ static constexpr uint32_t INSERT_DELAY_LEN = 1024u; /* power-of-2, ~23 ms @ 44.1
 static constexpr size_t FX_BUF_SIZE = 512u;         /* must match DMA_BUFFER_FRAMES  */
 
 /* Amplitude-aware aux tail gate (effect.cpp).  Keeps shared delay/reverb draining
- * until the mixed output actually falls quiet — avoids the old fixed 0.5–3 s
- * sample counter that cut long pad tails mid-decay.  Safety caps still bound CPU. */
-/* [FX-BUG1] peakOut is tracked in the post-master FLOAT domain [0,1], so the
- * threshold must be float too. The old 20.0f (an int16-domain value) could never
- * be exceeded → the amplitude gate never held the tail and aux always cut at
- * FX_TAIL_QUIET_BUFFERS (~280 ms), chopping long pad/reverb tails. 20/32767 keeps
- * the intended ~-64 dBFS gate in the correct domain. */
+ * until mixed output falls below FX_TAIL_PEAK_THRESH; safety caps bound CPU. */
+/* peakOut is in post-master float [0,1] — threshold must match that domain. */
 static constexpr float FX_TAIL_PEAK_THRESH = 20.0f / 32767.0f; /* ~6.1e-4f, -64 dBFS */
 static constexpr int   FX_TAIL_QUIET_BUFFERS = 24;  /* ~280 ms below thresh → aux off */
 static constexpr int   FX_TAIL_MAX_BUFFERS_NORMAL =
@@ -130,13 +82,13 @@ public:
 };
 
 /* ─────────────────────────────────────────────────────────────────────────────
- * FxBiquad — Transposed Direct Form II biquad filter
- * [C] Denormal flush on state variables prevents Xtensa FPU subnormal spikes.
+ * FxBiquad — Transposed Direct Form II biquad filter.
+ * Denormal flush on state variables prevents FPU subnormal spikes.
  * ─────────────────────────────────────────────────────────────────────────────*/
 class FxBiquad {
   float b0 = 1.f, b1 = 0.f, b2 = 0.f, a1 = 0.f, a2 = 0.f, v1 = 0.f, v2 = 0.f;
 public:
-  /* [P0] Coefficient math moved out-of-line to effect.cpp (cold path). */
+  /* Coefficient math in effect.cpp (cold path). */
   void setLowPass(float freq, float q);
   void setLowShelf(float freq, float gain_db);
   void setHighShelf(float freq, float gain_db);
@@ -146,8 +98,8 @@ public:
   }
   inline float process(float x) {
     float y = b0 * x + v1;
-    v1 = fx_denormal(b1 * x - a1 * y + v2); /* [C] */
-    v2 = fx_denormal(b2 * x - a2 * y);      /* [C] */
+    v1 = fx_denormal(b1 * x - a1 * y + v2);
+    v2 = fx_denormal(b2 * x - a2 * y);
     return y;
   }
 };
@@ -155,9 +107,7 @@ public:
 /* ─────────────────────────────────────────────────────────────────────────────
  * FxDelayLine — power-of-two circular buffer
  *
- * [P1] Memory tier is explicit at init():
- *   DRAM_FIRST  — insert chorus/flange (modulated readFrac every sample)
- *   PSRAM_FIRST — SharedAux long delay (sequential, large)
+ * Memory tier at init(): DRAM_FIRST for modulated inserts, PSRAM_FIRST for SharedAux.
  * ─────────────────────────────────────────────────────────────────────────────*/
 enum class FxDelayTier : uint8_t { DRAM_FIRST, PSRAM_FIRST };
 
@@ -167,7 +117,7 @@ public:
   uint32_t mask = 0;
   uint32_t pos = 0;
 
-  /* [P0] Allocation moved out-of-line to effect.cpp (cold path). */
+  /* Allocation in effect.cpp (cold path). */
   bool init(uint32_t power_of_two, FxDelayTier tier = FxDelayTier::DRAM_FIRST);
   void clear();
   inline void write(float v) {
@@ -177,8 +127,7 @@ public:
   inline float read(uint32_t tap) const {
     return buf ? buf[(pos - tap - 1u) & mask] : 0.0f;
   }
-  /* [FX-OPT6] Single address computation per tap (was two read() calls that each
-   * re-masked the same index).  Null-safe — kept as the public API. */
+  /* Single address computation per fractional tap. */
   inline float readFrac(float tap) const {
     if (!buf) return 0.0f;
     const uint32_t idx = (uint32_t)tap;
@@ -187,9 +136,7 @@ public:
     const float b = buf[(pos - idx - 2u) & mask];
     return a + (b - a) * frac;
   }
-  /* [FX-OPT5] Null-check-free hot-path variants.  ONLY call once the FX chain is
-   * fully initialised (fx.initialized): fx_process_multi_buf_safe bails out before
-   * the sample loop when init is incomplete, so buf is guaranteed valid here. */
+  /* Hot-path variants — only after fx.initialized (chain fully allocated). */
   inline void write_unsafe(float v) {
     buf[pos & mask] = (fabsf(v) >= DENORMAL_FLOOR) ? v : 0.0f;
     ++pos;
@@ -208,8 +155,8 @@ public:
 
 /* ─────────────────────────────────────────────────────────────────────────────
  * FxCombFilter — Schroeder comb with one-pole lowpass damping
- * Allocated in DRAM — called every sample, cannot tolerate PSRAM cache misses.
- * [D] Denormal flush on filterState.
+ * Allocated in DRAM — per-sample hot path; PSRAM cache misses unacceptable.
+ * Denormal flush on filterState.
  * ─────────────────────────────────────────────────────────────────────────────*/
 class FxCombFilter {
   float* buf = nullptr;
@@ -217,13 +164,13 @@ class FxCombFilter {
   uint32_t pos = 0;
   float filterState = 0.0f;
 public:
-  /* [P0] Allocation moved out-of-line to effect.cpp (cold path). */
+  /* Allocation in effect.cpp (cold path). */
   bool init(uint32_t samples);
   void clear();
   inline float process(float in, float feedback, float damp) {
     if (!buf) return in;
     const float out = buf[pos];
-    filterState = fx_denormal(filterState + (out - filterState) * (1.0f - damp)); /* [D] */
+    filterState = fx_denormal(filterState + (out - filterState) * (1.0f - damp));
     buf[pos] = std::min(3.0f, std::max(-3.0f, in + filterState * feedback));
     if (++pos >= len) pos = 0;
     return out;
@@ -238,7 +185,7 @@ class FxAllpassFilter {
   uint32_t len = 0;
   uint32_t pos = 0;
 public:
-  /* [P0] Allocation moved out-of-line to effect.cpp (cold path). */
+  /* Allocation in effect.cpp (cold path). */
   bool init(uint32_t samples);
   void clear();
   inline float process(float in) {
@@ -261,7 +208,7 @@ enum class InsertMode : uint8_t { OFF = 0,
                                   DISTORTION, /* tube-drive — legacy name kept   */
                                   PHASER };
 
-/* [P2] Dynamics insert bank — loaded via CMD_*_FX_IDX_B (repurposed B slot). */
+/* Dynamics insert bank — loaded via CMD_*_FX_IDX_B (slot B). */
 enum class DynMode : uint8_t { OFF = 0,
                                COMPRESSOR,
                                GATE,
@@ -297,20 +244,16 @@ struct MasterFxPreset {
   float eq_low, eq_high;
 };
 
-/* [P0] Preset tables defined in effect.cpp (single instance). */
+/* Preset tables in effect.cpp. */
 extern const InsertFxPreset INSERT_FX_PRESETS[16];
 extern const DynPreset DYNAMICS_PRESETS[16];
 extern const MasterFxPreset MASTER_FX_PRESETS[16];
 
 /* ─────────────────────────────────────────────────────────────────────────────
- * SynthFX — per-instrument insert effect (chorus / flange / ring-mod / distortion)
+ * SynthFX — per-instrument insert effect (chorus / flange / ring-mod / distortion / phaser)
  *
- * [P0] Mono: one delay line (ch_dlL).  [A] FLANGE and RING_MOD implemented.
- *
- * Critical rule for all modes:
- *   ch_dlL.write() MUST be called in every code path so the delay-line cursor
- *   stays in sync.  If a mode switch happens between buffer calls, a stale
- *   cursor read would produce a pop.
+ * Mono: one delay line (ch_dlL).  ch_dlL.write() runs on every code path so the
+ * delay cursor stays in sync across mode switches.
  * ─────────────────────────────────────────────────────────────────────────────*/
 class SynthFX {
   FxDelayLine ch_dlL;
@@ -323,7 +266,7 @@ public:
 
   bool init() {
     lfoL.phase = 0.25f;
-    /* [P1] default DRAM_FIRST — modulated insert delay must not live in PSRAM */
+    /* Insert delay lines default to DRAM (modulated read every sample). */
     return ch_dlL.init(INSERT_DELAY_LEN);
   }
   void clear() {
@@ -338,23 +281,9 @@ public:
     fx_mix = p.fx_mix;
   }
 
-  /* [P0] Stereo process() + R-channel state removed — the pipeline is mono
-   * (process_mono below).  Stereo image is created at the reverb/master stage. */
-
-  /* [MONO-FX] Single-channel variant — used by the mono insert pipeline.
-   * Uses ONLY the L-side state (ch_dlL / lfoL / dist_lpL).  The synth sources
-   * are mono, so processing one channel is bit-identical to the old L output at
-   * half the cost.  Consistency rule preserved: ch_dlL.write() runs on every
-   * path.  NOTE: never mix process()/process_mono() on the same instance — the
-   * pipeline uses exclusively one or the other.
-   * NOTE: do NOT mark this IRAM_ATTR — large header-defined class methods
-   * trigger Xtensa "dangerous relocation: l32r" linker errors when the TU
-   * that includes effect.h (audio.cpp) instantiates them.  The outer
-   * fx_process_multi_buf_safe() is IRAM-resident; these inline into it when
-   * the compiler chooses, otherwise they run from flash (acceptable).      */
+  /* Mono process_mono() — pipeline uses this exclusively (not legacy stereo process()). */
   inline void process_mono(float& x) {
-    /* [FX-OPT5] _unsafe delay-line ops: this runs only from the IRAM hot path,
-     * which bails out before the sample loop unless the chain is fully init'd. */
+    /* _unsafe delay ops: valid only when fx.initialized (hot path guard). */
     if (fx_mix < 0.001f || mode == InsertMode::OFF) {
       ch_dlL.write_unsafe(x);
       return;
@@ -386,7 +315,7 @@ public:
         break;
       }
       case InsertMode::PHASER: {
-        /* [P2] Short modulated comb — p1=LFO Hz, p2=depth 0–1, p3=feedback   */
+        /* Short modulated comb — p1=LFO Hz, p2=depth, p3=feedback */
         const float mod = 3.0f + p2 * 80.0f * (0.5f + 0.5f * lfoL.tri(p1));
         wet = ch_dlL.readFrac_unsafe(mod);
         ch_dlL.write_unsafe(fx_clampf(x + wet * std::min(0.75f, p3)));
@@ -401,15 +330,12 @@ public:
 };
 
 /* ─────────────────────────────────────────────────────────────────────────────
- * InsertSlot — [P2] two INDEPENDENT insert stages per instrument, in series A→B.
+ * InsertSlot — two independent insert stages per instrument, in series A→B.
  *
- * CMD_*_FX_IDX   → slot A: FX bank preset (chorus/flange/ring-mod/dist/phaser)
- * CMD_*_FX_IDX_B → slot B: Dynamics bank preset (comp/gate/transient/limiter)
- *
- * [v6.0-FIX] A and B are processed serially and never override one another;
- * each self-bypasses when OFF / zero-mix.
- *
+ * CMD_*_FX_IDX   → slot A (modulation FX bank)
+ * CMD_*_FX_IDX_B → slot B (dynamics bank)
  * dly_send / rev_send → shared SharedAux bus.
+ * Both slots run in series; each self-bypasses when OFF / zero-mix.
  * ─────────────────────────────────────────────────────────────────────────────*/
 struct InsertSlot {
   SynthFX fx;
@@ -418,7 +344,7 @@ struct InsertSlot {
   float dyn_thr = 0.5f, dyn_ratio = 4.f, dyn_atk = 0.05f, dyn_rel = 0.01f;
   float dyn_makeup = 1.f, dyn_mix = 0.f;
   float dyn_env = 0.f;
-  float dyn_thr_safe = 0.5f; /* [FX-OPT2] max(dyn_thr,1e-4) cached at preset load */
+  float dyn_thr_safe = 0.5f; /* max(dyn_thr, 1e-4) cached at preset load */
   float dly_send = 0.0f;
   float rev_send = 0.0f;
 
@@ -460,12 +386,7 @@ struct InsertSlot {
         break;
       }
       case DynMode::TRANSIENT: {
-        /* [FIX-TRANSIENT] Clamp output: at transient onset dyn_env≈0, so
-         * delta≈|x| and wet = x + |x|*ratio*makeup can reach ±4.45 (preset
-         * "Drum Smack": ratio=3.0, makeup=1.15).  This propagated unclamped
-         * through the pan sum to the master limiter which would then flatten
-         * the very transient shape the TRANSIENT mode was meant to enhance.
-         * fx_clampf keeps the signal in the expected float domain.            */
+        /* Clamp output — transient onset can exceed ±1 without fx_clampf. */
         const float peak = a;
         dyn_env += (peak - dyn_env) * dyn_rel;
         const float delta = peak - dyn_env;
@@ -473,11 +394,7 @@ struct InsertSlot {
         break;
       }
       case DynMode::LIMITER: {
-        /* [FIX-LIMITER] Removed the redundant fx_clampf before the threshold
-         * check.  With dyn_thr < 1.0 (all limiter presets), the threshold
-         * check always fires first — the ±1.0 clamp was a dead code path that
-         * could mask a signal that should be hard-limited at dyn_thr instead.
-         * Apply makeup first, then the threshold ceiling.                    */
+        /* Apply makeup then hard-limit at dyn_thr. */
         const float lim = dyn_thr;
         wet = x * dyn_makeup;
         if (fabsf(wet) > lim)
@@ -488,14 +405,9 @@ struct InsertSlot {
     }
     x = dry * (1.f - dyn_mix) + wet * dyn_mix;
   }
-  /* [v6.0-FIX] Slots A and B are INDEPENDENT and run in SERIES (A → B), restoring
-   * the pre-v6.0 behaviour the user expects.  Slot A = modulation FX bank, slot
-   * B = dynamics bank.  Each stage self-bypasses when OFF / zero-mix, so loading
-   * a preset into one slot never silences the other.  (The old code gated on
-   * `bank` and ran only ONE stage — that is what made A override B.) */
   inline void process_mono(float& x) {
-    fx.process_mono(x);   /* slot A — chorus / flange / ring-mod / dist / phaser */
-    process_dyn_mono(x);  /* slot B — compressor / gate / transient / limiter    */
+    fx.process_mono(x);   /* slot A */
+    process_dyn_mono(x);  /* slot B */
   }
 };
 
@@ -534,19 +446,18 @@ public:
       cached_tone = tone;
     }
   }
-  /* [P0] Stereo process() + toneR removed — mono pipeline only. */
-  inline void process_mono(float& x) { /* [MONO-FX] L-side state only */
+  inline void process_mono(float& x) {
     if (drive > 0.001f) x = fx_tanh(x * cached_k) * cached_makeup;
     x = toneL.process(x);
   }
 };
 
 /* ─────────────────────────────────────────────────────────────────────────────
- * SharedDelay — [P3] long stereo delay bus (PSRAM), mono in → mono tap out.
+ * SharedDelay — long delay bus (PSRAM), mono in → mono tap out.
  * ─────────────────────────────────────────────────────────────────────────────*/
 class SharedDelay {
   FxDelayLine dlM;
-  /* [FX-OPT4] tap + feedback are constant across a buffer → cached in setParams. */
+  /* tap + feedback cached per buffer in setParams(). */
   float dt_samples = 0.f, dl_fb = 0.f;
 public:
   bool init() {
@@ -558,7 +469,7 @@ public:
     return false;
   }
   void clear() { dlM.clear(); }
-  /* [FX-OPT4] Call once per buffer (cold) before the sample loop. */
+  /* Call once per buffer before the sample loop. */
   inline void setParams(float dlyTime, float dlyFb) {
     dt_samples = std::min(dlyTime * (float)FX_SR, (float)dlM.mask);
     dl_fb = dlyFb;
@@ -570,13 +481,13 @@ public:
 };
 
 /* ─────────────────────────────────────────────────────────────────────────────
- * SharedReverb — [P3] Schroeder reverb, mono in → decorrelated stereo wet.
+ * SharedReverb — Schroeder reverb, mono in → decorrelated stereo wet.
  * ─────────────────────────────────────────────────────────────────────────────*/
 class SharedReverb {
   FxAllpassFilter apM2;
   FxCombFilter combM[4];
   FxAllpassFilter apM[2];
-  /* [FX-OPT4] comb feedback + damping are constant across a buffer → cached. */
+  /* comb feedback + damping cached per buffer. */
   float rev_fb = 0.84f, rev_damp = 0.5f;
 public:
   bool init() {
@@ -592,7 +503,7 @@ public:
     for (int i = 0; i < 4; ++i) combM[i].clear();
     for (int i = 0; i < 2; ++i) apM[i].clear();
   }
-  /* [FX-OPT4] Call once per buffer (cold) before the sample loop. */
+  /* Call once per buffer before the sample loop. */
   inline void setParams(float revSize, float revDamp) {
     rev_fb = 0.70f + revSize * 0.28f;
     rev_damp = revDamp;
@@ -606,14 +517,14 @@ public:
   }
 };
 
-/* [P3] SharedAux kept as alias wrapper for any legacy references. */
+/* SharedAux — delay + reverb wrapper for the shared aux bus. */
 class SharedAux {
   SharedDelay delay;
   SharedReverb reverb;
 public:
   bool init() { return delay.init() & reverb.init(); }
   void clear() { delay.clear(); reverb.clear(); }
-  /* [FX-OPT4] Latch delay/reverb coefficients once per buffer (cold path). */
+  /* Latch delay/reverb coefficients once per buffer. */
   inline void setParams(float dlyTime, float dlyFb, float revSize, float revDamp) {
     delay.setParams(dlyTime, dlyFb);
     reverb.setParams(revSize, revDamp);
@@ -630,7 +541,7 @@ public:
 };
 
 /* ─────────────────────────────────────────────────────────────────────────────
- * MasterFX — [P5] Master DAP: glue comp → EQ3 (low/mid/high) → soft limiter.
+ * MasterFX — glue comp → EQ3 (low/mid/high) → soft limiter.
  *
  * Parameter mapping (backward compatible with existing atomics + presets):
  *   tb_drive / tb_mix  → bus compressor threshold / mix
@@ -646,15 +557,12 @@ class MasterFX {
   float cached_comp_drv = -1.f, cached_comp_mix = -1.f, cached_comp_tone = -1.f;
   float comp_thr = 0.55f, comp_ratio = 4.f, comp_mix = 0.f;
   float comp_atk = 0.12f, comp_rel = 0.018f;
-  /* [FX-OPT2] tube-sat + compressor constants cached per-buffer in update_params()
-   * (they depend only on drive/tube_tone/tube_mix), not recomputed per sample. */
+  /* Tube-sat + compressor constants cached in update_params(). */
   float comp_sat = 1.0f, comp_tilt = 0.35f, comp_w = 0.0f;
-  float comp_makeup = 1.0f;   /* [WS11-FIX] level restore after tube tanh */
+  float comp_makeup = 1.0f;   /* level restore after tube tanh */
   float comp_thr_safe = 0.55f;
   float lim_A = 0.18f, cached_lim_t = 0.80f, cached_lim_c = 0.98f;
-  /* [PERF] EQ3 bypass: a 0 dB shelf/peak is mathematically passthrough, so the
-   * 6 biquad evals per sample are pure waste when the master EQ is flat (the
-   * common case).  Recomputed in update_params(); gates the EQ block in process(). */
+  /* EQ3 bypass when all bands flat (common case). */
   bool eq_active = false;
 
   inline float softKneeLimit(float x) const {
@@ -716,20 +624,12 @@ public:
       cached_dj_res  = dj_res;
       cached_dj_mix  = dj_mix;
     }
-    /* Glue compressor — tb_drive lowers threshold, tb_mix is wet amount.
-     * [FX-OPT2] recompute tube-sat constants here too (depend on drive/tone/mix).
-     * tube_tone is folded in so a tone-only change still refreshes comp_tilt. */
+    /* Glue compressor — tb_drive lowers threshold, tb_mix is wet amount. */
     if (drive != cached_comp_drv || tube_mix != cached_comp_mix ||
         tube_tone != cached_comp_tone) {
       comp_thr  = 0.75f - drive * 0.55f;
       comp_mix  = std::max(drive, tube_mix);
       comp_ratio = 2.f + drive * 6.f;
-      /* [WS11-FIX] DRV felt far too weak: the old linear 1+drive*5 barely
-       * saturated, and with no makeup the tanh just soft-compressed peaks.
-       * Quadratic curve keeps the default (~0.3) baseline gentle but makes the
-       * top of the knob bite hard (1.0 → 12× pre-gain), and the makeup term
-       * restores level so the added harmonics are AUDIBLE rather than just
-       * limited away. */
       comp_sat   = 1.0f + drive * drive * 11.0f;
       comp_tilt  = 0.35f + tube_tone * 1.65f;
       comp_makeup = 1.0f / fx_tanh(comp_sat * comp_tilt);
@@ -768,7 +668,7 @@ public:
       L *= g;
       R *= g;
     }
-    /* 2. EQ3: low shelf → mid peak → high shelf (skipped when flat [PERF]) */
+    /* EQ3: skipped when eq_active is false */
     if (eq_active) {
       L = highL.process(midL.process(lowL.process(L)));
       R = highR.process(midR.process(lowR.process(R)));
@@ -800,8 +700,7 @@ public:
   SharedAux auxFx;
   MasterFX masterFx;
   FxChainMetrics metrics;
-  /* [FX-OPT1] true only when every sub-chain allocated.  The hot path bails out
-   * when this is false, which is what makes the FxDelayLine _unsafe ops sound. */
+  /* true when every sub-chain allocated; hot path bails if false. */
   bool initialized = false;
 
   bool init() {
@@ -810,7 +709,7 @@ public:
     ok &= seqInsert.init();
     ok &= drumInsert.init();
     ok &= drumFx.init();
-    ok &= auxFx.init(); /* [E] graceful size fallback inside */
+    ok &= auxFx.init(); /* graceful delay-line size fallback inside */
     ok &= masterFx.init();
     initialized = ok;
     return ok;
@@ -824,13 +723,8 @@ public:
     masterFx.clear();
   }
 
-  /* ── loadInsert [P2] ─────────────────────────────────────────────────────
-   * bankSlot 0 = FX bank (CMD_*_FX_IDX)   → slot A (modulation FX)
-   * bankSlot 1 = Dynamics bank (CMD_*_FX_IDX_B) → slot B (dynamics)
-   * [v6.0-FIX] The two banks are INDEPENDENT: each writes only its own sub-state
-   * (slot.fx vs the dyn_* fields), so loading one bank never disturbs the other.
-   * Both run in series at process time (A → B).
-   * [H3] Shared aux globals are NOT stomped here.                            */
+  /* loadInsert — bank 0 = FX slot A, bank 1 = dynamics slot B.
+   * Shared aux globals are NOT stomped here (masterAux* atomics only). */
   void loadInsert(InsertSlot& slot, int bankSlot, int idx) {
     if (idx < 0 || idx >= 16) return;
     portENTER_CRITICAL(&patchMux);
@@ -878,7 +772,7 @@ public:
   }
 };
 
-/* [P0] Single global instance defined in effect.cpp. */
+/* Global FxChain instance — defined in effect.cpp. */
 extern FxChain fx;
 
 /* ── Convenience loaders (used by sysex handlers and display.cpp) ─────────── */
@@ -901,13 +795,8 @@ inline void loadDrumFxB(int i) {
   fx.loadDrumInsert(1, i);
 }
 
-/* [DRUM-FX-SYNC] User-initiated drum FX (slot A) recall.  Unlike harp/seq —
- * whose insert send IS the live value — the drum bus reads its sends from the
- * drumDlySend/drumRevSend atomics (snapAudioParams overwrites drumInsert.*_send
- * every buffer).  So a *deliberate* recall must publish the preset's sends INTO
- * those atomics for them to take effect (and for the App knob to follow via
- * txDrumFxSends).  The audio-task/NVS paths keep calling plain loadDrumFx, which
- * leaves the atomics — and thus the saved sends — untouched. */
+/* loadDrumFxLive — user-initiated drum FX recall; also publishes preset sends
+ * into drumDlySend/drumRevSend atomics (the live bus reads atomics, not slot). */
 inline void loadDrumFxLive(int i) {
   fx.loadDrumInsert(0, i);
   float dly, rev;
@@ -920,10 +809,9 @@ inline void loadDrumFxLive(int i) {
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
- * Lifecycle + per-buffer pipeline — [P0] defined in effect.cpp.
- *   fx_process_multi_buf_safe — main per-buffer FX pipeline (IRAM, Core 0).
- *   fx_init / fx_free_buffers — scratch + chain allocation.
- * Scratch buffers (mono hL/sL/dL) and the global fx live in effect.cpp.
+ * Lifecycle + per-buffer pipeline — defined in effect.cpp.
+ *   fx_process_multi_buf_safe — main IRAM hot path (Core 0)
+ *   fx_init / fx_free_buffers — chain allocation
  * ─────────────────────────────────────────────────────────────────────────────*/
 void IRAM_ATTR fx_process_multi_buf_safe(
   int16_t* h_buf, int16_t* s_buf, int16_t* d_buf,

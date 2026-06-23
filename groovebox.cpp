@@ -1,23 +1,20 @@
 /* ═════════════════════════════════════════════════════════════════════════════
- * Octopus PRO XL v6.0.00 — Laser Harp Groovebox
+ * Octopus PRO XL v6.1.00 — Laser Harp Groovebox
  * © 2026 DIODAC ELECTRONICS / iSystem. All Rights Reserved.
  *
  * PROPRIETARY AND CONFIDENTIAL. Unauthorized copying, distribution, modification,
  * or use of this software or firmware, in whole or in part, is strictly prohibited
  * without prior written permission from DIODAC ELECTRONICS.
  * ═════════════════════════════════════════════════════════════════════════════
- * groovebox.cpp — v6.0.00  INTEGRATED GROOVEBOX ENGINE — IMPLEMENTATION
+ * groovebox.cpp — v6.1.00  GROOVEBOX ENGINE — IMPLEMENTATION
  *
- * [GB-MERGE] One translation unit for the whole groovebox machine:
- *   • transport + sample-locked step engine + grid editor  (was sequencer.cpp)
- *   • factory pattern ROM + pattern management              (was patterns.h)
- *   • semantic groovebox API                                [GB-API]
+ * Sequencer + drum machine in one TU (groovebox.h API):
+ *   • Sample-locked step engine (sequencer_render_block) — audio task Core 0
+ *   • Seq synth voices + TR-style drums + seq/drum arpeggiators
+ *   • Transport, song chains, factory/user patterns, grid editor UI
+ *   • sequencer_background_task — Core 1: STEP_SYNC drain + App sync supervisor
  *
- * The seq voice ops and drum DSP: drum_fill_buf stays inline in groovebox.h;
- * seq trigger/release/fill are implemented in this TU (§ SEQ SYNTH ENGINE below).
- * synth_core.h is gone — the sequencer path owns its own DSP here.
- *
- * Layout:
+ * Layout (this file):
  *   TU-PRIVATE (anonymous namespace)
  *     1. Clock + step constants
  *     2. Lock-free SPSC out-ring
@@ -131,8 +128,6 @@ static void seqArpCommitLatch(int8_t* midi, int8_t* rows, int n, bool laser_show
 }
 
 static void seqArpTick(uint32_t tick, bool laser_show) {
-  /* [FIX-ARP-RACE] Apply any pending cross-core reset before touching fields.*/
-  s_seqArp.check_reset();
   if (!seqArpEnabled.load(std::memory_order_relaxed)) return;
   if (s_seqArp.count <= 0) return;
 
@@ -178,83 +173,32 @@ static void seqArpTick(uint32_t tick, bool laser_show) {
   s_seqArp.sounding_midi = midi;
   s_seqArp.sounding_row  = row;
   if (laser_show) {
-    g_showBeamNote[row].store(midi, std::memory_order_relaxed);
+    g_showBeamNote[row] = midi;
     harpHueNoteOn(row);
   }
 }
 
-/* ── 2. Dual-tier outbound queue  [TIMING-LOCK / LINK-HEAL] ─────────────────
- * CRITICAL (BPM / TRANSPORT play+rec / STEP_SYNC): coalesced atomic slots —
- * latest value wins, never dropped.  Drained before the bulk ring every loop.
- *
- * BULK ring: motion echoes, BANK, SONG_POS, TRIG_MODE, etc.  Non-blocking;
- * overflow increments g_seq_ext_drops (telemetry via CMD_CPU_LOAD).  Consumer:
- * sequencer_background_task (SeqSysexOut) → txSysex under midiMutex.         */
+/* ── 2. Lock-free SPSC out-ring  [TIMING-LOCK / D] ────────────────────────────
+ * [USB-ONLY] Producer: sequencer_render_block() (audio task, prio 24) pushes
+ *           tiny SysEx position echoes (STEP_SYNC / SONG_POS) only — non-blocking.
+ *           Consumer: sequencer_background_task() emits them as USB SysEx to the
+ *           OctopusApp (takes midiMutex, fine on a low-prio task).  A dropped
+ *           event under flood is harmless — these are idempotent positional
+ *           echoes.  External channel-voice MIDI OUT was removed with the DIN bus. */
 struct SeqExtEvt {
-  uint8_t  cmd;
-  uint16_t v14;
+  uint8_t  cmd;   /* sysex command */
+  uint16_t v14;   /* sysex value   */
 };
 
-constexpr size_t SEQ_EXT_QUEUE_SIZE = 256u;
+constexpr size_t SEQ_EXT_QUEUE_SIZE = 128u; /* power of two */
 SeqExtEvt             seq_ext_queue[SEQ_EXT_QUEUE_SIZE];
 std::atomic<uint16_t> seq_ext_head{ 0 };
 std::atomic<uint16_t> seq_ext_tail{ 0 };
 
-std::atomic<bool>     seq_hi_bpm_pending{ false };
-std::atomic<uint16_t> seq_hi_bpm_val{ 120 };
-std::atomic<bool>     seq_hi_transport_play_pending{ false };
-std::atomic<uint16_t> seq_hi_transport_play_val{ 0 };
-std::atomic<bool>     seq_hi_transport_rec_pending{ false };
-std::atomic<uint16_t> seq_hi_transport_rec_val{ 4 };
-std::atomic<bool>     seq_hi_step_pending{ false };
-std::atomic<uint16_t> seq_hi_step_val{ 0 };
-
-static inline bool seq_ext_is_critical(uint8_t cmd) {
-  return cmd == CMD_BPM || cmd == CMD_STEP_SYNC || cmd == CMD_TRANSPORT;
-}
-
-inline void IRAM_ATTR seq_ext_push_critical(uint8_t cmd, uint16_t v14) {
-  if (cmd == CMD_BPM) {
-    seq_hi_bpm_val.store(v14, std::memory_order_relaxed);
-    seq_hi_bpm_pending.store(true, std::memory_order_release);
-    return;
-  }
-  if (cmd == CMD_STEP_SYNC) {
-    seq_hi_step_val.store(v14, std::memory_order_relaxed);
-    seq_hi_step_pending.store(true, std::memory_order_release);
-    return;
-  }
-  if (cmd == CMD_TRANSPORT) {
-    if (v14 == 3u || v14 == 4u) {
-      seq_hi_transport_rec_val.store(v14, std::memory_order_relaxed);
-      seq_hi_transport_rec_pending.store(true, std::memory_order_release);
-    } else {
-      seq_hi_transport_play_val.store(v14, std::memory_order_relaxed);
-      seq_hi_transport_play_pending.store(true, std::memory_order_release);
-    }
-  }
-}
-
 inline void IRAM_ATTR seq_ext_push(uint8_t cmd, uint16_t v14) {
-  if (seq_ext_is_critical(cmd)) {
-    seq_ext_push_critical(cmd, v14);
-    return;
-  }
-  /* Coalesce: same cmd already queued → update value in place (motion echoes). */
-  const uint16_t t = seq_ext_tail.load(std::memory_order_acquire);
-  uint16_t h  = seq_ext_head.load(std::memory_order_relaxed);
-  if (t != h) {
-    uint16_t prev = (uint16_t)((h - 1u) & (SEQ_EXT_QUEUE_SIZE - 1u));
-    if (seq_ext_queue[prev].cmd == cmd) {
-      seq_ext_queue[prev].v14 = v14;
-      return;
-    }
-  }
+  const uint16_t h  = seq_ext_head.load(std::memory_order_relaxed);
   const uint16_t nh = (uint16_t)((h + 1u) & (SEQ_EXT_QUEUE_SIZE - 1u));
-  if (nh == t) {
-    g_seq_ext_drops.fetch_add(1u, std::memory_order_relaxed);
-    return;
-  }
+  if (nh == seq_ext_tail.load(std::memory_order_acquire)) return; /* full → drop */
   seq_ext_queue[h] = SeqExtEvt{ cmd, v14 };
   seq_ext_head.store(nh, std::memory_order_release);
 }
@@ -266,26 +210,6 @@ inline bool IRAM_ATTR seq_ext_pop(SeqExtEvt& out) {
   seq_ext_tail.store((uint16_t)((t + 1u) & (SEQ_EXT_QUEUE_SIZE - 1u)),
                      std::memory_order_release);
   return true;
-}
-
-static void seq_ext_drain_hi_slot(std::atomic<bool>& pending, uint8_t cmd,
-                                  std::atomic<uint16_t>& val) {
-  while (pending.load(std::memory_order_acquire)) {
-    const uint16_t v = val.load(std::memory_order_relaxed);
-    pending.store(false, std::memory_order_release);
-    txSysex(cmd, v);
-  }
-}
-
-static void seq_ext_drain_critical() {
-  seq_ext_drain_hi_slot(seq_hi_bpm_pending, CMD_BPM, seq_hi_bpm_val);
-  /* STEP_SYNC before TRANSPORT — stop burst must paint step before play-off or
-   * the App freezes the playhead at the wrong column / hides it on stop.        */
-  seq_ext_drain_hi_slot(seq_hi_step_pending, CMD_STEP_SYNC, seq_hi_step_val);
-  seq_ext_drain_hi_slot(seq_hi_transport_play_pending, CMD_TRANSPORT,
-                        seq_hi_transport_play_val);
-  seq_ext_drain_hi_slot(seq_hi_transport_rec_pending, CMD_TRANSPORT,
-                        seq_hi_transport_rec_val);
 }
 
 /* ── 3. Step-position helper ──────────────────────────────────────────────── */
@@ -378,15 +302,11 @@ void IRAM_ATTR seq_apply_motion(uint8_t cmd, uint16_t v14) {
 inline int seqUI_gridBank() {
   return std::min(3, (int)seqActiveBank.load(std::memory_order_relaxed));
 }
-/* SSOT push — set bank (A-D = 0-3), keep chain pinned at 0.
- * [FIX-BANK-ECHO] Routes through applySeqBank() so txSysex(CMD_BANK) fires on
- * every hardware bank switch (OLED cursor wrap, bank A-D buttons).  Previously
- * stored seqActiveBank directly, so the App never saw hardware bank changes
- * until the next reconnect.  applySeqBank also syncs per-pattern transpose.  */
+/* SSOT push — set bank (A-D = 0-3), keep chain pinned at 0. */
 void seqUI_setBank(int bank) {
-  const uint8_t nb = (uint8_t)(((bank % 4) + 4) % 4);
-  applySeqBank(nb);                             /* sets atomic + echo + transpose */
-  seqActiveChain.store((uint8_t)SEQ_UI_CHAIN, std::memory_order_release); /* pin 0 */
+  seqActiveBank.store((uint8_t)(((bank % 4) + 4) % 4), std::memory_order_release);
+  seqActiveChain.store((uint8_t)SEQ_UI_CHAIN, std::memory_order_release);
+  displayDirty.store(true, std::memory_order_release);
 }
 /* Step grid toggle — flips one cell of the active [bank][0] slot. */
 void IRAM_ATTR toggleHardwareGridStep(uint8_t trackRow, uint8_t stepColumn) {
@@ -721,12 +641,8 @@ void seqUI_selectBank(int bank) {
 
 void seqUI_toggleStep() {
   const int page = seqUI_page.load(std::memory_order_relaxed) & 1;
-  /* [FIX-OOB] Clamp before cast: an out-of-range atomic value (corrupt encoder
-   * ISR) would silently wrap to uint8 and index hwSeqData[bank][chain][18+],
-   * overwriting adjacent memory.  toggleHardwareGridStep bounds-checks too, but
-   * an unsigned-wrap before that call bypasses it.                              */
-  const int row = std::max(0, std::min(7,  seqUI_row.load(std::memory_order_relaxed)));
-  const int col = std::max(0, std::min(15, seqUI_col.load(std::memory_order_relaxed)));
+  const int row  = seqUI_row.load(std::memory_order_relaxed);
+  const int col  = seqUI_col.load(std::memory_order_relaxed);
   const int hwRow = (page == 0) ? row : (row + 8);
   toggleHardwareGridStep((uint8_t)hwRow, (uint8_t)col);
 }
@@ -824,41 +740,29 @@ void seq_start() {
   std::atomic_thread_fence(std::memory_order_release);
   song_rewind_rt();   /* [SONG-FIX] preload the song's first pattern before play */
   seqPlaying.store(true, std::memory_order_release);
-  /* Transport echoes via seq_ext ring — see §2 out-ring comment.               */
-  seq_ext_push(CMD_TRIG_MODE, 16383u);
-  seq_ext_push(CMD_TRANSPORT, 1u);   /* mirror play state to App transport buttons */
+  txSysex(CMD_TRIG_MODE, 16383);
+  txSysex(CMD_TRANSPORT, 1u);        /* mirror play state to App transport buttons */
   seq_ext_push(CMD_STEP_SYNC, 0u);   /* prime playhead at step 0 before first audio block */
   displayDirty.store(true, std::memory_order_relaxed);
 }
 
 void seq_stop() {
-  /* Echo final step before clearing play state — App/OLED keep this position when
-   * stopped (same as seqCurrentStep on hardware).  seq_start() resets to 0. */
-  const uint16_t holdStep = seqCurrentStep.load(std::memory_order_relaxed) & 63u;
   seqPlaying.store(false, std::memory_order_release);
-  /* Disarm record inline — not seq_set_recording(): stop must push play-off (0)
-   * before record-off (4) in one ordered ring burst (see echoes below).        */
-  seqRecording.store(false, std::memory_order_relaxed);
+  seqRecording.store(false, std::memory_order_relaxed); /* stop disarms record */
   std::atomic_thread_fence(std::memory_order_release);
-  /* [FIX-ARP-RACE] Use request_reset() instead of reset(): seq_stop() may be
-   * called from the MIDI task (Core 1) while the audio task (Core 0) reads
-   * s_seqArp fields in seqArpTick().  Direct reset() of non-atomic fields is
-   * a data race.  request_reset() sets an atomic flag; the audio task applies
-   * the actual reset at the start of its next buffer via check_reset().     */
-  s_seqArp.request_reset();
+  s_seqArp.reset();
   for (int i = 0; i < SEQ_POLYPHONY; ++i) release_seq_note(i);
   allNotesOff();
-  seq_ext_push(CMD_STEP_SYNC, holdStep);
-  seq_ext_push(CMD_TRIG_MODE, 0u);
-  seq_ext_push(CMD_TRANSPORT, 0u);  /* play off  */
-  seq_ext_push(CMD_TRANSPORT, 4u);  /* record off — after play off, decoupled   */
+  txSysex(CMD_TRIG_MODE, 0);
+  txSysex(CMD_TRANSPORT, 0u);  /* play off  */
+  txSysex(CMD_TRANSPORT, 4u);  /* record off (explicit state, decoupled from play) */
   displayDirty.store(true, std::memory_order_relaxed);
 }
 
 void seq_pause() {
   seqPlaying.store(false, std::memory_order_release);
   std::atomic_thread_fence(std::memory_order_release);
-  seq_ext_push(CMD_TRANSPORT, 2u);
+  txSysex(CMD_TRANSPORT, 2u);
   displayDirty.store(true, std::memory_order_relaxed);
 }
 
@@ -866,32 +770,11 @@ void seq_toggle() {
   seqPlaying.load(std::memory_order_relaxed) ? seq_stop() : seq_start();
 }
 
-/* Record arm/disarm — canonical mutation path (hardware + App SysEx).
- * Never pair seqRecording.store() with direct txSysex(); use these instead.  */
-void seq_set_recording(bool on) {
-  if (seqRecording.load(std::memory_order_relaxed) == on) return;
-  seqRecording.store(on, std::memory_order_relaxed);
-  seq_ext_push(CMD_TRANSPORT, on ? 3u : 4u);
-  displayDirty.store(true, std::memory_order_relaxed);
-}
-
-void seq_toggle_recording() {
-  seq_set_recording(!seqRecording.load(std::memory_order_relaxed));
-}
-
-void IRAM_ATTR seq_restart_from_step_zero() {
-  /* No-op when stopped — the next seq_start() always resets the counter. */
-  if (!seqPlaying.load(std::memory_order_relaxed)) return;
-  master_tick_counter.store(0u, std::memory_order_release);
-  std::atomic_thread_fence(std::memory_order_release);
-  seq_ext_push(CMD_STEP_SYNC, 0u); /* snap App playhead to step 0 instantly */
-}
-
 void setSequencerBpm(int32_t bpm) {
   bpm = std::min<int32_t>(240, std::max<int32_t>(40, bpm));
   seqBpm.store(bpm, std::memory_order_relaxed);
-  s_lastBpmChangeMs.store(millis(), std::memory_order_relaxed);
-  seq_ext_push(CMD_BPM, (uint16_t)bpm); /* coalesced hi slot → SeqSysexOut */
+  s_lastBpmChangeMs.store(millis(), std::memory_order_relaxed); /* [BPM-RACE] mark live change */
+  txSysex(CMD_BPM, (uint16_t)bpm);   /* echo to App (hardware encoder + any RX) */
 }
 
 void initSequencer() {
@@ -924,8 +807,7 @@ void IRAM_ATTR sequencer_render_block(uint32_t frames) {
     lastStep = 0xFFFFFFFFu;
     halfGateFired = false;
     lastMelodyMask = lastDrumMask = 0;
-    /* Safely apply any pending cross-core reset (audio task context). */
-    s_seqArp.reset_safe();
+    s_seqArp.reset();
     return;
   }
 
@@ -979,7 +861,7 @@ void IRAM_ATTR sequencer_render_block(uint32_t frames) {
     const uint8_t bank     = seqActiveBank.load(std::memory_order_relaxed) & 15u;
     const uint8_t chain    = seqActiveChain.load(std::memory_order_relaxed) & 3u;
     const uint8_t gridStep = (uint8_t)(step & 63u);   /* [GRID-64] full 0..63 mask  */
-    const uint8_t motStep  = (uint8_t)(step & (MOTION_STEPS_PER_LANE - 1u));
+    const uint8_t motStep  = (uint8_t)(step & 15u);   /* P-lock lanes still 16 deep */
     const uint8_t vel      = (gridStep % 4u == 0u) ? SEQ_VEL_ACCENT : SEQ_VEL_NORMAL;
 
     uint64_t rowSnap[16];
@@ -1002,11 +884,6 @@ void IRAM_ATTR sequencer_render_block(uint32_t frames) {
         if (mc == CMD_TRANSPOSE && mv > 24u) continue;
         if ((mc == CMD_HW_H_OCT || mc == CMD_HW_S_OCT) && mv > 8u) continue;
         if (mc == CMD_HW_S_LEN && (mv < 1u || mv > 64u)) continue;
-        /* [FIX-PLOCK] Validate discrete-layout bank and chain cmds so a corrupt
-         * automation entry cannot pass an out-of-range value to applySeqBank /
-         * applySeqChain, which index into hwSeqData[bank][chain].              */
-        if (mc == CMD_BANK && mv > 15u) continue;
-        if (mc == CMD_SEQ_CHAIN && mv > 3u) continue;
         motCmds[l]   = mc;
         motVals[l]   = mv;
         motActive[l] = true;
@@ -1066,7 +943,7 @@ void IRAM_ATTR sequencer_render_block(uint32_t frames) {
         newMelodyMask |= (uint16_t)(1u << row);
 
         if (laserShowMode.load(std::memory_order_relaxed)) {
-          g_showBeamNote[row].store((int8_t)midiNote, std::memory_order_relaxed);
+          g_showBeamNote[row] = (int8_t)midiNote;
           harpHueNoteOn(row);
         }
       }
@@ -1114,50 +991,39 @@ void sequencer_background_task(void* pvParameters) {
 
   uint32_t lastSupervisorMs = 0u;
   for (;;) {
-    midi_drain_tx_retry();
-
-    /* Critical coalesced slots first — never starved by bulk ring flood. */
-    seq_ext_drain_critical();
-
-    /* Bulk ring: bounded per iteration so hi slots + supervisor get CPU. */
-    {
-      unsigned budget = 12u;
-      SeqExtEvt e;
-      while (budget && seq_ext_pop(e)) {
-        txSysex(e.cmd, e.v14);
-        --budget;
-      }
+    SeqExtEvt e;
+    while (seq_ext_pop(e)) {
+      txSysex(e.cmd, e.v14);   /* [USB-ONLY] position echoes (STEP_SYNC / SONG_POS) */
     }
 
     /* ── [v6.0 SYNC-SUPERVISOR] ──────────────────────────────────────────────
-     * Re-assert transport STATE every 600 ms (above txSysex 500 ms dedup window).
-     * Uses coalesced hi slots so re-asserts cannot be dropped by ring overflow. */
+     * The hardware owns transport; the App only reflects it.  Live echoes (from
+     * seq_start/stop, setSequencerBpm, the record toggle) are EVENTS — if one is
+     * dropped the App's read-only display + playhead would silently drift with no
+     * recovery.  This is the slow safety net: while the App is connected we
+     * re-assert the device-owned transport STATE (BPM + play + record).
+     * It is NOT the clock — the per-step STEP_SYNC stream (pushed above while
+     * playing) still drives the playhead; this only guarantees convergence.
+     *
+     * Period is 600 ms — deliberately ABOVE txSysex's 500 ms identical-value
+     * dedup window, otherwise an UNCHANGED re-assert (the exact case we need to
+     * heal a dropped echo) would itself be deduped and never reach the App.
+     * State CHANGES still propagate instantly via the live echoes (different
+     * value ⇒ not deduped).  Cheap (3 short frames), off the audio core, silent
+     * when no App is connected.                                                */
     const uint32_t now = millis();
     if ((uint32_t)(now - lastSupervisorMs) >= 600u && isAppConnected()) {
       lastSupervisorMs = now;
-      seq_ext_push(CMD_BPM, (uint16_t)seqBpm.load(std::memory_order_relaxed));
-      seq_ext_push(CMD_TRANSPORT, seqPlaying.load(std::memory_order_relaxed) ? 1u : 0u);
-      seq_ext_push(CMD_TRANSPORT, seqRecording.load(std::memory_order_relaxed) ? 3u : 4u);
-      /* While stopped, re-echo step position so the App playhead stays visible
-       * (no PLL glide — just a static column).  Omitted while playing: duplicates
-       * reset the PLL anchor and cause visible backward playhead strokes.       */
-      if (!seqPlaying.load(std::memory_order_relaxed))
-        seq_ext_push(CMD_STEP_SYNC,
-                     (uint16_t)(seqCurrentStep.load(std::memory_order_relaxed) & 63u));
-      /* bits 0–6: load %; 7–13: bulk ring drops (mod 128); 14: P-lock lane steal */
-      const uint16_t loadPct = (uint16_t)g_audio_load_pct.load(std::memory_order_relaxed);
-      const uint16_t drops   = (uint16_t)(g_seq_ext_drops.load(std::memory_order_relaxed) & 127u);
-      uint16_t cpuV = (uint16_t)((loadPct & 0x7Fu) | (drops << 7));
-      if (g_plock_lane_steal.exchange(false, std::memory_order_acq_rel))
-        cpuV |= (1u << 14);
-      txSysex(CMD_CPU_LOAD, cpuV);
+      /* [BPM-RACE] Skip the unchanged BPM re-assert while the knob is actively
+       * moving (≤1.5 s since last change) so a stale supervisor value can't race
+       * the live echoes; live changes still propagate via setSequencerBpm. */
+      if ((uint32_t)(now - s_lastBpmChangeMs.load(std::memory_order_relaxed)) >= 1500u)
+        txSysex(CMD_BPM, (uint16_t)seqBpm.load(std::memory_order_relaxed));
+      txSysex(CMD_TRANSPORT, seqPlaying.load(std::memory_order_relaxed) ? 1u : 0u);
+      txSysex(CMD_TRANSPORT, seqRecording.load(std::memory_order_relaxed) ? 3u : 4u);
+      /* [v6.0] Live CPU-load telemetry for the App header (raw 0–100 %). */
+      txSysex(CMD_CPU_LOAD, (uint16_t)g_audio_load_pct.load(std::memory_order_relaxed));
     }
-
-    /* [SUBSTEP-REVERTED] The ~20 Hz CMD_STEP_PHASE emit was removed: snapping the
-     * App's PLL anchor to the reported phase produced a visible per-step forward
-     * jiggle whenever a STEP_SYNC arrived late.  The App's plain per-cell glide is
-     * already 1:1 with the hardware step and smooth, so no sub-step echo is needed.
-     * CMD_STEP_PHASE (194) stays a reserved wire ID. */
     vTaskDelay(pdMS_TO_TICKS(2));
   }
 }
@@ -1275,15 +1141,10 @@ bool saveActivePatternToUserSlot(uint8_t uidx) {
   portEXIT_CRITICAL(&patchMux);
 
   displayDirty.store(true, std::memory_order_relaxed);
-  /* [FIX-L2b] Same fix as saveLiveToUserSlot: replace blocking persist with
-   * async NvsWorker so this function does not freeze the MIDI RX task
-   * (8 KB stack) for up to 20 s while NVS writes.  Copy is already safe in
-   * RAM under patchMux above; persistence happens asynchronously.
-   * Echo the slot index immediately so the App marks it occupied.          */
-  requestBanksOnlySave();
-  if (isAppConnected())
+  const bool ok = settings_persist_blocking(ResetScope::BANKS_PATTERNS);
+  if (ok && isAppConnected())
     txSysex(CMD_USR_PAT_SAVE, (uint16_t)uidx);
-  return true;
+  return ok;
 }
 
 /* Recall a user pattern slot into the ACTIVE bank/chain (non-destructive to
@@ -1457,8 +1318,7 @@ void seqClearActiveAndResetSounds() {
   portENTER_CRITICAL(&motionMux);
   for (int l = 0; l < 4; ++l) {
     hwMotionData[bank][chain][l].targetCmd = 255u;
-    for (int s = 0; s < (int)MOTION_STEPS_PER_LANE; ++s)
-      hwMotionData[bank][chain][l].steps[s] = 0xFFFFu;
+    for (int s = 0; s < 16; ++s) hwMotionData[bank][chain][l].steps[s] = 0xFFFFu;
   }
   portEXIT_CRITICAL(&motionMux);
 
@@ -1470,40 +1330,6 @@ void seqClearActiveAndResetSounds() {
     for (uint8_t r = 0; r < 16u; ++r) echoGridRow(bank, r);
     txSysex(CMD_CLR_PLOCKS, 16383u);
   }
-}
-
-/* [SOFT-RESET] CLEAR extended: return the live SOUNDS to preset-0 and the
- * sequencer WORKING IMAGE (bank/chain/page/length/transpose "dropdown" positions)
- * to their initial defaults.  RAM-only — touches NO NVS and does NOT reboot, and
- * deliberately PRESERVES the pattern grid + P-locks (that is what CLEAR / RESET
- * are for).  A LOAD or power-cycle restores the saved session.                 */
-void seqSoftResetWorkingImage() {
-  /* [FIX-M2] Stop the sequencer and silence all voices before wiping live state.
-   * Without this the step engine fires notes against partially-reset sound params
-   * during the ~50 ms it takes reset_settings_to_factory to complete.           */
-  seq_stop();
-  allNotesOff();
-
-  /* Factory settings → all atomics (master, laser show, D-BEAM, mix, harp scale,
-   * FX, …).  RAM-only — does NOT touch banks, patterns, or motion.              */
-  reset_settings_to_factory();
-
-  /* Sequencer working image (explicit — matches post-CLEAR initial dropdowns). */
-  applySeqBank(0u);
-  applySeqChain(0u);
-  seqUI_page.store(0, std::memory_order_relaxed);
-  applySeqLength(16u);
-  applySeqTranspose(12u);
-
-  /* Live sounds → preset-0 image (shared with CLEAR). */
-  seqResetSoundsToPreset0();
-
-  syncLivePatchFromAtomics();
-  displayDirty.store(true, std::memory_order_relaxed);
-
-  /* Mirror the full RAM image to the App (no reboot — replaces piecemeal echoes). */
-  if (isAppConnected())
-    requestFullStateSync(true, false);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -1626,19 +1452,7 @@ bool IRAM_ATTR gb_seq_fill_buf(int16_t* out_buf, size_t frames) {
     seqVoices[v].osc_mix_q15   = osc2_audible ? (Q15_ONE / 2) : 0;
   }
 
-  /* [OPT-A] Cache calc_svf_cutoff_hz against raw P_CUTOFF — same strategy as
-   * harp.cpp [OPT-A].  calc_svf_cutoff_hz calls h_sinf() (5th-order poly,
-   * ~12 cyc) every buffer; the cutoff only changes on knob/sysex events.   */
-  static uint16_t s_seq_cut_param = 0xFFFFu;
-  static int32_t  s_seq_cut_hz    = -1;
-  {
-    const uint16_t cp = lp[(int)SynthParam::P_CUTOFF];
-    if (cp != s_seq_cut_param) {
-      s_seq_cut_hz    = calc_svf_cutoff_hz((float)cp);
-      s_seq_cut_param = cp;
-    }
-  }
-  const int32_t cut_target = s_seq_cut_hz;
+  const int32_t cut_target = calc_svf_cutoff_hz((float)lp[(int)SynthParam::P_CUTOFF]);
   const int32_t res_target = calc_svf_damping(lp[(int)SynthParam::P_RESONANCE]);
   if (g.cut_cur < 0) {
     g.cut_cur = cut_target;
@@ -1670,10 +1484,6 @@ bool IRAM_ATTR gb_seq_fill_buf(int16_t* out_buf, size_t frames) {
   const bool lfo_tremolo = (lfo_route == 7);
   const bool lfo_do_pitch = (lfo_pitch && lfo_depth_eff > 0);
   const bool has_bend     = (cached_pb != 65536u);
-  /* [OPT-B] Fold pitch-bend into float pitch_mul (same as harp.cpp [OPT-B]).
-   * Eliminates per-osc 64-bit uint muls from the inner voice loop.         */
-  const float eff_bend_f  = has_bend ? ((float)cached_pb * (1.0f / 65536.0f)) : 1.0f;
-  const bool do_pitch_mul = lfo_do_pitch || has_bend;
   const int16_t* const wav_static = WAVE_TABLE_RAM[base_wave];
   const int16_t* const wav2_ptr   = WAVE_TABLE_RAM[base_wave2];
 
@@ -1774,20 +1584,16 @@ bool IRAM_ATTR gb_seq_fill_buf(int16_t* out_buf, size_t frames) {
 
       const int32_t amp_q16 = (int32_t)(el >> 16);
 
-      /* [OPT-B] Single float mul per osc: bend folded via eff_bend_f (constant
-       * per buffer), LFO pitch folded from lfo_pitch_mul (per-sample).
-       * Eliminates up to 2× 64-bit uint muls per voice per sample.          */
-      const float eff_pitch_mul = lfo_do_pitch
-                                  ? (lfo_pitch_mul * eff_bend_f)
-                                  : eff_bend_f;
       uint32_t mstep = seqVoices[v].step;
-      if (do_pitch_mul) mstep = (uint32_t)((float)mstep * eff_pitch_mul);
+      if (has_bend)     mstep = (uint32_t)(((uint64_t)mstep * cached_pb) >> 16);
+      if (lfo_do_pitch) mstep = (uint32_t)((float)mstep * lfo_pitch_mul);
       seqVoices[v].phase += mstep;
       int32_t raw = synth_interpolate_wavetable(wav_ptr, seqVoices[v].phase);
 
       if (seqVoices[v].osc_mix_q15 > 0) {
         uint32_t ms2 = seqVoices[v].step2_target;
-        if (do_pitch_mul) ms2 = (uint32_t)((float)ms2 * eff_pitch_mul);
+        if (has_bend)     ms2 = (uint32_t)(((uint64_t)ms2 * cached_pb) >> 16);
+        if (lfo_do_pitch) ms2 = (uint32_t)((float)ms2 * lfo_pitch_mul);
         seqVoices[v].phase2 += ms2;
         const int32_t osc2 = synth_interpolate_wavetable(wav2_ptr, seqVoices[v].phase2);
         raw = (raw * (Q15_ONE - seqVoices[v].osc_mix_q15)

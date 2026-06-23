@@ -1,25 +1,16 @@
 /* ═════════════════════════════════════════════════════════════════════════════
- * Octopus PRO XL v6.0.00 — Laser Harp Groovebox
+ * Octopus PRO XL v6.1.00 — Laser Harp Groovebox
  * © 2026 DIODAC ELECTRONICS / iSystem. All Rights Reserved.
  *
  * PROPRIETARY AND CONFIDENTIAL. Unauthorized copying, distribution, modification,
  * or use of this software or firmware, in whole or in part, is strictly prohibited
  * without prior written permission from DIODAC ELECTRONICS.
  * ═════════════════════════════════════════════════════════════════════════════
- * effect.cpp — out-of-line definitions for the consolidated FX engine.
+ * effect.cpp — v6.1.00  FX ENGINE — OUT-OF-LINE DEFINITIONS
  *
- * [P0 SPLIT] Moved here from effect.h so the heavy code compiles ONCE instead of
- * being re-instantiated in every TU that includes effect.h (midi/display/
- * interface/audio).  What lives here:
- *   • PROGMEM preset tables (single definition)
- *   • the global FxChain `fx` and the mono scratch buffers
- *   • cold primitive config methods (biquad coefficient math, buffer allocators)
- *   • lifecycle: fx_free_buffers / fx_init
- *   • the IRAM hot path: fx_process_multi_buf_safe (free function → no Xtensa
- *     l32r class-method literal bug)
- *
- * Hot per-sample primitive methods (write/read/readFrac/process/tri/sine) stay
- * inline in effect.h on purpose so they fold into the hot loop here.
+ * Single compile unit for FxChain: PROGMEM preset tables, fx_init, buffer alloc,
+ * and IRAM fx_process_multi_buf_safe (3-engine mix → inserts → aux → master FX).
+ * Hot per-sample primitives stay inline in effect.h.
  * ═════════════════════════════════════════════════════════════════════════════ */
 #include "effect.h"
 

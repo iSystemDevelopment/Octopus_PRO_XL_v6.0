@@ -1,5 +1,5 @@
 <!--
-  Octopus PRO XL v6.0.01 — Product information page
+  Octopus PRO XL v6.1.00 — Product information page
   © 2026 DIODAC ELECTRONICS / iSystem. All Rights Reserved.
   PROPRIETARY AND CONFIDENTIAL. Unauthorized use prohibited.
 -->
@@ -8,8 +8,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Octopus PRO XL v6.0.01 | Laser-Harp Groovebox Workstation</title>
-    <meta name="description" content="Octopus PRO XL v6.0 — 8-beam reflective laser harp, 24-voice groovebox, 64-step sequencer, studio FX, and zero-install OctopusApp Web MIDI console at octopus.isystem.app.">
+    <title>Octopus PRO XL v6.1.00 | Laser-Harp Groovebox Workstation</title>
+    <meta name="description" content="Octopus PRO XL v6.1.00 — 8-beam laser harp, 24-voice groovebox, 64-step sequencer, studio FX, and zero-install OctopusApp Web MIDI console at octopus.isystem.app.">
     <link rel="canonical" href="https://octopus-info.isystem.app/">
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
@@ -686,7 +686,7 @@
         <div class="flex items-center gap-4 mb-6">
             <img src="logo.jpg" alt="Octopus PRO XL" class="w-20 h-20 img-circle border-2 border-[#06b6d4]/40 shadow-[0_0_40px_rgba(6,182,212,0.45)] hero-img" width="80" height="80">
             <span class="brand tracking-[0.3em] text-sm text-gray-400">DIODAC ELECTRONICS</span>
-            <span class="pill border-[#06b6d4]/40 text-[#06b6d4]">FIRMWARE v6.0.01</span>
+            <span class="pill border-[#06b6d4]/40 text-[#06b6d4]">FIRMWARE v6.1.00</span>
         </div>
 
         <h1 class="text-5xl md:text-7xl font-black mb-6 tracking-tight text-white glow-cyan">
@@ -713,7 +713,7 @@
             <span class="pill"><i class="fa-solid fa-bolt text-[#22c55e]"></i> 8 RGB Laser Beams</span>
             <span class="pill"><i class="fa-solid fa-drum text-[#f97316]"></i> 4 Drum Kits</span>
             <span class="pill"><i class="fa-solid fa-repeat text-[#ec4899]"></i> Seq + Harp ARP</span>
-            <span class="pill"><i class="fa-solid fa-laptop-code text-[#ec4899]"></i> OctopusApp v6.0.01</span>
+            <span class="pill"><i class="fa-solid fa-laptop-code text-[#ec4899]"></i> OctopusApp v6.1.00</span>
         </div>
         <div class="flex flex-wrap gap-4 justify-center mb-6">
             <a href="https://octopus.isystem.app" target="_blank" rel="noopener noreferrer"
@@ -1092,7 +1092,7 @@
     <section id="app" class="py-24 px-6 bg-[#0a0a0e] border-t border-[#111]">
         <div class="max-w-7xl mx-auto text-center mb-16">
             <h2 class="text-3xl md:text-4xl text-white mb-4"><span class="text-[#22c55e]">06.</span> OctopusApp — Web MIDI Console</h2>
-            <p class="max-w-2xl mx-auto mb-4">No installs, no drivers. Open <strong class="text-[#22c55e]"><a href="https://octopus.isystem.app" target="_blank" rel="noopener" class="hover:underline">octopus.isystem.app</a></strong> in Chrome or Edge, connect USB, authorize Web MIDI + SysEx, and the console mirrors the full device state — then becomes the master editor for all parameters while transport stays on the hardware.</p>
+            <p class="max-w-2xl mx-auto mb-4">No installs, no drivers. Open <strong class="text-[#22c55e]"><a href="https://octopus.isystem.app" target="_blank" rel="noopener" class="hover:underline">octopus.isystem.app</a></strong> in Chrome or Edge, plug in USB — the App <strong class="text-gray-300">auto-connects</strong>, imports the full device state, and becomes the master editor for all parameters. Transport (play/stop/record-arm/BPM) stays on the hardware (SCALE · OC short · encoder).</p>
             <p class="text-sm text-gray-500 max-w-xl mx-auto">MIDI runs locally in your browser (never through this website). Requires HTTPS, one open tab on Windows for full duplex echo.</p>
         </div>
 
@@ -1114,11 +1114,11 @@
         <div class="max-w-5xl mx-auto grid md:grid-cols-2 gap-8 mb-12">
             <div class="feature-card">
                 <h4 class="text-white mb-2"><i class="fa-solid fa-floppy-disk text-[#22c55e]"></i> Save / Load to On-Board Flash</h4>
-                <p class="text-sm text-gray-400">SAVE and LOAD persist the whole session — settings, user presets, patterns, and P-lock motion — to ESP32 NVS using versioned CRC-checked blobs (sparse delta storage). Power-cycle and your set plays back standalone.</p>
+                <p class="text-sm text-gray-400">SAVE and LOAD persist the whole session — settings, user presets, patterns, and P-lock motion — to on-board flash (NVS namespace <code class="text-gray-500">octopus</code>, CRC-checked blobs). After SAVE/RESET the App reloads and re-imports from hardware. Power-cycle and your set plays back standalone.</p>
             </div>
             <div class="feature-card">
                 <h4 class="text-white mb-2"><i class="fa-solid fa-shield-halved text-[#22c55e]"></i> Robust Two-Way Sync</h4>
-                <p class="text-sm text-gray-400">195 SysEx commands at 14-bit resolution. Hardware edits echo into the app and vice-versa; a sync supervisor re-asserts BPM/play/record if a message is dropped. Transport buttons in the app are read-only reflectors — play/stop/record/BPM live on the device.</p>
+                <p class="text-sm text-gray-400">195 SysEx commands at 14-bit resolution. Auto-connect on USB; badge <strong class="text-gray-300">Octopus ON</strong> when linked. Hardware edits echo into the App; a sync supervisor re-asserts BPM/play/record if a message is dropped. App transport buttons are read-only reflectors.</p>
             </div>
         </div>
 
@@ -1180,7 +1180,7 @@
     <section class="py-20 px-6 border-t border-[#111]">
         <div class="max-w-6xl mx-auto text-center">
             <h2 class="text-2xl md:text-3xl text-white mb-4">Connectivity</h2>
-            <p class="text-gray-500 text-sm max-w-2xl mx-auto mb-10">v6.0 is <strong class="text-gray-300">USB-only</strong> — DIN UART MIDI was removed to simplify the stack and free GPIO. The sequencer, drums, and D-BEAM drive internal engines directly; optional USB play-in accepts standard channel voice MIDI.</p>
+            <p class="text-gray-500 text-sm max-w-2xl mx-auto mb-10"><strong class="text-gray-300">USB-only MIDI</strong> — class-compliant SysEx control plus optional channel-voice play-in. OctopusApp <strong class="text-gray-300">auto-connects</strong> on plug-in (no Connect button); transport stays on the hardware surface.</p>
             <div class="grid md:grid-cols-2 gap-8 text-left max-w-4xl mx-auto">
                 <div class="feature-card">
                     <div class="text-2xl mb-3 text-[#06b6d4]"><i class="fa-brands fa-usb"></i></div>
@@ -1222,8 +1222,8 @@
                         <div class="spec-row"><span>Processor</span><span>ESP32-P4 · dual-core DSP + laser task</span></div>
                         <div class="spec-row"><span>Audio</span><span>24 voices · <strong>44.1 kHz</strong> · <strong>24-bit</strong> I2S</span></div>
                         <div class="spec-row"><span>Laser</span><span>8-beam galvo RGB · top sensor · D-BEAM prox.</span></div>
-                        <div class="spec-row"><span>Software</span><span>Octopus v6.0.01 · 195 SysEx · NVS</span></div>
-                        <div class="spec-row spec-row-full"><span>Rear I/O</span><span>TRS L/R out &amp; in · USB-C · MIDI DIN · ILDA · MicroSD</span></div>
+                        <div class="spec-row"><span>Software</span><span>Octopus v6.1.00 · 195 SysEx · NVS</span></div>
+                        <div class="spec-row spec-row-full"><span>Rear I/O</span><span>TRS L/R out &amp; in · USB-C (Web MIDI SysEx) · ILDA · MicroSD</span></div>
                     </div>
                 </div>
                 <p class="hardware-spec-note">HTML spec table — nothing clipped from the diagram. Engine detail below.</p>
@@ -1243,7 +1243,7 @@
                         <tr><td>Arpeggiators</td><td>Seq 8 pat · Harp 4 pat</td></tr>
                         <tr><td>Song mode</td><td>16&times;16 chain steps</td></tr>
                         <tr><td>Drum kits</td><td>909 / 808 / Trap / House</td></tr>
-                        <tr><td>MIDI</td><td>USB-C class-compliant · SysEx (no DIN in v6.0)</td></tr>
+                        <tr><td>MIDI</td><td>USB-C class-compliant · SysEx + play-in</td></tr>
                         <tr><td>Persistence</td><td>NVS · CRC32 blobs</td></tr>
                     </table>
                 </div>
@@ -1277,7 +1277,7 @@
                     </table>
                 </div>
             </div>
-            <p class="text-center text-xs text-gray-600 mono mt-6">Octopus v6.0.01 &middot; ESP-P4 Edition &middot; build 2026-06-22 &middot; 32&nbsp;MB PSRAM</p>
+            <p class="text-center text-xs text-gray-600 mono mt-6">Octopus v6.1.00 &middot; ESP-P4 Edition &middot; build 2026-06-23 &middot; 32&nbsp;MB PSRAM</p>
         </div>
     </section>
 

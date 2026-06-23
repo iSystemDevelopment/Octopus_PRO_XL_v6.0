@@ -10,7 +10,7 @@ This repository is **proprietary** (see [LICENSE](./LICENSE)). Public visibility
 
 Open a [GitHub Issue](../../issues/new?template=bug_report.md) and include:
 
-- Firmware version (`6.0.00` or build from `code_info.h` → `SYSTEM_FW_VERSION`)
+- Firmware version (`6.1.00` or `SYSTEM_FW_VERSION` from Serial boot)
 - Hardware variant (ESP32-S3 module, flash/PSRAM if known)
 - Whether **OctopusApp** was connected ([octopus.isystem.app](https://octopus.isystem.app))
 - Product docs: [octopus-info.isystem.app](https://octopus-info.isystem.app) · [GitHub](https://github.com/iSystemDevelopment/Octopus_PRO_XL_v6.0) · [Facebook](https://www.facebook.com/diodac.co.uk/)
@@ -38,7 +38,8 @@ Pull requests are accepted **by invitation only** unless prior agreement exists 
 | `code_info.h` | Architecture manifest, core assignment, protocol rules |
 | `sysex.h` | SysEx command ID SSOT |
 | `patches.h` | Parameter apply-path SSOT |
-| `Upgrade.md` | Maintainer roadmap |
+| `code_info.h` | Architecture manifest + SSOT developer guide (authoritative) |
+| `CHANGELOG.md` | Release history and maintainer notes |
 
 ## Code of conduct
 

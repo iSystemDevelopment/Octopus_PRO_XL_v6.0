@@ -1,44 +1,15 @@
 /* ═════════════════════════════════════════════════════════════════════════════
- * Octopus PRO XL v6.0.00 — Laser Harp Groovebox
+ * Octopus PRO XL v6.1.00 — Laser Harp Groovebox
  * © 2026 DIODAC ELECTRONICS / iSystem. All Rights Reserved.
  *
  * PROPRIETARY AND CONFIDENTIAL. Unauthorized copying, distribution, modification,
  * or use of this software or firmware, in whole or in part, is strictly prohibited
  * without prior written permission from DIODAC ELECTRONICS.
  * ═════════════════════════════════════════════════════════════════════════════
- * interface.h — v6.0.00  HARDWARE INTERFACE + MENU ARCHITECTURE
+ * interface.h — v6.1.00  HARDWARE INTERFACE + MENU ARCHITECTURE
  *
- * Changes vs v5.1.01:
- *
- *  [I1] fastRead() / fastWrite() — free functions with bare-metal register
- *       access added alongside the existing FastButton member fastRead().
- *       Use anywhere in the codebase — .ino laser kernel, dbeam.cpp, etc.
- *       Always IRAM_ATTR; ~2 clock cycles vs ~40 for Arduino digitalRead().
- *
- *  [I2] ButtonPoll — replaces FastButton with a unified event state machine
- *       that handles SINGLE, DOUBLE, and LONG press for ALL three buttons
- *       (encoder, OC, SCALE).  pollEncoderButton() is preserved as a thin
- *       wrapper that adds the delta-reset guard (no click on encoder turn).
- *
- *  [I3] EncoderPoll — encoder read in one struct.  PURE LINEAR 1:1 (one detent
- *       = one step, no velocity acceleration) for predictable feel.  /ENC_PPR
- *       keeps the sub-detent remainder so no counts are lost between polls.
- *       Hardware counting is done by the ESP32Encoder PCNT peripheral (same as
- *       the library's interrupt example — the optional enc_cb there is NOT what
- *       increments the counter).  We poll getCount() from control_surface_task.
- *
- *  [I4] Menu constants moved here from display.h — kL1Count, l2CountFor(),
- *       and per-category item counts are interface logic, not display logic.
- *       display.h retains the human-readable label arrays for rendering.
- *
- *  [I5] Menu structure (v6.0):
- *       Case 7  "SEQ SETTINGS" (dead) → "AUX FX" (14 items).
- *       Case 9  DRUM KIT: 41 items (5 params × 8 drums + kit selector).
- *       Case 2  MASTER: +3 mute items (harp/seq/drum).
- *       kL1Count = 16 (incl. SONG/SAVE/LOAD at slots 12–15).
- *
- *  [I6] OC+SCALE combo for mute toggle added (hold both < 300 ms):
- *       Press OC while SCALE held = toggle harp/seq/drum mute per context.
+ * GPIO map, ButtonPoll/EncoderPoll, menu L1/L2 tables, gesture timing.
+ * Implementation: interface.cpp (control_surface_task @ 200 Hz, Core 0).
  *
  * ── HARDWARE LAYOUT ──────────────────────────────────────────────────────────
  *
@@ -114,12 +85,12 @@ static constexpr uint32_t SCALE_LONG_MS = 550;
 static constexpr uint32_t OC_SCALE_COMBO_MS = 300; /* both held within this → mute */
 static constexpr int32_t ENC_PPR = 4;              /* pulses per physical detent   */
 
-/* Encoder velocity thresholds (ms between detents) */
-static constexpr uint32_t ENC_FAST_MS = 80;    /* interval < 80  → ×5 acceleration */
-static constexpr uint32_t ENC_MEDIUM_MS = 150; /* interval < 150 → ×2              */
+/* RETIRED — encoder is linear 1:1 (EncoderPoll.getDelta); constants kept unused. */
+static constexpr uint32_t ENC_FAST_MS = 80;
+static constexpr uint32_t ENC_MEDIUM_MS = 150;
 
 /* ═══════════════════════════════════════════════════════════════════════════
- * SECTION 3 — BUTTON POLL  [I2]
+ * SECTION 3 — BUTTON POLL
  *
  * Unified event state machine for all three hardware buttons.
  * All buttons are INPUT_PULLUP → pressed = state LOW = fastRead() returns false.
@@ -258,7 +229,7 @@ struct ButtonPoll {
 };
 
 /* ═══════════════════════════════════════════════════════════════════════════
- * SECTION 4 — ENCODER POLL (PURE LINEAR 1:1)  [I3]
+ * SECTION 4 — ENCODER POLL (PURE LINEAR 1:1)
  * ═══════════════════════════════════════════════════════════════════════════ */
 struct EncoderPoll {
   int64_t  lastCount    = 0;   /* must match ESP32Encoder::getCount() width */
@@ -270,7 +241,7 @@ struct EncoderPoll {
    * PURE LINEAR 1:1 — one detent = one step, no velocity acceleration.  The
    * /ENC_PPR division keeps the sub-detent remainder (lastCount advances by
    * whole detents only), so no counts are ever lost between polls even when
-   * control_surface_task is briefly starved on Core 1.                        */
+   * control_surface_task is briefly starved on Core 0.                        */
   int16_t getDelta(int64_t rawCount, uint32_t now) {
     (void)now;
     const int64_t diff = (rawCount - lastCount) / ENC_PPR;
@@ -281,7 +252,7 @@ struct EncoderPoll {
 };
 
 /* ═══════════════════════════════════════════════════════════════════════════
- * SECTION 5 — MENU CONSTANTS  [I4]
+ * SECTION 5 — MENU CONSTANTS
  *
  * Moved here from display.h — interface.cpp needs them; display.h retains
  * only the human-readable label string arrays for rendering.
@@ -289,44 +260,40 @@ struct EncoderPoll {
  * L1 category layout (0–15):
  *   0 HARP SETUP    — gate, beam thresholds, RGB, margin, stuck-release, edge-comp
  *   1 D-BEAM        — offset, range, curve, enable, env, route, target
- *   2 MASTER        — vols, pitch, EQ, tube, DJ, mutes
- *   3 HARP SYNTH    — all 14 SynthParams + FX slots + sends
+ *   2 MASTER        — vols, pitch, EQ, tube, DJ, mutes, pan
+ *   3 HARP SYNTH    — SynthParams + FX slots + sends + user slots + harp arp
  *   4 MIDI I/O      — pitch-bend range/enable + wire MIDI channels
- *   5 SEQ SETUP     — bank, chain, len, transpose, presets, user pat slots
+ *   5 SEQ SETUP     — bank, view, length, transpose, presets, clear, user pat, arp
  *   6 SEQ MATRIX    — grid editor (special: no L2 scroll)
- *   7 AUX FX        — aux bus + insert sends + FX slots  [I5]
- *   8 SEQ SYNTH     — all 14 SynthParams + FX slots + sends
- *   9 DRUM KIT      — 5 params × 8 drums + kit selector (41 items)
- *  10 LASER SHOW    — show toggle, hue ADSR
- *  11 TELEMETRY     — scope views (special: no L2 scroll)
- *  12 RESET         — full / banks+patterns / motion / settings  [I6]
- *                     (YES/NO confirm → RAM wipe + persist + reboot)
- *  13 SONG          — row-per-step song editor (special: no L2 scroll) [SONG]
- *  14 SAVE          — full / banks+patterns / motion / settings  [WS10]
- *                     (YES/NO confirm → persist + reboot, resumes in place)
- *  15 LOAD          — full / banks+patterns / motion / settings  [LOAD-MENU]
- *                     (YES/NO confirm → RAM-only reload, no reboot)
- * Note: SEQ SETUP also hosts Clear + Soft Reset (RAM-only working-image reset).
+ *   7 AUX FX        — aux bus + insert sends + FX slots
+ *   8 SEQ SYNTH     — SynthParams + FX + user slots (no harp arp items)
+ *   9 DRUM KIT      — 5 params × 8 drums + kit + drum pitch
+ *  10 LASER SHOW    — show toggle, hue ADSR, anim
+ *  11 TELEMETRY     — 7 live scope pages (L2 pick → ENC opens view; turn cycles)
+ *  12 RESET         — full / banks+patterns / motion / settings → reboot
+ *  13 SONG          — row-per-step song editor (special: no L2 scroll)
+ *  14 SAVE          — scoped persist → reboot (beam-detect recovery)
+ *  15 LOAD          — scoped reload from NVS (no reboot)
  * ═══════════════════════════════════════════════════════════════════════════ */
 static constexpr int kL1Count = 16; /* +RESET (12); +SONG (13); +SAVE (14); +LOAD (15) */
 
 /* Per-category L2 item counts */
 static constexpr int kL2HarpSetupCount = 13; /* gate/white/touch/RGB/margin/stuck/edge/fog/screensaver */
 static constexpr int kL2DBeamCount = 8;     /* offset/range/curve/enable/env atk/rel/route/target */
-static constexpr int kL2MasterCount = 24;   /* +3 pan vs v5.4 (was 21)  */
-static constexpr int kL2SynthCount = 25;    /* … + [HARP-ARP] 4 items at idx 21–24 */
-static constexpr int kL2MidiCount = 5;      /* PB range/enable + 3 channels (Route moved to D-BEAM) */
-static constexpr int kL2SeqSetupCount = 14; /* + Arp On/Type/Rate/Gate */
-static constexpr int kL2SeqMatrixCount = 1; /* grid (single entry → open)  */
-static constexpr int kL2AuxFxCount = 14;    /* aux bus + sends + FX slots  */
-static constexpr int kL2SeqSynthCount = 21; /* same layout as harp synth + Snd Preset + [USER-SLOTS] Save/Load Slot */
-static constexpr int kL2DrumsCount = 42;    /* 5 params × 8 drums + Kit + Drm Pitch */
-static constexpr int kL2LaserShowCount = 9;   /* show/midihue/base/anim/drumflash/hue ADSR×4 */
-static constexpr int kL2TelemetryCount = 4;
-static constexpr int kL2ResetCount = 4; /* [I6] full/banks+pat/motion/settings */
-static constexpr int kL2SongCount = 1;  /* [SONG] single entry → opens row editor */
-static constexpr int kL2SaveCount = 4;  /* [WS10] mirrors RESET scopes */
-static constexpr int kL2LoadCount = 4;  /* [LOAD-MENU] mirrors SAVE/RESET scopes */
+static constexpr int kL2MasterCount = 24;   /* vol/FX/mutes + H/S/D pan */
+static constexpr int kL2SynthCount = 25;    /* synth params + FX + user slots + harp arp */
+static constexpr int kL2MidiCount = 5;
+static constexpr int kL2SeqSetupCount = 13; /* bank … arp gate (incl. clear + user pat) */
+static constexpr int kL2SeqMatrixCount = 1;
+static constexpr int kL2AuxFxCount = 14;
+static constexpr int kL2SeqSynthCount = 21; /* synth params + FX + user slots (no harp arp) */
+static constexpr int kL2DrumsCount = 42;    /* 5×8 + kit + drum pitch */
+static constexpr int kL2LaserShowCount = 9;
+static constexpr int kL2TelemetryCount = 7; /* matches TelemetryView RAW_AC..FOG_REJECT */
+static constexpr int kL2ResetCount = 4;
+static constexpr int kL2SongCount = 1;
+static constexpr int kL2SaveCount = 4;
+static constexpr int kL2LoadCount = 4;
 
 static inline int l2CountFor(int l1) {
   switch (l1) {
@@ -337,31 +304,26 @@ static inline int l2CountFor(int l1) {
     case 4: return kL2MidiCount;
     case 5: return kL2SeqSetupCount;
     case 6: return kL2SeqMatrixCount;
-    case 7: return kL2AuxFxCount; /* AUX FX [I5] */
+    case 7: return kL2AuxFxCount;
     case 8: return kL2SeqSynthCount;
-    case 9: return kL2DrumsCount; /* expanded [I5] */
+    case 9: return kL2DrumsCount;
     case 10: return kL2LaserShowCount;
     case 11: return kL2TelemetryCount;
-    case 12: return kL2ResetCount; /* RESET [I6] */
-    case 13: return kL2SongCount;  /* SONG  [SONG] */
-    case 14: return kL2SaveCount;  /* SAVE  [WS10] */
-    case 15: return kL2LoadCount;  /* LOAD  [LOAD-MENU] */
+    case 12: return kL2ResetCount;
+    case 13: return kL2SongCount;
+    case 14: return kL2SaveCount;
+    case 15: return kL2LoadCount;
     default: return 0;
   }
 }
 
-/* ── [I7] L1 DISPLAY ORDER ──────────────────────────────────────────────────
- * The category *id* (stored in currentMenuL1) is FIXED — every switch/special-
- * case (mutateParam, l2CountFor, l1==6 grid, l1==13 SONG, l1==11 TELEMETRY …)
- * keys off it.  Only the *visible* order in MAIN MENU is regrouped, so related
- * categories sit together.  kL1Order maps display-slot → category id; the menu
- * renderer and the L1 encoder step convert between the two.
+/* L1 DISPLAY ORDER — category id stays fixed; only visible menu order is regrouped.
  *   slot:  0           1          2         3           4          5
  *          HARP SETUP  HARP SYNTH SEQ SETUP SEQ MATRIX  SEQ SYNTH  SONG
  *   slot:  6           7          8         9           10         11
  *          DRUM KIT    AUX FX     MASTER    D-BEAM      MIDI I/O   LASER SHOW
- *   slot:  12          13          14
- *          TELEMETRY   RESET       SAVE                                                     */
+ *   slot:  12          13         14         15
+ *          TELEMETRY   RESET      SAVE       LOAD */
 static constexpr int kL1Order[kL1Count] = {
   0,  /* HARP SETUP */
   3,  /* HARP SYNTH */
@@ -381,10 +343,7 @@ static constexpr int kL1Order[kL1Count] = {
   15  /* LOAD       */
 };
 
-/* [IDM-OPT4] category id → display slot, precomputed inverse of kL1Order.
- * Replaces the old O(14) linear scan run on every encoder tick (200 Hz) and
- * every drawMenuL1 (30 Hz) with a single table index.  The static_assert keeps
- * it provably in sync with kL1Order: kL1Order[kCatToSlot[c]] == c for all c. */
+/* category id → display slot (inverse of kL1Order). */
 static constexpr int kCatToSlot[kL1Count] = {
   0,   /* cat  0 HARP SETUP → slot  0 */
   9,   /* cat  1 D-BEAM     → slot  9 */
@@ -453,11 +412,7 @@ static inline T wrapIndex(T current, T delta, T size) {
   return (r < 0) ? r + size : r;
 }
 
-/* safe_atomic_store — clamp-then-store, rejects NaN/Inf.
- * [IDM-OPT3] Returns the clamped value so call sites can feed txSysex()
- * directly instead of reloading the atomic (saves ~1 atomic load per case,
- * ~20 per encoder tick across updateHardwareParameter). On NaN/Inf the store
- * is skipped and the (unchanged) current value is returned. */
+/* safe_atomic_store — clamp-then-store, rejects NaN/Inf; returns clamped value. */
 static inline float safe_atomic_store(std::atomic<float>& a, float cur,
                                       float delta, float lo, float hi) {
   const float nv = std::min(hi, std::max(lo, cur + delta));
@@ -486,26 +441,19 @@ extern DisplayI2CStats display_stats;
 /* ═══════════════════════════════════════════════════════════════════════════
  * SECTION 8 — FUNCTION DECLARATIONS
  * ═══════════════════════════════════════════════════════════════════════════ */
-enum class ResetScope : uint8_t; /* full def in settings.h [I6] */
+enum class ResetScope : uint8_t; /* defined in settings.h */
 void init_fast_gpio();
-void initBootButtons();       /* GPIO + OC/SCALE/ENC buttons (safe before OLED/NVS) */
-void pollBootFactoryReset();  /* OC+SCALE hold @ boot → FULL factory reset + reboot */
 void initHardwareInterface();
 void updateHardwareInterface();
 void updateHardwareParameter(uint8_t l1, uint8_t l2, int16_t delta);
 void handleFactoryReset();
-void handleScopedReset(ResetScope scope); /* [I6] menu-driven scoped reset + restart */
-void handleScopedSave(ResetScope scope);  /* [WS10] menu/App scoped save (no restart) */
-void handleScopedLoad(ResetScope scope);  /* [LOAD-MENU] menu/App scoped reload (no reboot) */
-bool scopedLoadExecute(ResetScope scope); /* NVS reload + DAC thresholds; no SysEx/UI       */
-void oledPersistWorking();                /* brief PLEASE WAIT (non-blocking toast path)  */
-void oledPersistSucceeded();              /* DONE! toast + release OLED hold              */
-void oledPersistFailed();                 /* FAILED! toast + clear stuck persist flags    */
-void oledPersistRestore();                /* force return to APP CONNECTED / dashboard    */
+void handleScopedReset(ResetScope scope);
+void handleScopedSave(ResetScope scope);  /* persist + reboot */
+void handleScopedLoad(ResetScope scope);  /* RAM reload, no reboot */
 void updateTaskStackStats();  /* sample uxTaskGetStackHighWaterMark → g_stackStats */
 void printInterfaceStats();   /* recurring Serial telemetry (stack + heap)       */
 
-/* Encoder button classifier (preserves delta-cancel guard from v5.1) */
+/* Encoder button classifier (delta-cancel guard on double-click back-nav). */
 BtnEvent pollEncoderButton(uint32_t now, int32_t delta);
 
 /* Pitch encode/decode: ratio [MASTER_PITCH_MIN, MAX] ↔ v14 semitone-linear ±24 st */

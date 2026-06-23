@@ -1,45 +1,15 @@
 /* ═════════════════════════════════════════════════════════════════════════════
- * Octopus PRO XL v6.0.00 — Laser Harp Groovebox
+ * Octopus PRO XL v6.1.00 — Laser Harp Groovebox
  * © 2026 DIODAC ELECTRONICS / iSystem. All Rights Reserved.
  *
  * PROPRIETARY AND CONFIDENTIAL. Unauthorized copying, distribution, modification,
  * or use of this software or firmware, in whole or in part, is strictly prohibited
  * without prior written permission from DIODAC ELECTRONICS.
  * ═════════════════════════════════════════════════════════════════════════════
- * display.h — v6.0.00  OLED CANVAS DECLARATIONS + MENU LABEL TABLES
+ * display.h — v6.1.00  OLED DECLARATIONS + MENU LABEL TABLES
  *
- * Changes vs v5.1.01:
- *
- *  [D1] Menu count constants (kL1Count, kL2*Count, l2CountFor) REMOVED —
- *       now canonical in interface.h.  display.h includes interface.h.
- *       display.cpp gets all count logic through that include.
- *
- *  [D2] g_lastSynthPreset / g_lastDrumPreset REMOVED from display.h —
- *       moved to globals.h (§7) with G_LAST_PRESET_DECLARED guard.
- *
- *  [D3] kL1Names[7] updated "SEQ SETTINGS" → "AUX FX".
- *       kL2SeqSettings[] replaced by kL2AuxFx[] (14 items).
- *       l2TableFor() case 7 updated accordingly.
- *
- *  [D4] kL2Master[] extended from 18 → 21 items (+3 mutes at end).
- *
- *  [D5] kL2Drums[] — 42 items (5 params × 8 voices + kit selector + drum pitch).
- *       Labels generated with drum name + param type for all 40 slots.
- *       CLAP/HAT wave slots show "----" (noise-only voices).
- *
- *  [D6] New name tables: kDbeamRouteNames, kDBCurveNames, kLfoRouteNames.
- *       Used in formatParamValueString and dashboard rendering.
- *
- *  [D7] drawScrollingText() — horizontally scrolls any string that exceeds
- *       maxW pixels.  Uses static scroll state; resets when text content
- *       changes.  No-op for strings that fit.
- *
- *  [D8] safeWaveName / safeFxName / safeMasterFxName — overflow-guarded
- *       accessors.  All array-index lookups in display.cpp use these.
- *
- *  Retained from v5.1.01:
- *  [A] display_render_dirty REMOVED, [B] handleTelemetryPageEncoder,
- *  [C] preset tracking, [D] named count constants (partial — some moved to i/f)
+ * SH1106 128×64 layout constants, menu name arrays, telemetry views,
+ * DRAW_* helpers.  Runtime drawing in display.cpp → renderUIState() only.
  * ═════════════════════════════════════════════════════════════════════════════ */
 #pragma once
 #ifndef DISPLAY_H
@@ -53,7 +23,7 @@ extern Adafruit_SH1106G display;
 #include <cmath>
 #include <cstring>
 #include "globals.h"
-#include "interface.h" /* [D1] kL1Count, l2CountFor, kL2*Count — all from here */
+#include "interface.h" /* kL1Count, l2CountFor, kL2*Count */
 
 /* ═══════════════════════════════════════════════════════════════════════════
  * SECTION 1 — SCREEN GEOMETRY
@@ -84,29 +54,27 @@ static constexpr int LABEL_X = 4;
 /* Play mode names (index matches PlayMode enum) */
 inline const char* const kPMNames[3] = { "POLY8", "STRINGS", "SOLO" };
 
-/* L1 menu category names — [D3] case 7 updated */
+/* L1 menu category names */
 inline const char* const kL1Names[16] = {
   "HARP SETUP", /*  0 kL2HarpSetupCount  = 13 */
   "D-BEAM",     /*  1 kL2DBeamCount      =  8 */
   "MASTER",     /*  2 kL2MasterCount     = 24 */
   "HARP SYNTH", /*  3 kL2SynthCount      = 25 */
   "MIDI I/O",   /*  4 kL2MidiCount       =  5 */
-  "SEQ SETUP",  /*  5 kL2SeqSetupCount   = 10 */
+  "SEQ SETUP",  /*  5 kL2SeqSetupCount   = 13 */
   "SEQ MATRIX", /*  6 kL2SeqMatrixCount  =  1 */
-  "AUX FX",     /*  7 kL2AuxFxCount      = 14 [D3] */
+  "AUX FX",     /*  7 kL2AuxFxCount      = 14 */
   "SEQ SYNTH",  /*  8 kL2SeqSynthCount   = 21 */
-  "DRUM KIT",   /*  9 kL2DrumsCount      = 40 */
+  "DRUM KIT",   /*  9 kL2DrumsCount      = 42 */
   "LASER SHOW", /* 10 kL2LaserShowCount  =  9 */
-  "TELEMETRY",  /* 11 kL2TelemetryCount  =  4 */
-  "RESET",      /* 12 kL2ResetCount      =  4 [D6] */
-  "SONG",       /* 13 kL2SongCount       =  1 [SONG] row editor */
-  "SAVE",       /* 14 kL2SaveCount       =  4 [WS10] */
-  "LOAD"        /* 15 kL2LoadCount       =  4 [LOAD-MENU] */
+  "TELEMETRY",  /* 11 kL2TelemetryCount  =  7 */
+  "RESET",      /* 12 kL2ResetCount      =  4 */
+  "SONG",       /* 13 kL2SongCount       =  1 */
+  "SAVE",       /* 14 kL2SaveCount       =  4 */
+  "LOAD"        /* 15 kL2LoadCount       =  4 */
 };
 
-/* [D7] MAIN MENU shown in regrouped display order (slot → name).  MUST stay in
- * sync with kL1Order[] in interface.h; the renderer pairs entry i here with
- * category kL1Order[i].  Categories are kept by *id* everywhere else. */
+/* MAIN MENU in regrouped display order (slot → name). Sync with kL1Order[] in interface.h. */
 inline const char* const kL1NamesOrdered[kL1Count] = {
   kL1Names[0],  /* HARP SETUP */
   kL1Names[3],  /* HARP SYNTH */
@@ -138,7 +106,7 @@ inline const char* const kL2DBeam[8] = {
   "Offset", "Range", "Curve", "Enable", "Env Atk", "Env Rel", "Route", "Target"
 };
 
-/* [D4] MASTER — 24 items (+3 pan at end) */
+/* MASTER — 24 items (includes H/S/D pan at end) */
 inline const char* const kL2Master[24] = {
   "M.Vol", "H.Vol", "S.Vol", "D.Vol",
   "M.Pitch", "FX Preset", "Drum Rev", "Drum Dly",
@@ -150,10 +118,8 @@ inline const char* const kL2Master[24] = {
   "H.Pan", "S.Pan", "D.Pan"
 };
 
-/* Synth params (used for both HARP SYNTH and SEQ SYNTH).
- * [WS5b] idx 18 "Snd Preset" — browse/recall the 128-name assets sound bank from
- * hardware (HARP also browses it from the dashboard; the SEQ engine had no
- * hardware preset path before this). */
+/* Synth params (HARP SYNTH and SEQ SYNTH share this table).
+ * idx 18 "Snd Preset" — browse/recall the 128-name factory bank. */
 inline const char* const kL2Synth[25] = {
   "Waveform", "Attack", "Decay", "Sustain", "Release",
   "Cutoff", "Resonance", "Noise", "Detune",
@@ -162,7 +128,7 @@ inline const char* const kL2Synth[25] = {
   "FX-A Slot", "FX-B Slot",
   "Dly Send", "Rev Send",
   "Snd Preset",
-  "Save Slot", "Load Slot",   /* [USER-SLOTS] idx 19/20: save→ / load← user bank */
+  "Save Slot", "Load Slot",   /* idx 19/20: user sound bank */
   "H Arp On", "H Arp Pat", "H Arp Rate", "H Arp Gate"
 };
 
@@ -171,16 +137,16 @@ inline const char* const kL2Midi[5] = {
   "Harp Ch", "Seq Ch", "Drum Ch"
 };
 
-inline const char* const kL2SeqSetup[14] = {
+inline const char* const kL2SeqSetup[13] = {
   "Bank A-D", "View S/D", "Transpose",
-  "Length", "Load Synth", "Load Drum", "Clear", "Soft Reset",
+  "Length", "Load Synth", "Load Drum", "Clear",
   "Save Pat", "Load Pat",
   "Arp On", "Arp Type", "Arp Rate", "Arp Gate"
 };
 
 inline const char* const kL2SeqMatrix[1] = { "Open Grid" };
 
-/* [D3] AUX FX — replaces dead SEQ SETTINGS (14 items) */
+/* AUX FX — delay/reverb bus + insert sends + FX slots */
 inline const char* const kL2AuxFx[14] = {
   "Dly Time", "Dly FB", "Rev Size", "Rev Damp",
   "H.Dly Snd", "H.Rev Snd", "S.Dly Snd", "S.Rev Snd",
@@ -188,8 +154,7 @@ inline const char* const kL2AuxFx[14] = {
   "Drum FX-A", "Drum FX-B"
 };
 
-/* [D5] DRUM KIT — 42 items: 5 params × 8 voices + kit selector (l2=40) + pitch (41).
- * CLAP(ch2) / HAT-C(ch3) / HAT-O(ch4) wave slots = "----" (noise-only). */
+/* DRUM KIT — 5 params × 8 voices + kit selector (l2=40) + pitch (l2=41). */
 inline const char* const kL2Drums[42] = {
   /* ch0 KICK  */ "Kick Tune", "Kick Dcay", "Kick Vol ", "Kick Nois", "Kick Wave",
   /* ch1 SNARE */ "Snr  Tune", "Snr  Dcay", "Snr  Vol ", "Snr  Nois", "Snr  Wave",
@@ -208,35 +173,31 @@ inline const char* const kL2LaserShow[9] = {
   "Hue Attack", "Hue Decay", "Hue Sus", "Hue Rel"
 };
 
-/* [LASER-SHOW v2] Anim Mode display names (index = LaserShowAnim). */
+/* Anim Mode display names (index = LaserShowAnim). */
 inline const char* const kLaserAnimNames[4] = {
   "Pulse", "Chase", "Strobe", "Wave"
 };
 
-inline const char* const kL2Telemetry[4] = {
-  "Audio Load", "Stack Min", "DRAM Free", "PSRAM Free"
+inline const char* const kL2Telemetry[7] = {
+  "AC Scope", "DC Bias", "DAC Thresh", "D-BEAM Expr", "SNR", "System", "Fog Reject"
 };
 
-/* [D6] RESET — 4 scoped reset actions (fire on confirm, no L3 value entry).
- * Order MUST match ResetScope: FULL, BANKS_PATTERNS, MOTION, SETTINGS.        */
+/* RESET — 4 scoped actions (YES/NO confirm). Order matches ResetScope. */
 inline const char* const kL2Reset[4] = {
   "Full Reset", "Banks+Pats", "Motion Clr", "Settings"
 };
 
-/* [WS10] SAVE — 4 scoped save actions (fire on confirm, no restart).
- * Order MUST match ResetScope: FULL, BANKS_PATTERNS, MOTION, SETTINGS.     */
+/* SAVE — 4 scoped actions (YES/NO confirm → persist + reboot). */
 inline const char* const kL2Save[4] = {
   "Full Save", "Banks+Pats", "Motion Save", "Settings"
 };
 
-/* [LOAD-MENU] LOAD — 4 scoped reloads from NVS (fire on confirm, no reboot).
- * Order MUST match ResetScope: FULL, BANKS_PATTERNS, MOTION, SETTINGS.     */
+/* LOAD — 4 scoped reloads from NVS (YES/NO confirm, no reboot). */
 inline const char* const kL2Load[4] = {
   "Full Load", "Banks+Pats", "Motion Load", "Settings"
 };
 
-/* ── l2TableFor — maps L1 index → matching L2 string array ─────────────── */
-/* [D1] l2CountFor() comes from interface.h; this provides the string table.  */
+/* l2TableFor — maps L1 index → L2 string array (l2CountFor in interface.h). */
 static inline const char* const* l2TableFor(int l1) {
   switch (l1) {
     case 0: return kL2HarpSetup;
@@ -246,14 +207,14 @@ static inline const char* const* l2TableFor(int l1) {
     case 4: return kL2Midi;
     case 5: return kL2SeqSetup;
     case 6: return kL2SeqMatrix;
-    case 7: return kL2AuxFx; /* [D3] AUX FX */
+    case 7: return kL2AuxFx;
     case 8: return kL2Synth;
-    case 9: return kL2Drums; /* [D5] 41 items */
+    case 9: return kL2Drums;
     case 10: return kL2LaserShow;
     case 11: return kL2Telemetry;
-    case 12: return kL2Reset; /* [D6] RESET */
-    case 14: return kL2Save;  /* [WS10] SAVE */
-    case 15: return kL2Load;  /* [LOAD-MENU] LOAD */
+    case 12: return kL2Reset;
+    case 14: return kL2Save;
+    case 15: return kL2Load;
     default: return nullptr;
   }
 }
@@ -291,10 +252,8 @@ inline const char* const kInsertFxNames[16] = {
 };
 
 /* 16 dynamics (insert slot B) preset names.
- * Order MUST match DYNAMICS_PRESETS[] in effect.cpp and DYNAMICS_NAMES[] in
- * OctopusApp.html so index→DSP mapping is identical on hw, device, and app.
- * (Display strings differ cosmetically — e.g. "Glue Comp" here vs "GlueComp"
- *  in the App — but the ORDER is the contract, never the spelling.)            */
+ * Order MUST match DYNAMICS_PRESETS[] in effect.cpp and DYN_NAMES[] in
+ * OctopusApp.html so index→DSP mapping is identical on hw, device, and app. */
 inline const char* const kDynNames[16] = {
   "Dyn Byp", "Glue Comp", "Punch Comp", "Soft Lim",
   "Brick Lim", "Noise Gate", "Tight Gate", "Trans Pun",
@@ -302,14 +261,14 @@ inline const char* const kDynNames[16] = {
   "Harp Sus", "Seq Pump", "Sub Gate", "Max Safe"
 };
 
-/* ── [D6] New semantic name tables ──────────────────────────────────────── */
+/* ── Semantic name tables (enums / wire values) ─────────────────────────── */
 
 /* D-BEAM expression routing modes.
  * Order matches enum DbeamRoute: 0=OFF 1=MODULATION 2=VOLUME 3=CUTOFF.
  * Abbreviated table for tight dashboard overlays; Full table for the menu.      */
 inline const char* const kDbeamRouteNames[4]     = { "OFF", "Mod", "Vol", "Cut" };
 inline const char* const kDbeamRouteNamesFull[4] = { "OFF", "Modulation", "Volume", "Cutoff" };
-/* [DBEAM-TGT] D-BEAM target synth — order matches enum DbeamTarget (0=HARP 1=SEQ) */
+/* D-BEAM target synth — order matches DbeamTarget (0=HARP 1=SEQ) */
 inline const char* const kDbeamTargetNames[2] = { "Harp Synth", "Melody Synth" };
 
 /* D-BEAM curve shapes */
@@ -320,15 +279,14 @@ inline const char* const kDBCurveNames[5] = {
 /* LFO modulation route matrix (0–7) */
 /* MUST match the route decode in harp.cpp / groovebox.cpp (lfo_pitch/filter/wave/tremolo):
  *   0 pitch · 1 filter · 2 wave · 3 pitch+filter · 4 filter+wave ·
- *   5 pitch+wave · 6 pitch+filter+wave (all 3) · 7 tremolo (amp).
- * The OLD table mislabelled 4-7 as Tremolo/combos — fixed to match the engine. */
+ *   5 pitch+wave · 6 all three · 7 tremolo (amp). Must match harp/groovebox decode. */
 inline const char* const kLfoRouteNames[8] = {
   "Pitch", "Filter", "Wave", "Ptch+Flt",
   "Flt+Wave", "Ptch+Wav", "All 3", "Tremolo"
 };
 
 /* ═══════════════════════════════════════════════════════════════════════════
- * SECTION 4 — SAFE ARRAY ACCESSORS  [D8]
+ * SECTION 4 — SAFE ARRAY ACCESSORS
  *
  * All array-index lookups in display.cpp must use these.
  * Any out-of-range index returns a safe "---" or "?" fallback.
@@ -496,7 +454,7 @@ static inline void DRAW_WARNING_TIMEOUT(int16_t x, int16_t y, const char* msg) {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
- * SECTION 6 — SCROLLING TEXT  [D7]
+ * SECTION 6 — SCROLLING TEXT
  *
  * Draws `text` starting at (x, y) within `maxW` pixels.
  * If the text fits, it is drawn statically.
@@ -504,11 +462,7 @@ static inline void DRAW_WARNING_TIMEOUT(int16_t x, int16_t y, const char* msg) {
  * (millis()).  The scroll state is global — only one text scrolls at a time,
  * which is acceptable since the OLED shows one L3 edit screen at a time.
  * ═══════════════════════════════════════════════════════════════════════════ */
-/* [IDM-BUG1] Per-call-site scroll state.  The old single shared (s_hash,
- * s_offset, s_t) meant only ONE string could scroll correctly at a time; in
- * drawMenuL3 the key (call 0) and value (call 1) both scroll, so they fought
- * over the shared state and reset each other's offset every frame.  Each
- * call site now passes a stateIdx selecting an independent slot. */
+/* Per-call-site scroll state (key 0 = label, 1 = value on L3 screen). */
 struct ScrollState {
   uint32_t hash   = 0;
   int      offset = 0;
@@ -526,12 +480,8 @@ static inline void drawScrollingText(int16_t x, int16_t y, int16_t maxW,
     return;
   }
   /* Scrolling needed — move left by one char every 120 ms, pause at end */
-  /* [IDM-BUG1b] 3 slots — slot 0: L3 key, slot 1: L3 value, slot 2: dashboard
-   * preset name.  Previously only 2 slots forced the harp dashboard preset name
-   * to share slot 0 with the L3 key name.  Views are mutually exclusive so the
-   * hash-reset saved it, but the scroll position reset on every view switch. */
-  static ScrollState s_states[3];
-  ScrollState& ss = s_states[stateIdx % 3];
+  static ScrollState s_states[2];
+  ScrollState& ss = s_states[stateIdx & 1];
   /* Simple djb2-style hash to detect content change */
   uint32_t h = 5381u;
   for (const char* p = text; *p; ++p) h = h * 33u ^ (uint8_t)*p;
@@ -554,7 +504,7 @@ static inline void drawScrollingText(int16_t x, int16_t y, int16_t maxW,
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
- * SECTION 7 — TELEMETRY ENCODER HANDLER  (from v5.1.01 unchanged)
+ * SECTION 7 — TELEMETRY ENCODER HANDLER
  * ═══════════════════════════════════════════════════════════════════════════ */
 inline void handleTelemetryPageEncoder(int16_t delta) {
   if (delta == 0) return;
@@ -568,12 +518,10 @@ inline void handleTelemetryPageEncoder(int16_t delta) {
 
 /* ── Single external entry point ────────────────────────────────────────── */
 void renderUIState();
-void drawAppConnectedPage(); /* [A5] shown when OctopusApp is connected */
-bool renderStepBarRegionIfVisible(); /* [PERF] partial step-bar redraw (display.cpp)  */
-bool renderDbeamBarIfVisible();      /* [PERF] partial D-BEAM bar redraw (display.cpp) */
-bool renderBpmRowIfVisible();        /* [PERF] partial BPM row on APP CONNECTED splash */
-bool viewIsSeqMatrix();              /* [PERF] SEQ MATRIX grid on screen? (display.cpp)*/
-void displayFlushDiff();             /* [PERF] page-diff I2C flush (display.cpp)       */
-void drawSaveToastIfActive();        /* [PERSIST-UI] DONE!/FAILED!/WAIT pill (display.cpp) */
+void drawAppConnectedPage(); /* App-connected splash */
+bool renderStepBarRegionIfVisible(); /* partial step-bar redraw (display.cpp) */
+bool viewIsSeqMatrix();              /* SEQ MATRIX grid visible? (display.cpp) */
+void displayFlushDiff();             /* page-diff I2C flush (display.cpp) */
+void drawSaveToastIfActive();        /* SAVED / SAVE FAIL pill overlay (display.cpp) */
 
 #endif /* DISPLAY_H */

@@ -1,67 +1,24 @@
 /* ═════════════════════════════════════════════════════════════════════════════
- * Octopus PRO XL v6.0.00 — Laser Harp Groovebox
+ * Octopus PRO XL v6.1.00 — Laser Harp Groovebox
  * © 2026 DIODAC ELECTRONICS / iSystem. All Rights Reserved.
  *
  * PROPRIETARY AND CONFIDENTIAL. Unauthorized copying, distribution, modification,
  * or use of this software or firmware, in whole or in part, is strictly prohibited
  * without prior written permission from DIODAC ELECTRONICS.
  * ═════════════════════════════════════════════════════════════════════════════
- * globals.h — v6.0.00  PRODUCTION SSOT REGISTRY
+ * globals.h — v6.1.00  PRODUCTION SSOT REGISTRY
  *
- * SINGLE SOURCE OF TRUTH for all shared state across all translation units.
- *
- * Changes vs v5.0.04:
- *
- *  [G1] Dead struct fields removed — confirmed zero read sites in v5.3 codebase:
- *       • Voice.noteOnTime    — .ino keeps its own per-string laser gate timer;
- *                               the Voice field was never read in synth_core.h
- *       • Voice.source_string — never written or read in v5.3 DSP path
- *       • DrumVoice.punch_val — set once in fire_tuned_drum, never read in
- *                               drum_fill_buf (confirmed dead write in audit)
- *
- *  [G2] Dead functions removed — confirmed zero call sites:
- *       • calcSvfResonance()  — synth_core.h provides calc_svf_damping()
- *       • mtof()              — synth_core.h provides midi_note_to_freq()
- *
- *  [G3] drumWaveIdx[8] moved here from drum_synth.h — atomic drum body
- *       waveform selection per channel; belongs alongside drumTune/Decay/etc.
- *       DRUM_DEFAULT_WAVE_IDX = 8 constant added (WT_SINE index in assets.cpp).
- *       applyDrumWave() in patches.h writes drumWaveIdx[];
- *       fire_tuned_drum() (groovebox.cpp) reads it.
- *
- *  [G4] g_lastSynthPreset / g_lastDrumPreset moved here from display.h.
- *       Written by interface.cpp SEQ SETUP preset browser; read by display.cpp
- *       to show current factory preset number on OLED.  Belong here, not in
- *       display.h, because interface.cpp must not include display.h to set them.
- *
- *  [G5] setupDMA_ADC() kept as deprecated shim — .ino line 456 still calls it.
- *       Will be removed when the .ino boot sequence is updated to call
- *       initDBeamSensor() directly.
- *
- *  [G6] initDrumParameters() updated to also initialise drumWaveIdx[8].
- *
- *  Retained from v5.0.04:
- *  [A] noteOnHarp stub removed (BUG-16)
- *  [B] allNotesOff() implemented (BUG-3)
- *  [C] seqVoiceLockouts[] removed (dead array)
- *  [D] Logical section ordering
- *  [E] initDrumParameters() must be called before DSP task starts
+ * Single source of truth for shared runtime state: pin map, audio constants,
+ * voice structs, std::atomic mirrors (Level 2), livePatch arrays (Level 3),
+ * hwSeqData/hwSongData/hwMotionData, FreeRTOS handles, UI mode atomics.
+ * Parameter writes go through patches.h apply*; persistence through settings.h.
+ * Task handle comments mirror init_audio_system() in audio.cpp.
  * ═════════════════════════════════════════════════════════════════════════════ */
 #pragma once
 #ifndef GLOBALS_H
 #define GLOBALS_H
 
-
-/* ── Scale notes array alias [v5.3 compat] ──────────────────────────────────
- * harp.cpp and groovebox.cpp reference SCALES_NOTES[][].
- * If your assets.h defines the array as SCALE_NOTES (without trailing S),
- * uncomment the define below.  Check assets.h for the actual array name.   */
-#ifdef SCALE_NOTES
-#ifndef SCALES_NOTES
-#define SCALES_NOTES SCALE_NOTES
-#endif
-#endif
-
+/* Scale MIDI note tables: patches.h (SCALES_NOTES, SCALES, SCALES_DAC_POS). */
 
 #include <Arduino.h>
 #include <Wire.h>
@@ -92,17 +49,13 @@
 /* ── Polyphony & array dimensions ──────────────────────────────────────── */
 static constexpr int MAX_STRINGS = 8;
 static constexpr int HARP_POLYPHONY = 8;
-/* [SOLO] In SOLO play mode the harp is monophonic: every beam shares this ONE
- * voice slot so the note FOLLOWS the hand to whatever beam is newest (last-note
- * priority, bidirectional) with no overlapping release tails.                  */
+/* SOLO play mode: one shared voice (HARP_SOLO_VOICE), last-note priority. */
 static constexpr int HARP_SOLO_VOICE = 0;
 static constexpr int SEQ_POLYPHONY = 8;
 static constexpr int DRUM_POLYPHONY = 8;
 
 /* ── Audio engine ──────────────────────────────────────────────────────── */
-/* [SR] 44.1 kHz: ~8 % fewer samples/sec than 48 kHz → free CPU headroom for the
- * harp/FX hot paths, inaudible difference for this synth.  SAMPLE_RATE and FX_SR
- * MUST stay equal (the FX chain runs at the engine rate). */
+/* 44.1 kHz engine — SAMPLE_RATE and FX_SR must stay equal. */
 static constexpr int SAMPLE_RATE = 44100;
 static constexpr int FX_SR = 44100;
 static constexpr size_t DMA_BUFFER_FRAMES = 512;
@@ -121,37 +74,22 @@ static constexpr float EFFECT_INV32768 = 1.0f / 32768.0f;
 static constexpr float MASTER_PITCH_MIN = 0.25f; /* 2 octaves down */
 static constexpr float MASTER_PITCH_MAX = 4.0f;  /* 2 octaves up   */
 
-/* ── [MIX-CAL] Per-bus loudness normalisation ──────────────────────────────
- * The three engines have very different intrinsic output levels: the harp and
- * seq voices soft-clip near full int16 scale, while the drum engine is built
- * with ~16× of 8-voice headroom (the `>>19` per-voice scale in groovebox.h) so
- * it peaks far lower (~0.27 vs harp ~0.75 in normalised float).  These trims
- * are applied to each bus BEFORE the user volume knobs to bring the engines to
- * equal perceived loudness — harp is the reference (1.0), seq gets a small lift,
- * drums a large one.  MIX_BUS_SUM then sets the post-balance master level: high
- * enough to be loud, low enough that a worst-case in-phase 3-bus sum stays under
- * digital clipping (fx_clampf + the final int16 clamp are the safety backstop).
- *
- * TUNE BY EAR: raise/lower the trim of whichever bus is still off; nudge
- * MIX_BUS_SUM up for more level (watch for clipping on dense hits), down if the
- * master ever distorts.  Pure gain-staging — no engine DSP changed. */
-static constexpr float MIX_TRIM_HARP = 1.00f; /* reference — the loud engine     */
-static constexpr float MIX_TRIM_SEQ  = 1.35f; /* melody sat in the middle        */
-static constexpr float MIX_TRIM_DRUM = 3.00f; /* [WS6 tune] raised from 2.60 — ear pass */
-static constexpr float MIX_BUS_SUM   = 0.38f; /* post-balance level (was 0.333)  */
+/* Per-bus loudness trim before user volume knobs (tune by ear).  Drum engine has
+ * lower intrinsic peak than harp/seq due to per-voice scaling in groovebox.h. */
+static constexpr float MIX_TRIM_HARP = 1.00f;
+static constexpr float MIX_TRIM_SEQ  = 1.35f;
+static constexpr float MIX_TRIM_DRUM = 3.00f;
+static constexpr float MIX_BUS_SUM   = 0.38f;
 static constexpr float INV_16383_UI = 1.0f / 16383.0f;
 static constexpr int32_t Q15_ONE = 32768;
 static constexpr int32_t SVF_CUT_MAX = 31000; /* harp SVF: cut*hp promoted to int64
   * before >>15 (|hp| can reach ~81919 → product exceeds int32 max). See harp.md RISK-1. */
 
 /* ═══════════════════════════════════════════════════════════════════════════
- * SHARED FIXED-POINT DSP PRIMITIVES   [moved here from the deleted synth_core.h]
+ * SHARED FIXED-POINT DSP PRIMITIVES
  *
- * These tiny register-only helpers are consumed by multiple translation units
- * (groovebox.h seq/drum engine, laser.h, effect.h).  They live in globals.h —
- * the SSOT header everyone already includes — so there is exactly one copy and
- * no extra include coupling.  The laser harp keeps its OWN private copies in
- * harp.cpp (anonymous namespace); these are for the seq/drum + laser + FX paths.
+ * Register-only helpers for seq/drum (groovebox.h), laser.h, effect.h.
+ * Harp keeps private copies in harp.cpp; these are the seq/drum + FX paths.
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 /* SVF state clamp — must stay below SVF_CUT_MAX so the coefficient cannot drive
@@ -298,28 +236,15 @@ static constexpr uint32_t LASER_STAB_US = 200;   /* ACTIVE: beam+comparator sett
  * last 2 faint beams.  Raise toward 600 if any straight-move tail remains. */
 static constexpr uint32_t SETTLE_MIN_US = 600;   /* ACTIVE: min galvo settle  */
 static constexpr uint32_t SETTLE_MAX_US = 800;   /* ACTIVE: settle cap (big moves) */
-/* GALVO_REVERSE_EXTRA_US — extra dark-settle added to the THREE moves nearest
- * each scan turnaround (reverseSettleCnt=3 in laser.cpp).
- *
- * Root cause of faint lines on strings 1, 6, 7, 8:
- *   1. The laserRGB overflow fix raised beam brightness from ~25 % to 100 %,
- *      making pre-existing micro-ringing visible that was previously too dim
- *      to see.
- *   2. The original reverseSettleCnt=2 only covered the endpoint + 1 neighbour;
- *      string 6 (idx 5) received zero extra settle and showed a faint trace.
- *   3. String 1 (idx 0) received 978 µs (728 base + 250) — insufficient at the
- *      physical DAC extreme where galvo overshoot is largest.
- *
- * Fix: reverseSettleCnt raised 2→3 (covers string 6), extra raised 250→350 µs
- * so endpoints get 1078 µs total (728 + 350).  Keep SETTLE_MIN_US=600 unchanged
- * so inner strings are unaffected.  If a faint still clings to string 1 or 8,
- * raise in 50 µs steps toward 500; if endpoint beams look dimmer than inner
- * ones (refresh-rate drop), lower back toward 250. */
-static constexpr uint32_t GALVO_REVERSE_EXTRA_US = 350;
+/* GALVO_REVERSE_EXTRA_US — extra dark-settle added to the move INTO and OUT OF a
+ * scan turnaround (the 2 endpoint beams), where the galvo physically reverses
+ * and rings/overshoots more than a same-direction step.  This is the targeted
+ * fix for "6 beams clean, 2 with little faint".  Raise toward 400 if a faint
+ * still clings to either end beam; lower to 0 to disable. */
+static constexpr uint32_t GALVO_REVERSE_EXTRA_US = 250;
 
 static constexpr uint32_t BEAM_GATE_HOLD_MAX = 500;
-/* [STUCK-FIX] Upper bound for the anti-stuck fail-safe timeout (beamStuckReleaseMs,
- * adjustable in HARP SETUP → "Stuck Rel").  0 = disabled, up to 2000 ms. */
+/* Anti-stuck fail-safe upper bound (beamStuckReleaseMs in HARP SETUP; 0 = off). */
 static constexpr uint32_t BEAM_STUCK_RELEASE_MAX = 2000;
 static constexpr uint32_t DUTY_UNITY = 65025;
 static constexpr int CONFIRM_MIN = 1;
@@ -347,9 +272,7 @@ static constexpr float HARP_STR_VIB_DEPTH = 0.004f; /* ±0.4 % ≈ ±7 cents @ f
  *    monophonic. */
 static constexpr float HARP_SOLO_STACCATO_REL_SEC = 0.040f;
 
-/* ── [G3] Drum waveform default ────────────────────────────────────────── */
-/* Index 8 = WT_SINE in WAVE_TABLE_DIR[] (confirmed from assets.cpp layout).
- * Change via applyDrumWave(ch, idx) in patches.h; never hard-code 8 below. */
+/* Default drum body wave = WT_SINE (index 8).  applyDrumWave() in patches.h. */
 static constexpr uint8_t DRUM_DEFAULT_WAVE_IDX = 8;
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -374,8 +297,7 @@ static constexpr gpio_num_t PIN_ENC_BTN = GPIO_NUM_21;
 static constexpr gpio_num_t PIN_BTN_SCALE = GPIO_NUM_41;
 static constexpr gpio_num_t PIN_BTN_OC = GPIO_NUM_2;
 
-/* [USB-ONLY] GPIO_NUM_42 / GPIO_NUM_39 (former DIN MIDI TX/RX) are now FREE —
- * DIN UART MIDI removed in v6.0; MIDI runs over USB only.                        */
+/* GPIO 42/39 unused — USB-only MIDI (no DIN UART). */
 
 static constexpr uint8_t I2C_ADDR_OLED = 0x3C;
 
@@ -414,9 +336,7 @@ enum class DbeamRoute : uint8_t {
   CUTOFF = 3      /* svf_cutoff → SVF (local DSP)                */
 };
 
-/* [DBEAM-TGT] Which synth the D-BEAM expression drives.  Selected in
- * D-BEAM → Target; persisted in DBeamSettings.target.  The route FUNCTION
- * (Mod/Vol/Cut) is the same for both; only the destination synth differs. */
+/* D-BEAM target synth: Harp or Melody (seq). */
 enum class DbeamTarget : uint8_t {
   HARP = 0,   /* harp engine  (dbeam_svf_cutoff / dbeam_mod_depth / mixHarpVol) */
   SEQ  = 1    /* melody synth (dbeam_seq_svf_cutoff / dbeam_seq_mod_depth / mixSeqVol) */
@@ -431,7 +351,7 @@ enum class TelemetryView : uint8_t {
   CC_OUT_14BIT = 4,
   SIGNAL_SNR = 5,
   STACK_STATS = 6,  /* FreeRTOS stack HWM + heap — updated every 5 s */
-  FOG_REJECT = 7    /* [FOG] per-string fog-branch amplitude + floor/accept lines */
+  FOG_REJECT = 7    /* fog-branch telemetry lines */
 };
 
 /* Sampled by updateTaskStackStats() — read by OLED STACK_STATS view + Serial */
@@ -546,7 +466,7 @@ struct ScaleDef {
 /* ── Song mode sequencer data structures ──────────────────────────────────── */
 /* SongStep: one entry in a song's chain.
  *   bank     0-15  — which pattern bank to play
- *   chain    0-3   — which chain (0=synth, 1=drum)
+ *   chain    0-3   — pattern row within bank
  *   repeats  1-15  — how many times to play before advancing (0=step inactive)
  * Wire encoding: CMD_SONG_STEP v14 = [step:4][bank:4][chain:2][repeats:4]  */
 struct SongStep {
@@ -582,16 +502,7 @@ struct PitchBendMapping {
 };
 
 /* ── Voice: per-oscillator DSP state ───────────────────────────────────── */
-/* active and env_level are atomic: written by both the trigger caller
- * (Core 1 / MIDI task) and the audio task (Core 0).  All other fields
- * are protected by patchMux or the acquire/release ordering on active.
- *
- * [G1] Removed:
- *   noteOnTime    — .ino laser kernel manages its own per-string gate timer;
- *                   the Voice copy was never read in synth_core.h
- *   source_string — string-to-voice mapping only needed at trigger time;
- *                   not used in v5.3 fill loop
- */
+/* active/env_level atomic (Core 0 audio + Core 1 MIDI); other fields under patchMux. */
 struct Voice {
   std::atomic<bool> active{ false };
   std::atomic<uint32_t> env_level{ 0 };
@@ -612,9 +523,7 @@ struct Voice {
   uint8_t type = 0;
   uint8_t type2 = 0;
   bool is_accented = false;
-  /* [SOLO] When true the fill loop uses the fast staccato release step instead
-   * of the patch release — set on the voice a new SOLO note steals from. Cleared
-   * whenever the voice is freshly armed (h_arm_voice / gb_arm_seq_voice). */
+  /* SOLO: fast staccato release when a newer note steals this voice. */
   bool fast_release = false;
 };
 
@@ -631,8 +540,6 @@ enum class DrumType : uint8_t {
   DRUM_PERC = 5
 };
 
-/* [G1] Removed punch_val — set once (fire_tuned_drum), never read in
- *      drum_fill_buf.  Confirmed dead write in v5.3 audit.               */
 struct DrumVoice {
   std::atomic<bool> active{ false };
 
@@ -659,11 +566,7 @@ struct DrumVoice {
   int32_t noise_mix = 0; /* signed Q15 noise/tone blend                 */
   uint16_t tone_val = 0; /* SVF cutoff from tune param                  */
   uint8_t kit = 0;       /* DrumKitId snapshot — selects kick/hat character */
-  /* [FIX-3] Per-voice body-oscillator wavetable pointer — set in fire_tuned_drum,
-   * read in drum_fill_buf after the active-flag acquire fence.  nullptr for
-   * CLAP(2), HAT-C(3), HAT-O(4) (noise/square only — never dereferenced).
-   * Storing this in the voice struct instead of a global array eliminates the
-   * mid-buffer pointer-swap race on concurrent retrigger from the MIDI task. */
+  /* Body-oscillator wavetable — set in fire_tuned_drum; nullptr for noise-only voices. */
   const int16_t* body_wave = nullptr;
 
   /* Two-state SVF filter per voice */
@@ -682,7 +585,7 @@ struct SynthGlobal {
   uint32_t lfo_phase = 0;
   uint32_t lfo_step = 0;
   uint16_t lfo_depth = 0;
-  /* [STRINGS] Dedicated micro-pitch vibrato oscillator (audio string wobble). */
+  /* STRINGS play mode: micro-pitch vibrato oscillator (string wobble). */
   uint32_t vib_phase = 0;
   uint32_t vib_step = 0;
   std::atomic<uint32_t> pitch_bend_q16{ 65536u }; /* 1.0 in Q16 = no bend */
@@ -699,10 +602,9 @@ struct SynthGlobal {
 /* ── MotionLane: one P-lock automation lane within a bank/chain slot ───── */
 /* targetCmd = 255  → lane is empty.
  * steps[s]  = 0xFFFF → no automation for that step (pass-through).       */
-static constexpr uint8_t MOTION_STEPS_PER_LANE = 64u; /* matches seq grid depth */
 struct MotionLane {
-  uint8_t  targetCmd;
-  uint16_t steps[MOTION_STEPS_PER_LANE];
+  uint8_t targetCmd;
+  uint16_t steps[16];
 };
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -718,36 +620,17 @@ inline portMUX_TYPE patchMux = portMUX_INITIALIZER_UNLOCKED;  /* livePatch + hwS
 inline portMUX_TYPE motionMux = portMUX_INITIALIZER_UNLOCKED; /* motion matrix        */
 
 /* ═══════════════════════════════════════════════════════════════════════════
- * SECTION 6 — FREERTOS TASK PRIORITIES + HANDLES
- *
- * [TASK-PRIO-SSOT] Single source of truth for the persistent core-task priorities.
- * These were RAISED vs the original layout to cure UI-render / App-echo starvation
- * under full DSP load.  The relative ORDER is the contract: the realtime task
- * (AudioSynth on Core 0, LaserSweep on Core 1) at TASK_PRIO_RT always outranks
- * every cooperative task on its own core.  Change a priority HERE, never at the
- * xTaskCreatePinnedToCore() call sites — inline literals there are what let the old
- * comments drift out of sync.  Mirrored in the code_info.h / audio.h task maps.
- *
- *   Core 0: AUDIO(24) > [esp_timer 22] > DBEAM(19) > OLED(18) > CONTROL(16)
- *   Core 1: LASER(24) > SEQ_SYSEX(14) > MIDI_RX(12) > NVS(9) > FULLSYNC(8)
- * Transient one-shot workers (NvsBlk/RstSave 5, NvsLoad 3) stay below FULLSYNC.   */
-static constexpr UBaseType_t TASK_PRIO_RT        = 24; /* AudioSynth (C0) + LaserSweep (C1) */
-static constexpr UBaseType_t TASK_PRIO_DBEAM     = 19; /* dbeam_adc      (C0)               */
-static constexpr UBaseType_t TASK_PRIO_OLED      = 18; /* OledRender     (C0)               */
-static constexpr UBaseType_t TASK_PRIO_CONTROL   = 16; /* ControlPoll    (C0)               */
-static constexpr UBaseType_t TASK_PRIO_SEQ_SYSEX = 14; /* SeqSysexOut    (C1)               */
-static constexpr UBaseType_t TASK_PRIO_MIDI_RX   = 12; /* MidiUsbRx      (C1)               */
-static constexpr UBaseType_t TASK_PRIO_NVS       = 9;  /* NvsWorker      (C1)               */
-static constexpr UBaseType_t TASK_PRIO_FULLSYNC  = 8;  /* FullSyncOut    (C1)               */
-
-inline TaskHandle_t hAudioTask = nullptr;   /* Core 0, TASK_PRIO_RT        (24) */
-inline TaskHandle_t hMidiTask = nullptr;    /* Core 1, TASK_PRIO_MIDI_RX   (12) */
-inline TaskHandle_t hDBeamTask = nullptr;   /* Core 0, TASK_PRIO_DBEAM     (19) */
-inline TaskHandle_t hSeqBgTask = nullptr;   /* Core 1, TASK_PRIO_SEQ_SYSEX (14) */
-inline TaskHandle_t hControlTask = nullptr; /* Core 0, TASK_PRIO_CONTROL   (16) */
-inline TaskHandle_t hDisplayTask = nullptr; /* Core 0, TASK_PRIO_OLED      (18) */
-inline TaskHandle_t hLaserTask = nullptr;   /* Core 1, TASK_PRIO_RT        (24) */
-inline TaskHandle_t hNvsTask = nullptr;     /* Core 1, TASK_PRIO_NVS       (9)  */
+ * SECTION 6 — FREERTOS TASK HANDLES
+ * Mirrors init_audio_system() in audio.cpp — do not edit priorities here alone.
+ * ═══════════════════════════════════════════════════════════════════════════ */
+inline TaskHandle_t hAudioTask = nullptr;   /* Core 0, prio 24, stack 16384 */
+inline TaskHandle_t hDBeamTask = nullptr;   /* Core 0, prio 19, stack  6144 */
+inline TaskHandle_t hDisplayTask = nullptr; /* Core 0, prio 18, stack 16384 */
+inline TaskHandle_t hControlTask = nullptr; /* Core 0, prio 17, stack  8192 */
+inline TaskHandle_t hLaserTask = nullptr;   /* Core 1, prio 24, stack  8192 */
+inline TaskHandle_t hSeqBgTask = nullptr;   /* Core 1, prio 12, stack  4096 */
+inline TaskHandle_t hMidiTask = nullptr;    /* Core 1, prio  6, stack  8192 */
+inline TaskHandle_t hNvsTask = nullptr;     /* Core 1, prio  3, stack 16384 */
 
 /* ═══════════════════════════════════════════════════════════════════════════
  * SECTION 7 — CORE RUNTIME MODE & UI STATE
@@ -784,9 +667,7 @@ inline std::atomic<int> seqPatchIndex{ 4 };
 inline std::atomic<uint8_t> seqLivePatchVersion{ 0 };
 inline std::atomic<uint8_t> drumLivePatchVersion{ 0 };
 
-/* ── [G4] Preset browser indices — canonical in globals.h ─────────────────
- * Written by SEQ SETUP factory preset browser (case 5, l2=4/5) and echoed on
- * hardware load.  Read by display.cpp for factory preset name on OLED.       */
+/* Factory preset browser readouts (SEQ SETUP + display.cpp). */
 #ifndef G_LAST_PRESET_DECLARED
 #define G_LAST_PRESET_DECLARED
 inline std::atomic<uint8_t> g_lastSynthPreset{ 0 };
@@ -804,10 +685,7 @@ inline std::atomic<uint8_t> g_lastDrumPreset{ 0 };
  * applyHarpParam(idx, v14) in patches.h keeps Level 2 and Level 3 in sync.
  * Direct writes to these atomics MUST be followed by a livePatch update.
  * ═══════════════════════════════════════════════════════════════════════════ */
-/* NOTE: these initialisers are pre-boot placeholders only.  The AUTHORITATIVE
- * factory defaults live in settings.h (HarpSettings/[S7]); settings_sync_to_ssot()
- * overwrites every atomic here at PHASE 4 of boot, before audio starts.  Kept in
- * lock-step with AllSettings to avoid a confusing two-source default set. */
+/* Pre-boot placeholders — settings_sync_to_ssot() overwrites from settings.h at boot. */
 inline std::atomic<float> harpWaveform{ 0.0f };
 inline std::atomic<float> harpAttack{ 0.008f };
 inline std::atomic<float> harpDecay{ 0.25f };
@@ -827,7 +705,7 @@ inline std::atomic<float> harpEnvCutAmount{ 0.0f };
  * SECTION 9 — SEQ SYNTH PARAMETER ATOMICS
  * Same three-level model as Section 8; applySeqParam() is canonical setter.
  * ═══════════════════════════════════════════════════════════════════════════ */
-/* Pre-boot placeholders — authoritative defaults in settings.h (SeqSettings/[S7]). */
+/* Pre-boot placeholders — overwritten from settings.h at boot. */
 inline std::atomic<float> seqWaveform{ 1.0f };
 inline std::atomic<float> seqAttack{ 0.005f };
 inline std::atomic<float> seqDecay{ 0.22f };
@@ -855,13 +733,8 @@ inline std::atomic<float> drumDecay[8];    /* 0.0–1.0 → decay time constant 
 inline std::atomic<float> drumVolume[8];   /* 0.0–1.0 → output gain               */
 inline std::atomic<float> drumNoiseMix[8]; /* 0.0–1.0 → noise / tone blend        */
 
-/* ── [G3] Drum body waveform selection ─────────────────────────────────── */
-/* Per-channel body oscillator waveform index into WAVE_TABLE_DIR[].
- * Default = DRUM_DEFAULT_WAVE_IDX (8 = WT_SINE) for all channels.
- * Wavetable-capable voices: KICK(0), SNARE(1), TOM-H(5), TOM-L(6), PERC(7).
- * CLAP(2), HAT-C(3), HAT-O(4) use noise/square — this index is ignored.
- * Call applyDrumWave(ch, idx) in patches.h to change; reads initDrumParameters(). */
-inline std::atomic<uint8_t> drumWaveIdx[8]; /* init → DRUM_DEFAULT_WAVE_IDX */
+/* Per-channel body wave index (WAVE_TABLE_RAM).  Default WT_SINE (8). */
+inline std::atomic<uint8_t> drumWaveIdx[8];
 
 /* ── Drum kits ─────────────────────────────────────────────────────────────
  * A kit selects (a) a per-voice tuning preset loaded into drumTune/Decay/Vol/
@@ -908,29 +781,25 @@ inline constexpr float DRUM_KIT_NOISE[(int)DrumKitId::COUNT][8] = {
  * SECTION 11 — SEQUENCER TRANSPORT & PATTERN STATE
  * ═══════════════════════════════════════════════════════════════════════════ */
 inline std::atomic<bool> seqPlaying{ false };
-/* Read anywhere; write only via seq_set_recording() or seq_stop() disarm (groovebox). */
 inline std::atomic<bool> seqRecording{ false };
 inline std::atomic<bool> isMotionPlayback{ false };
 inline std::atomic<int32_t> seqBpm{ 120 };       /* 40–240 BPM           */
 inline std::atomic<int32_t> seqTranspose{ 0 };   /* ±12 semitones        */
-/* [SEQ-ARP] Melody arpeggiator — rows 0–7 latch; output on voice 7. */
+/* Melody arpeggiator — latch rows 0–7; output on seq voice 7. */
 inline std::atomic<bool>    seqArpEnabled{ false };
 inline std::atomic<uint8_t> seqArpPattern{ 0 };  /* arp::Pattern 0–7     */
 inline std::atomic<uint8_t> seqArpRate{ 5 };     /* arp::Rate; default 1/16 */
 inline std::atomic<uint8_t> seqArpGate{ 2 };     /* arp::GATE_PCT index 0–7 */
 
-/* [HARP-ARP] POLY8/SOLO only — simplified 4-pattern / 4-rate UI. */
+/* Harp arpeggiator — POLY8/SOLO; simplified 4-pattern / 4-rate UI. */
 inline std::atomic<bool>    harpArpEnabled{ false };
 inline std::atomic<uint8_t> harpArpPattern{ 0 };
 inline std::atomic<uint8_t> harpArpRate{ 2 };    /* default 1/16 */
 inline std::atomic<uint8_t> harpArpGate{ 1 };    /* default 50% */
-/* [WS1] Harp internal pitch-bend / manual tune — a CONTINUOUS frequency
- * multiplier applied per harp voice (NOT discrete transpose/octave): 1.0 = unity,
- * range ≈ 2^(±12/12) = 0.5..2.0 (±1 octave). Lets the player tune/bend the whole
- * harp on the fly, which suits the laser-harp far better than fixed switches. */
+/* Harp pitch-bend multiplier (~0.5–2.0, ±1 octave).  SequencerSettings.harp_pitch in NVS. */
 inline std::atomic<float> harpPitchMult{ 1.0f };
 inline std::atomic<uint8_t> seqActiveBank{ 0 };  /* 0–15                 */
-inline std::atomic<uint8_t> seqActiveChain{ 0 }; /* 0–3 (0=synth 1=drum) */
+inline std::atomic<uint8_t> seqActiveChain{ 0 }; /* 0–3 pattern row      */
 inline std::atomic<uint8_t> seqLength{ 16 };     /* 1–64 steps           */
 inline std::atomic<uint8_t> seqCurrentStep{ 0 }; /* 0-(seqLength-1)      */
 
@@ -947,7 +816,7 @@ inline std::atomic<uint8_t> songCurrentRepeat{ 0 }; /* repeats done so far   */
 inline std::atomic<float> mixHarpVol{ 0.8f };
 inline std::atomic<float> mixSeqVol{ 0.8f };
 inline std::atomic<float> mixDrumsVol{ 0.9f };
-/* [P4] Equal-power pan −1 (full L) .. +1 (full R); 0 = centre.            */
+/* Equal-power pan −1..+1 per bus. */
 inline std::atomic<float> mixHarpPan{ 0.f };
 inline std::atomic<float> mixSeqPan{ 0.f };
 inline std::atomic<float> mixDrumsPan{ 0.f };
@@ -978,10 +847,9 @@ inline std::atomic<int> drumFxIndexB{ 0 };
 
 /* ── Shared aux bus parameters ─────────────────────────────────────────── */
 /* CMD_H_FX_TIME / CMD_S_FX_TIME → masterAuxDlyTime  (0.0–1.5 s)
- * CMD_AUX_DLY_FB               → masterAuxDlyFb    (0.0–0.95)  [v5.3]
  * CMD_H_FX_SIZE / CMD_S_FX_SIZE → masterAuxRevSize  (0.0–0.95)
- * CMD_AUX_REV_DMP              → masterAuxRevDamp  (0.0–1.0)   [v5.3]    */
-/* Pre-boot placeholders — authoritative defaults in settings.h (FxSettings/[S7]). */
+ * CMD_AUX_DLY_FB  → masterAuxDlyFb    (0.0–0.95)
+ * CMD_AUX_REV_DMP → masterAuxRevDamp  (0.0–1.0) */
 inline std::atomic<float> masterAuxDlyTime{ 0.35f };
 inline std::atomic<float> masterAuxDlyFb{ 0.45f };
 inline std::atomic<float> masterAuxRevSize{ 0.55f };
@@ -1013,16 +881,10 @@ inline std::atomic<DbeamTarget> currentDbeamTarget{ DbeamTarget::HARP };
 /* Written by dbeam.cpp routeDbeamExpression(), read by harp.cpp HARP engine  */
 inline std::atomic<int32_t> dbeam_svf_cutoff{ 0 }; /* [0, 32768] → SVF cutoff addend */
 inline std::atomic<uint16_t> dbeam_mod_depth{ 0 }; /* [0, 16383] → LFO depth addend  */
-/* [DBEAM-TGT] Same addends for the melody (seq) synth — read by groovebox.cpp.
- * Only ONE target set is non-zero at a time (routeDbeamExpression zeros the
- * other), so switching Target can't leave a synth stuck-modulated.            */
-inline std::atomic<int32_t> dbeam_seq_svf_cutoff{ 0 }; /* [0, 32768] → seq SVF cutoff addend */
-inline std::atomic<uint16_t> dbeam_seq_mod_depth{ 0 }; /* [0, 16383] → seq LFO depth addend  */
-/* [DBEAM-VOL] VOLUME route is an INVERTED volume pedal: the bus rests at the
- * user's normal level (captured here) and dips toward 0 as the hand nears the
- * sensor, auto-returning when the hand lifts.  While the hand is OFF the sensor
- * the baseline continuously adopts the live bus level, so the MASTER H.Vol/S.Vol
- * knobs still set the rest level without fighting the pedal.                    */
+/* Seq-synth D-BEAM addends (when target = Melody).  routeDbeamExpression zeros the other target. */
+inline std::atomic<int32_t> dbeam_seq_svf_cutoff{ 0 };
+inline std::atomic<uint16_t> dbeam_seq_mod_depth{ 0 };
+/* VOLUME route baseline levels (inverted pedal — see applyDbeamRoute in patches.h). */
 inline std::atomic<float> dbeamVolBaseHarp{ 1.0f };
 inline std::atomic<float> dbeamVolBaseSeq { 1.0f };
 
@@ -1033,33 +895,8 @@ inline std::atomic<uint8_t> wireHarpMidiChannel{ 1 }; /* 1–16                 
 inline std::atomic<uint8_t> wireSeqMidiChannel{ 2 };
 inline std::atomic<uint8_t> wireDrumMidiChannel{ 10 }; /* GM drums standard channel */
 inline std::atomic<uint32_t> lastWebSysexMs{ 0 };      /* heartbeat watchdog        */
-/** [LINK-HEAL] After NVS persist completes, PINGs may have stalled for seconds
- * while flash was armed — extend isAppConnected() so echoes resume immediately. */
-inline std::atomic<uint32_t> g_linkExtendUntilMs{ 0 };
 
-static inline void linkExtendPersistWindow(uint32_t extraMs = 12000u) {
-  const uint32_t until = millis() + extraMs;
-  const uint32_t prev = g_linkExtendUntilMs.load(std::memory_order_relaxed);
-  if (until > prev)
-    g_linkExtendUntilMs.store(until, std::memory_order_relaxed);
-}
-
-/** Refresh the App heartbeat stamp after a long NVS window (PINGs were blocked). */
-static inline void linkTouchAppHeartbeat() {
-  lastWebSysexMs.store(millis(), std::memory_order_relaxed);
-}
-/* [LINK-HEAL] Bulk seq_ext ring drops (motion/BANK/etc.) — coalesced hi slots
- * never increment this.  Packed into CMD_CPU_LOAD bits 7–13 for App telemetry. */
-inline std::atomic<uint32_t> g_seq_ext_drops{ 0 };
-/* Set when recordMotionParam steals lane 0 (4 lanes full) — pulse on CMD_CPU_LOAD bit 14. */
-inline std::atomic<bool> g_plock_lane_steal{ false };
-
-/* ── App connectivity ──────────────────────────────────────────────────────
- * [v6.0 TRANSPORT-OWNERSHIP] Transport (play/stop/record/BPM) is ALWAYS owned
- * by the hardware surface — the 3 buttons + encoder.  The App is a read-only
- * reflector of this state, fed by echoes + the sync supervisor (groovebox.cpp).
- * The old transportAvailable hand-off (App-claims-control) was retired: it only
- * created a window where the buttons fell dead while the App was connected.   */
+/* Transport (play/stop/record/BPM) always owned by hardware; App is read-only. */
 
 /* ═══════════════════════════════════════════════════════════════════════════
  * SECTION 15 — LASER SHOW STATE
@@ -1067,15 +904,7 @@ inline std::atomic<bool> g_plock_lane_steal{ false };
 inline std::atomic<bool> laserShowMode{ false };
 inline std::atomic<bool> midiHueControl{ false };
 
-/* [LASER-SHOW v2] Projector animation engine.  The galvo is a SINGLE-AXIS fan of
- * 8 beams (no XY vector graphics), so a "show" is colour + brightness motion
- * across those 8 beams.  The sequencer drives it: melody notes set each beam's
- * hue (MIDI→Hue) and pulse its brightness through the HUE ADSR; drum hits fire a
- * global white flash.  Anim Mode shapes the per-beam brightness:
- *   PULSE  — pure per-beam melody ADSR (notes light their own beam)
- *   CHASE  — a bright dot tracks the sequencer step, sweeping the fan
- *   STROBE — whole fan gated by a fixed-rate square wave (classic strobe)
- *   WAVE   — ambient sinusoid travels across the fan, animated even when idle */
+/* LASER SHOW projector animation (8-beam fan; sequencer-driven colour/brightness). */
 enum class LaserShowAnim : uint8_t { PULSE = 0, CHASE = 1, STROBE = 2, WAVE = 3 };
 inline std::atomic<LaserShowAnim> laserShowAnim{ LaserShowAnim::PULSE };
 
@@ -1110,19 +939,8 @@ inline std::atomic<float> hueRelease{ 0.2f };
 
 inline HueEnvelopeState stringHueEnv[MAX_STRINGS];
 
-/* [LASER-SHOW] Per-beam MIDI note that drives the beam's hue while LASER SHOW is
- * active.  Written by the sequencer melody trigger (audio core) on note-on and
- * LATCHED through the note's release so the colour stays put while the hue ADSR
- * fades — read lock-free by the laser task.
- * [FIX-RACE] Promoted to std::atomic<int8_t>: written by Core-0 audio task,
- * read by Core-1 laser task with no explicit lock.  Use relaxed ordering —
- * atomic guarantees no torn byte on ESP32.  initShowBeamNotes() replaces the
- * removed brace-initialiser (C++17 atomic arrays cannot be brace-initialised). */
-inline std::atomic<int8_t> g_showBeamNote[MAX_STRINGS];
-static inline void initShowBeamNotes() {
-  for (int i = 0; i < MAX_STRINGS; ++i)
-    g_showBeamNote[i].store(60, std::memory_order_relaxed);
-}
+/* Per-beam latched melody note for LASER SHOW hue (written by seq trigger). */
+inline int8_t g_showBeamNote[MAX_STRINGS] = { 60, 60, 60, 60, 60, 60, 60, 60 };
 
 /* ═══════════════════════════════════════════════════════════════════════════
  * SECTION 16 — DISPLAY & TELEMETRY STATE
@@ -1138,12 +956,11 @@ inline std::atomic<bool> displayDirty{ true };
 enum class ConfirmAction : uint8_t {
   NONE = 0,
   SEQ_CLEAR  = 1,   /* clear active pattern grid + reset both sounds to preset 0  */
-  SOFT_RESET = 2,   /* RAM-only return to initial working image (no NVS, no boot) */
-  SAVE       = 3,   /* scoped NVS persist  — confirmArg = ResetScope (0..3)       */
-  RESET      = 4,   /* scoped RAM wipe + persist + reboot — confirmArg = scope    */
-  LOAD       = 5,   /* scoped reload from NVS (no reboot) — confirmArg = scope     */
-  USR_SOUND_SAVE = 6, /* save live patch → user slot — confirmArg = eng<<6|idx     */
-  USR_PAT_SAVE   = 7, /* save active pattern → user pat slot — confirmArg = idx    */
+  SAVE       = 2,   /* scoped NVS persist  — confirmArg = ResetScope (0..3)       */
+  RESET      = 3,   /* scoped RAM wipe + persist + reboot — confirmArg = scope    */
+  LOAD       = 4,   /* scoped reload from NVS (no reboot) — confirmArg = scope     */
+  USR_SOUND_SAVE = 5, /* save live patch → user slot — confirmArg = eng<<6|idx     */
+  USR_PAT_SAVE   = 6, /* save active pattern → user pat slot — confirmArg = idx    */
   /* Add a new action: extend this enum, drawConfirmDialog() copy, confirmDispatch(). */
 };
 inline std::atomic<bool>          confirmOpen{ false };
@@ -1178,21 +995,19 @@ inline std::atomic<int> scopeWritePtr{ 0 }; /* laser task writes, display reads 
 inline std::atomic<bool> g_saveRequest{ false };
 inline std::atomic<bool> g_saveArmed{ false };
 inline std::atomic<bool> g_loopParked{ false }; /* audio.h NVS save gate     */
-/* [SAVE-FIX13] Set TRUE by settings_save_task AFTER every NVS write completes.
- * The laser task consumes it (exchange→false) and runs its beam re-home +
- * detection blackout — INDEPENDENTLY of whether it managed to catch g_saveArmed
- * and park.  An NVS flash write disables the cache + IPC-stalls Core 1, which can
- * glitch the beam-detect hardware even if the laser never formally parked; this
- * guarantees a clean recovery after EVERY save regardless of park timing. */
+/* Set TRUE by settings_save_task after every NVS write completes.
+ * The laser task consumes it (exchange→false) and runs beam re-home +
+ * detection blackout — independently of whether it caught g_saveArmed and parked.
+ * NVS flash can glitch beam-detect even without a formal park; this guarantees
+ * clean recovery after every save regardless of park timing. */
 inline std::atomic<bool> g_beamRecover{ false };
-/* [STUCK-FIX] Set on a play-mode / scale change to make the laser task clear its
- * per-string physical-hold detection state (stringActive[] + counters + latch)
- * so a beam held across the change can't leave a stuck/silent "active" string. */
+/* Set on play-mode / scale change so the laser task clears per-string physical-hold
+ * state (stringActive[], counters, latch) — a beam held across the change cannot
+ * leave a stuck/silent "active" string. */
 inline std::atomic<bool> g_beamClearReq{ false };
-/* [PERSIST-UI] millis() until which the OLED shows a "DONE!" toast. Set by
- * settings_save_task on a SUCCESSFUL NVS write so the user gets confirmation in
- * ANY view — including the SEQ MATRIX grid, which previously stayed unchanged
- * after a long-press save and looked like it had done nothing. */
+/* millis() until which the OLED shows a "SAVED" toast. Set by settings_save_task
+ * on a successful NVS write so the user gets confirmation in any view (including
+ * the SEQ MATRIX grid, which otherwise stays unchanged after a long-press save). */
 inline std::atomic<uint32_t> g_saveFlashMs{ 0 };
 /** millis() until which the OLED shows a "SAVE FAIL" toast after a failed commit. */
 inline std::atomic<uint32_t> g_saveFailFlashMs{ 0 };
@@ -1206,95 +1021,11 @@ inline SemaphoreHandle_t g_saveDoneSem{ nullptr };
 /** Set by handleScopedReset; NvsWorker calls esp_restart() after a successful save. */
 inline std::atomic<bool> g_restartAfterSave{ false };
 
-/** TRUE while handleScopedReset → reset_persist_task is running (blocks save/load). */
-inline std::atomic<bool> g_resetInProgress{ false };
-
-/** TRUE while an async scoped LOAD task is running (extends App link window). */
-inline std::atomic<bool> g_loadInProgress{ false };
-
-/** reset_persist_task sets this; NvsWorker ACKs CMD_SCOPED_RESET (not SESSION_SAVE). */
-inline std::atomic<bool> g_resetAckPending{ false };
-
 /** Result of the last NvsWorker save (for reset-persist task error UI). */
 inline std::atomic<bool> g_saveLastOk{ true };
 
-/** millis() until which a transient oledStatusLines message is held; 0 = none. */
-inline std::atomic<uint32_t> g_oledStatusHoldMs{ 0 };
-
-/** [SAVE-WEDGE-FIX] Self-heal persist flags left stuck by a crash / TWDT-kill
- *  mid-write.  A wedged g_saveArmed or g_resetInProgress otherwise makes EVERY
- *  subsequent SAVE/RESET/LOAD hit an early `saveInProgress()` / g_resetInProgress
- *  guard and NACK forever → the field-reported "Save/Reset always FAILED!".
- *
- *  This recovery used to live ONLY inside requestScopedSave(), which the App save
- *  path reaches AFTER its own early NACK guard and which handleScopedReset()/the
- *  LOAD path never reach at all — so the recovery was effectively unreachable.
- *  Pulling it into a shared helper lets every persist entry point call it FIRST.
- *
- *  Safe to call unconditionally: it clears a flag only when NO real operation is
- *  in flight (a genuine save always has g_saveRequest set while it runs).        */
-static inline void recoverWedgedPersistFlags() {
-  /* g_saveArmed set without g_saveRequest ⇒ the worker died after arming but the
-   * request was already consumed — stale park/arm. */
-  if (g_saveArmed.load(std::memory_order_acquire) &&
-      !g_saveRequest.load(std::memory_order_acquire)) {
-    g_saveArmed.store(false, std::memory_order_release);
-    g_loopParked.store(false, std::memory_order_release);
-  }
-  /* g_resetInProgress with nothing queued/armed ⇒ an aborted reset. */
-  if (g_resetInProgress.load(std::memory_order_acquire) &&
-      !g_saveRequest.load(std::memory_order_acquire) &&
-      !g_saveArmed.load(std::memory_order_acquire)) {
-    g_resetInProgress.store(false, std::memory_order_release);
-  }
-}
-
-/** Arm a scoped NVS save. scope: 0=FULL 1=BANKS_PATTERNS 2=MOTION 3=SETTINGS.
- *  Returns true if the request was queued; false if a save is already in flight.
- *  [FIX-H1] Callers must check the return value and send a NACK to the App when
- *  false — the previous silent drop caused the App to think the save was queued. */
-static inline bool requestScopedSave(uint8_t scope) {
-  recoverWedgedPersistFlags();   /* [SAVE-WEDGE-FIX] heal stale flags before the guard */
-  if (g_resetInProgress.load(std::memory_order_acquire) ||
-      g_saveRequest.load(std::memory_order_acquire) ||
-      g_saveArmed.load(std::memory_order_acquire))
-    return false;                             /* [FIX-H1] was: silent return */
-  g_persistScope.store(scope & 3u, std::memory_order_release);
-  /* [SAVE-FIX14] Reboot after every successful save.  The laser beam-detect
-   * hardware (AC-coupled LT1016 + 74HC74 latch) cannot be reliably recovered
-   * in-place after an NVS flash write glitches it — every software re-home /
-   * threshold-refresh / detection-blackout attempt still leaves the beams stuck
-   * "broken" within ~2 s.  A clean restart re-runs the proven boot init path
-   * (which always brings the beams up correctly), and the just-written settings
-   * are reloaded from NVS, so nothing is lost.  This is an accepted workaround,
-   * not a root-cause fix. */
-  g_restartAfterSave.store(true, std::memory_order_release);
-  g_saveRequest.store(true, std::memory_order_release);
-  displayDirty.store(true, std::memory_order_relaxed);
-  return true;
-}
-
-/** Arm an async BANKS_PATTERNS-only NVS save WITHOUT triggering a reboot.
- *  Used by user-slot save (saveLiveToUserSlot) so saving a sound patch does
- *  not restart the device.  Returns false if a save is already in flight.
- *  [FIX-L2] Replaces the blocking settings_persist_blocking() call that froze
- *  the MIDI RX task for up to 20 s. */
-static inline bool requestBanksOnlySave() {
-  if (g_resetInProgress.load(std::memory_order_acquire) ||
-      g_saveRequest.load(std::memory_order_acquire) ||
-      g_saveArmed.load(std::memory_order_acquire))
-    return false;
-  g_persistScope.store((uint8_t)1u /*BANKS_PATTERNS*/, std::memory_order_release);
-  g_restartAfterSave.store(false, std::memory_order_release); /* no reboot */
-  g_saveRequest.store(true, std::memory_order_release);
-  displayDirty.store(true, std::memory_order_relaxed);
-  return true;
-}
-
-/** Full session save (all four NVS blobs). */
-static inline void requestSessionSave() {
-  (void)requestScopedSave(0u);
-}
+/** SysEx cmd echoed as ACK after a successful persist (156=SAVE, 169=RESET). */
+inline std::atomic<uint8_t> g_persistAckCmd{ 156 };
 
 /** True while the save handshake or NVS write is in flight — ControlPoll should
  * not mutate patchMux / hwSeqData during this window. */
@@ -1309,32 +1040,49 @@ static inline void saveForceUnlock() {
   g_saveArmed.store(false, std::memory_order_release);
   g_saveRequest.store(false, std::memory_order_release);
   g_restartAfterSave.store(false, std::memory_order_release);
-  g_resetInProgress.store(false, std::memory_order_release);
-  g_resetAckPending.store(false, std::memory_order_release);
-  g_loadInProgress.store(false, std::memory_order_release);
-  g_oledStatusHoldMs.store(0u, std::memory_order_release);
-  g_saveFailFlashMs.store(millis() + 1500u, std::memory_order_relaxed);
-  displayDirty.store(true, std::memory_order_relaxed);
   if (g_saveDoneSem) xSemaphoreGive(g_saveDoneSem);
+}
+
+/** Clear a wedged save handshake (stale g_saveRequest without NvsWorker progress). */
+static inline void recoverWedgedPersistFlags() {
+  if (!g_saveRequest.load(std::memory_order_acquire)) return;
+  if (g_saveArmed.load(std::memory_order_acquire)) return;
+  static uint32_t reqSince = 0;
+  if (!reqSince) reqSince = millis();
+  if (millis() - reqSince > 2500u) {
+    saveForceUnlock();
+    reqSince = 0;
+  }
+}
+
+/** Arm a scoped NVS save. scope: 0=FULL 1=BANKS_PATTERNS 2=MOTION 3=SETTINGS. */
+static inline void requestScopedSave(uint8_t scope) {
+  recoverWedgedPersistFlags();
+  if (g_saveRequest.load(std::memory_order_acquire) ||
+      g_saveArmed.load(std::memory_order_acquire))
+    return;
+  g_persistAckCmd.store(156, std::memory_order_relaxed);
+  g_persistScope.store(scope & 3u, std::memory_order_release);
+  /* Reboot after successful save — beam-detect hardware recovers cleanly on cold boot. */
+  g_restartAfterSave.store(true, std::memory_order_release);
+  g_saveRequest.store(true, std::memory_order_release);
+  displayDirty.store(true, std::memory_order_relaxed);
+}
+
+/** Full session save (all four NVS blobs). */
+static inline void requestSessionSave() {
+  requestScopedSave(0u);
 }
 
 /* Audio load monitoring (written by audio_synthesis_task, read by display) */
 inline std::atomic<uint8_t> g_audio_load_pct{ 0 };
 
 /* DSP quality / capacity controls */
-/* [HEADROOM-A] SVF oversampling defaults to ×1 (the working level for all real
- * performance) so the filter character stays CONSTANT while playing — no
- * audible ×2→×1 shifts under load.  ×2 is engaged only when the engine is
- * essentially idle (see audio.cpp restore branch), where the extra detail is
- * inaudible but free.  This buys ~half the per-voice filter cost back as
- * headroom for more voices + FX. */
+/* SVF oversampling: ×1 default (constant filter character under load). */
 inline std::atomic<int> g_svf_oversample{ 1 };            /* 1=working default, 2=idle luxury */
 inline std::atomic<int> g_seq_voice_cap{ SEQ_POLYPHONY }; /* voice polyphony cap */
 inline std::atomic<int> g_aux_mode{ 2 };                  /* 1=low-load 2=normal (audio.h) */
-/* [LOAD-SHED] osc2 (detune/unison) layer enable.  Disabled by the load-shedder
- * above ~85 % to halve the per-voice oscillator cost on dense detuned patches —
- * less audible than dropped notes, so it sheds BEFORE the seq voice cap.  Read
- * once per buffer by harp.cpp + groovebox.cpp; restored after a calm spell. */
+/* Osc2 (detune) layer — load-shedder may disable above ~85% CPU. */
 inline std::atomic<bool> g_osc2_enable{ true };
 
 /* Auto-save support (saves are manual by default — ENC long press) */
@@ -1347,11 +1095,10 @@ inline std::atomic<uint32_t> settings_last_change_ms{ 0 };
  * Never touched from the audio task.
  * ═══════════════════════════════════════════════════════════════════════════ */
 inline uint32_t beamGateHoldMs = 200; /* gate-hold window in ms */
-/* [STUCK-FIX] Anti-stuck fail-safe: a held note is force-released if the beam has
- * not been SOLIDLY broken for this many ms (the counter-based release still acts
- * first under normal play).  Tune here for different feels — larger = more
- * tolerant of momentary detection dropouts on long holds, smaller = snappier
- * recovery from a stuck beam.  Set to 0 to DISABLE the timeout entirely. */
+/* Anti-stuck fail-safe: force-release a held note if the beam has not been solidly
+ * broken for this many ms (counter-based release still acts first under normal play).
+ * Larger = more tolerant of momentary dropouts; smaller = snappier recovery.
+ * Set to 0 to disable the timeout. */
 inline uint32_t beamStuckReleaseMs = 350;
 inline bool hasOLED = true;
 
@@ -1359,26 +1106,19 @@ inline uint8_t scaleR[NUM_SCALES] = { 0, 255, 0, 255, 127, 0, 255, 200, 50, 255,
 inline uint8_t scaleG[NUM_SCALES] = { 255, 0, 255, 127, 0, 255, 255, 50, 200, 100, 255, 0, 255, 255, 255, 255 };
 inline uint8_t scaleB[NUM_SCALES] = { 255, 255, 0, 0, 255, 127, 0, 255, 255, 255, 100, 100, 255, 255, 255, 255 };
 inline uint8_t scaleWhiteLevel[NUM_SCALES] = { 32, 64, 32, 64, 32, 64, 32, 40, 45, 50, 32, 64, 32, 10, 0, 0 };
-/* Per-scale beam comparator margin (DAC-B threshold seed).  uint16_t / range
- * 0–2000 restores the v28.9 sweep range — the old build clamped here to 2000 and
- * needed values well above 255 on some frames.  computeHardwareDACThreshold()
- * maps this to DAC counts via marginDac = scaleMargin × 4095/3300.
- * Default 500: matches the LT1016 comparator + sensor circuit's real sweet
- * spot (good triggering across beam colours).  This is the FACTORY seed; live
- * edits (HARP SETUP → Margin) are persisted to NVS via LaserSettings.margin
- * and restored on boot. */
+/* Per-scale beam comparator margin (DAC threshold seed, 0–2000).  Persisted in LaserSettings.margin. */
 inline uint16_t scaleMargin[NUM_SCALES] = { 1100, 1100, 1100, 1100, 1100, 1100, 1100, 1100, 1100, 1100, 1100, 1100, 1100, 1100, 1100, 1100 };
 inline uint8_t scaleTouchConfirm[NUM_SCALES] = { 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2 };
 inline uint8_t scaleReleaseConfirm[NUM_SCALES] = { 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3 };
 
-/* ── [EDGE] Per-string edge compensation — runtime-editable + NVS-persisted ──
+/* ── Per-string edge compensation — runtime-editable + NVS-persisted ───────
  * Outer strings (0,7) reflect less light into the photosensor (shallower beam
  * angle + smaller aperture), so they need a LOWER comparator threshold to be
  * detected reliably.  This is a per-string MULTIPLIER on the DAC threshold,
  * applied in computeHardwareDACThreshold():  final = scaleMargin × edge × colour.
  * Stored as integer percent (100 = ×1.00) so it is encoder- and NVS-friendly.
  *
- * [EDGE-PERSCALE] INDEPENDENT per-string table PER SCALE: edgeComp[NUM_SCALES][8].
+ * Independent per-string table per scale: edgeComp[NUM_SCALES][8].
  * Every scale gets its own 8 values because trigger height depends on the beam's
  * COLOUR (a red string trips at a different height than a blue one), so even two
  * mono-colour scales can need different compensation — and the two rainbow scales
@@ -1414,7 +1154,7 @@ inline uint8_t edgeComp[NUM_SCALES][8] = { EDGE_COMP_DEFAULT_ROWS };
 /* Edge-comp editor page state (full-screen 8-bar editor, like telemetry AGC). */
 inline std::atomic<bool> edgeEditOpen{ false };
 inline std::atomic<int>  edgeEditSel  { 0 };   /* selected string 0..7            */
-inline std::atomic<int>  edgeEditScale{ 0 };   /* [EDGE-NAV] scale under edit via OC (kept in sync with harpScaleIndex) */
+inline std::atomic<int>  edgeEditScale{ 0 };   /* scale under edit via OC (synced with harpScaleIndex) */
 
 /* ═══════════════════════════════════════════════════════════════════════════
  * SECTION 19 — DSP BUFFER ALLOCATIONS
@@ -1430,7 +1170,7 @@ inline uint16_t drumLivePatch[32];                /* 8 drums × 4 params     */
 inline uint16_t userBank[NUM_PATCHES][PARAMS_PER_PRESET]; /* harp user bank   */
 inline uint16_t seqBank[NUM_PATCHES][PARAMS_PER_PRESET];  /* seq user bank    */
 
-/* ── [USER-SLOTS] User sound bank ──────────────────────────────────────────
+/* ── User sound bank ───────────────────────────────────────────────────────
  * Reuses the EXISTING 256-slot banks: factory presets live in slots 0..127
  * (NUM_NAMED_PRESETS), and slots 128..191 are the 64 user "save your sound"
  * slots per engine (harp = userBank, seq = seqBank).  Saving copies the live
@@ -1465,11 +1205,10 @@ inline void setUserSlotName(uint8_t engine, uint8_t uidx, const char* nm) {
   snprintf(g_userSlotName[engine][uidx], 16, "%s", nm);
 }
 
-/* [USER-PAT-SLOTS] 64 named melody+drum pattern library slots, separate from
- * the 16-bank session grid.  Each slot stores synth rows 0–7, drum rows 8–15,
- * companion seq-synth + drum presets, and per-pattern transpose.  Persisted in
- * the sparse "usrpat" NVS blob; names in "usrpatnames" (generic "PAT NN" when
- * empty).  App rename wired in Step 12.                                        */
+/* 64 named melody+drum pattern library slots, separate from the 16-bank session
+ * grid.  Each slot stores synth rows 0–7, drum rows 8–15, companion seq-synth +
+ * drum presets, and per-pattern transpose.  Persisted in sparse "usrpat" NVS;
+ * names in "usrpatnames" (generic "PAT NN" when empty). App rename via sysex. */
 static constexpr int NUM_USER_PAT_SLOTS = 64;
 
 struct UserPatternSlot {
@@ -1501,25 +1240,22 @@ inline void setUserPatName(uint8_t uidx, const char* nm) {
 /* ── Hardware sequencer grid ───────────────────────────────────────────── */
 /* hwSeqData[bank][chain][track]
  *   bank  = 0–15  (16 program banks)
- *   chain = 0–3   (0=synth, 1=drum; chains 2–3 accessible via sysex)
+ *   chain = 0–3   (pattern row; UI pins active chain to 0)
  *   track = 0–15  each is a 64-bit step bitmask (bit N = step N active,
  *                 N = 0..63).  seqLength (1–64) sets how many steps loop.  */
 inline uint64_t hwSeqData[16][4][16];
 
-/* [PER-PATTERN-TRANSPOSE] Melody transpose (−12..+12 semitones) stored PER
- * pattern slot, mirroring hwSeqData[bank][chain].  This is the persistent SSOT
- * (saved inside PatternsBlob); the ACTIVE pattern's value is mirrored into the
- * seqTranspose atomic, which the audio step engine reads lock-free every buffer.
- * Single-byte cells → no torn reads, so the audio core reads its active cell
- * without taking patchMux; UI/MIDI edits write the active cell directly.       */
+/* Melody transpose (−12..+12 semitones) stored per pattern slot, mirroring
+ * hwSeqData[bank][chain].  Persistent SSOT (PatternsBlob); the active pattern's
+ * value is mirrored into seqTranspose, which the audio step engine reads every
+ * buffer.  Single-byte cells — UI/MIDI edits write the active cell directly. */
 inline int8_t seqPatternTranspose[16][4] = {};
 
 /* ── P-lock motion matrix ──────────────────────────────────────────────── */
 /* hwMotionData[bank][chain][lane]
  *   bank  = 0–15 (mirrors hwSeqData bank)
  *   chain = 0–3  (mirrors hwSeqData chain)
- *   lane  = 0–3  (4 simultaneous automation lanes per slot)
- *   steps = MOTION_STEPS_PER_LANE (64) — one automation cell per seq step     */
+ *   lane  = 0–3  (4 simultaneous automation lanes per slot)               */
 inline MotionLane hwMotionData[16][4][4];
 
 /* ── Voice pools ───────────────────────────────────────────────────────── */
@@ -1587,11 +1323,9 @@ extern Adafruit_SH1106G display;
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 /* initDrumParameters — sets drum atomics to production defaults.
- * [G6] Also initialises drumWaveIdx[8] to DRUM_DEFAULT_WAVE_IDX (WT_SINE). */
+ * Also initialises drumWaveIdx[8] to DRUM_DEFAULT_WAVE_IDX (WT_SINE). */
 static inline void initDrumParameters() {
-  /* Kept in lock-step with settings.h DrumSettings/[S7] (the authoritative
-   * factory drum kit).  These are placeholders used only by the reset paths
-   * before settings_sync_to_ssot() overwrites them with the same values.       */
+  /* Placeholders until settings_sync_to_ssot() loads DrumSettings from NVS. */
   /*                                KCK    SNR    CLP    HHC    HHO    TMH    TML    PRC */
   static const float TUNE_INIT[8]  = { 0.50f, 0.50f, 0.50f, 0.55f, 0.50f, 0.62f, 0.38f, 0.50f };
   static const float DECAY_INIT[8] = { 0.60f, 0.45f, 0.40f, 0.30f, 0.65f, 0.48f, 0.52f, 0.38f };
@@ -1666,7 +1400,7 @@ static inline void clearMotionMatrix() {
   portEXIT_CRITICAL(&motionMux);
 }
 
-/* recordMotionParam — write one P-lock cell (hardware encoder + App SysEx).
+/* recordMotionParam — call from handleSysexCommand for cmd < CMD_BPM only.
  * Guards against playback re-recording with isMotionPlayback flag.          */
 static inline void recordMotionParam(uint8_t cmd, uint16_t val) {
   if (!seqRecording.load(std::memory_order_acquire)) return;
@@ -1674,8 +1408,7 @@ static inline void recordMotionParam(uint8_t cmd, uint16_t val) {
   if (isMotionPlayback.load(std::memory_order_acquire)) return;
   const uint8_t bank = seqActiveBank.load(std::memory_order_relaxed);
   const uint8_t chain = seqActiveChain.load(std::memory_order_relaxed);
-  const uint8_t step = (uint8_t)(seqCurrentStep.load(std::memory_order_acquire)
-                                 & (MOTION_STEPS_PER_LANE - 1u));
+  const uint8_t step = seqCurrentStep.load(std::memory_order_acquire) & 15u;
   portENTER_CRITICAL(&motionMux);
   int tgt = -1, emp = -1;
   for (int l = 0; l < 4; ++l) {
@@ -1687,14 +1420,10 @@ static inline void recordMotionParam(uint8_t cmd, uint16_t val) {
   }
   if (tgt < 0) {
     if (emp < 0) {
-      /* Four lanes already used — steal lane 0 so recording never silently drops. */
-      tgt = 0;
-      g_plock_lane_steal.store(true, std::memory_order_relaxed);
-      for (int s = 0; s < (int)MOTION_STEPS_PER_LANE; ++s)
-        hwMotionData[bank][chain][tgt].steps[s] = 0xFFFFu;
-    } else {
-      tgt = emp;
+      portEXIT_CRITICAL(&motionMux);
+      return;
     }
+    tgt = emp;
     hwMotionData[bank][chain][tgt].targetCmd = cmd;
   }
   hwMotionData[bank][chain][tgt].steps[step] = val;
@@ -1710,6 +1439,6 @@ void setupToFactoryDefaults();
 uint16_t IRAM_ATTR getHardwareDACThreshold(int stringIdx);
 void IRAM_ATTR computeHardwareDACThreshold(int stringIdx, float measured_ac_amplitude_mv);
 
-/* [C5] setupDMA_ADC() shim removed — setup() now calls initDBeamSensor() directly. */
+/* setupDMA_ADC() removed in v6.1 — setup() calls initDBeamSensor() directly. */
 
 #endif /* GLOBALS_H */

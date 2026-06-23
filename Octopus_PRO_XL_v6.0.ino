@@ -1,34 +1,18 @@
 /* ═════════════════════════════════════════════════════════════════════════════
- * Octopus PRO XL v6.0.00 — Laser Harp Groovebox
+ * Octopus PRO XL v6.1.00 — Laser Harp Groovebox
  * © 2026 DIODAC ELECTRONICS / iSystem. All Rights Reserved.
  *
  * PROPRIETARY AND CONFIDENTIAL. Unauthorized copying, distribution, modification,
  * or use of this software or firmware, in whole or in part, is strictly prohibited
  * without prior written permission from DIODAC ELECTRONICS.
  * ═════════════════════════════════════════════════════════════════════════════
- * Octopus_PRO_XL_v6.0.ino — v6.0.00  DUAL-CORE SCHEDULER & BOOT KERNEL
+ * Octopus_PRO_XL_v6.0.ino — v6.1.00  BOOT KERNEL
  *
- * Changes vs v5.3.x:
- *  [A] wires.h removed — WebApp authority logic absorbed into patches.h.
- *  [B] laser_sweep_task body removed from .ino — it now lives in laser.cpp.
- *      .ino simply passes the function pointer to xTaskCreatePinnedToCore
- *      inside init_audio_system() (audio.cpp).  All task creation is in one
- *      place: init_audio_system().
- *  [C] setupMCPWM() removed from PHASE 6 — initLaser() (laser.cpp) calls it
- *      internally.  Only initLaser() needs to be called from setup().
- *  [D] updateHarpPatch() / updateSeqPatch() / updateSampleBuffersSync()
- *      removed from PHASE 8 — these functions no longer exist in v5.3.
- *      livePatch arrays are maintained by patches.h apply* functions.
- *  [E] harpMode set to CLOSED at boot (not OPENING); laser animation now
- *      triggered explicitly by the user via the OC long-press gesture.
- *  [F] initMotionMatrix() defined here inline — clears hwMotionData garbage
- *      from BSS segment before the sequencer task starts.
+ * setup() phases: serial diag → loadSettings (NVS "octopus") → peripherals →
+ * init_audio_system() (spawns all FreeRTOS tasks — see audio.cpp) → g_systemReady.
+ * loop() on Core 1 is a safety fallback only; all real-time work is in tasks.
  *
- * Core assignment (v6.0 production):
- *   Core 0: AudioSynth(24, incl. DMA-locked step engine) ControlPoll(5)
- *            OledRender(4)
- *   Core 1: LaserSweep(24) SeqSysexOut(14) MidiUsbRx(10) dbeam_adc(6)
- *            NvsWorker(2) loop(1)
+ * Core assignment — code_info.h §1 / init_audio_system() in audio.cpp.
  * ═════════════════════════════════════════════════════════════════════════════ */
 #include <Arduino.h>
 #include <soc/gpio_struct.h>
@@ -84,9 +68,9 @@ void setup() {
   Serial.begin(115200);
   delay(100);
 
-  Serial.println(F("\n╔════════════════════════════════════════╗"));
-  Serial.println(F("║  OCTOPUS PRO XL v6.0.00 — BOOT KERNEL  ║"));
-  Serial.println(F("╚════════════════════════════════════════╝\n"));
+  Serial.printf("\n╔════════════════════════════════════════╗\n");
+  Serial.printf("║  OCTOPUS PRO XL v%s — BOOT KERNEL  ║\n", SYSTEM_FW_VERSION);
+  Serial.printf("╚════════════════════════════════════════╝\n\n");
 
   /* ── REBOOT DIAGNOSTIC ───────────────────────────────────────────────────────
    * Decode WHY the chip last reset.  This is the single most useful clue for the
@@ -171,11 +155,6 @@ void setup() {
     Serial.println(F("not detected — headless mode"));
   }
 
-  /* Factory-reset combo: hold OC + SCALE during INITIALIZING… (before NVS load). */
-  init_fast_gpio();
-  initBootButtons();
-  pollBootFactoryReset();
-
   /* PHASE 4 — Load settings from NVS */
   Serial.print(F("  [4] NVS settings ... "));
   if (!loadSettings()) {
@@ -188,7 +167,6 @@ void setup() {
    * loaded (or factory) blob; calling initDrumParameters() now would overwrite
    * those persisted values with placeholders, wiping saved drum tuning on every
    * boot.  The reset paths inside settings_load() still init-then-sync.        */
-  initShowBeamNotes(); /* [FIX-RACE] zero-safe init of atomic g_showBeamNote[] */
 
   /* PHASE 5 — Hardware I/O */
   Serial.print(F("  [5] SPI bus ... "));
@@ -258,7 +236,7 @@ void setup() {
     if (xSemaphoreTake(i2cMutex, pdMS_TO_TICKS(20)) == pdTRUE) {
       display.clearDisplay();
       display.setCursor(6, 20);
-      display.println(F("OCTOPUS PRO XL v6.0.00"));
+      display.printf("Octopus PRO XL v%s", SYSTEM_FW_VERSION);
       display.setCursor(6, 36);
       display.println(F("     READY TO PLAY"));
       display.display();

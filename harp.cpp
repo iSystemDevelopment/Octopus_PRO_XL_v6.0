@@ -1,31 +1,17 @@
 /* ═════════════════════════════════════════════════════════════════════════════
- * Octopus PRO XL v6.0.00 — Laser Harp Groovebox
+ * Octopus PRO XL v6.1.00 — Laser Harp Groovebox
  * © 2026 DIODAC ELECTRONICS / iSystem. All Rights Reserved.
  *
  * PROPRIETARY AND CONFIDENTIAL. Unauthorized copying, distribution, modification,
  * or use of this software or firmware, in whole or in part, is strictly prohibited
  * without prior written permission from DIODAC ELECTRONICS.
  * ═════════════════════════════════════════════════════════════════════════════
- * harp.cpp — v6.0.00  LASER-HARP INSTRUMENT — IMPLEMENTATION
+ * harp.cpp — v6.1.00  LASER-HARP INSTRUMENT — IMPLEMENTATION
  *
- * Dedicated laser-harp engine.  The per-sample DSP and all its math primitives
- * live in the anonymous namespace below — a fully private copy (sinf / noise /
- * wavetable / SVF / soft-clip), sharing NO symbols with the groovebox seq/drum
- * engine in synth_core.h.  This is the "full isolation" split: the harp owns its
- * whole signal path top-to-bottom.
- *
- * Fixes folded in vs the old synth.* path:
- *   • Single ADSR model — per-buffer float rates are the only source of truth;
- *     the dead integer release-step recompute and accent constants are gone.
- *   • Correct MIDI note ownership — the MIDI keyboard path allocates its own
- *     voice and stamps a MIDI owner (the old code mis-stamped a physical owner,
- *     so note-off could never find the voice).
- *   • Full-scale velocity — 0–127 → Q15 (was a half-scale shift that never
- *     reached the accent threshold).
- *   • D-BEAM MOD depth now reaches the pitch/wave LFO routes (was gated out).
- *   • [PD-2] Poly headroom: sum × (32768/√N) before h_soft_clip.
- *   • Voice release serialised under patchMux (recursive on-core), matching the
- *     trigger path, so env_state can't tear against the audio task.
+ * Self-contained wavetable synth for the 8-beam laser harp (harp.h public API).
+ * Private DSP in anonymous namespace: SVF, ADSR, soft-clip, safe_sinf, arp latch.
+ * Play modes POLY8 / STRINGS / SOLO; harp arpeggiator in POLY8+SOLO; D-BEAM expression
+ * via routeDbeamExpression.  Called from audio_synthesis_task on Core 0 only.
  * ═════════════════════════════════════════════════════════════════════════════ */
 #include "harp.h"
 

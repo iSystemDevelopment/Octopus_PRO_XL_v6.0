@@ -1,12 +1,12 @@
 /* ═════════════════════════════════════════════════════════════════════════════
- * Octopus PRO XL v6.0.00 — Laser Harp Groovebox
+ * Octopus PRO XL v6.1.00 — Laser Harp Groovebox
  * © 2026 DIODAC ELECTRONICS / iSystem. All Rights Reserved.
  *
  * PROPRIETARY AND CONFIDENTIAL. Unauthorized copying, distribution, modification,
  * or use of this software or firmware, in whole or in part, is strictly prohibited
  * without prior written permission from DIODAC ELECTRONICS.
  * ═════════════════════════════════════════════════════════════════════════════
- * fog.h — v6.0.00  FOG REJECTION MODULE  (self-contained, isolated branch)
+ * fog.h — v6.1.00  FOG REJECTION MODULE  (self-contained, isolated branch)
  *
  * Purpose
  *   Reduce FALSE laser-harp triggers caused by haze/fog.  Fog scatter is
@@ -65,22 +65,10 @@ static inline void IRAM_ATTR fogPublishAmp(int si, float amp) {
     g_fogAmp[si].store(amp, std::memory_order_relaxed);
 }
 
-/** [FOG-FIX] Common-mode fog floor = the 2nd-SMALLEST *valid* string amplitude.
- *  Fog lifts every string together, so the quietest hand-free strings sit at the
- *  fog level.  Using the 2nd-smallest (not the absolute min) ignores one
- *  anomalously-low channel, and — unlike a median — it does NOT rise with
- *  polyphony, so a real chord (up to ~6 held strings) is never falsely rejected.
- *
- *  ACCURACY FIX: samples ≤ 0 (a dead or not-yet-published channel) are SKIPPED.
- *  The old scan counted those zeros, so TWO un-sampled channels made m1=m2=0 and
- *  collapsed the floor to 0 — silently disabling rejection at cold-start and on a
- *  second dead sensor.  `validOut` returns how many real (>0) samples fed the
- *  estimate; callers treat < 2 as "no meaningful differential".  When < 2 valid
- *  the floor is 0 (a permissive floor — the safe, let-notes-through direction).
- *
- *  Still a branch-only one-pass scan (NO std::sort) so there is ZERO flash-
- *  resident dependency to fault during an IRAM cache-off window.  Shared as the
- *  single source of truth with the TELEMETRY → FOG REJECT reference lines.       */
+/** Common-mode fog floor = 2nd-smallest valid string amplitude.
+ *  Skips samples ≤ 0 (dead/unpublished channels).  Returns valid count via
+ *  validOut; fewer than 2 valid samples → floor 0 (permissive, let triggers through).
+ *  Branch-only scan — no std::sort (IRAM-safe in laser_sweep_task). */
 static inline float IRAM_ATTR fogFloorEx(int& validOut) {
   float m1 = 1e30f;   /* smallest valid     */
   float m2 = 1e30f;   /* 2nd-smallest valid */
@@ -102,11 +90,9 @@ static inline float IRAM_ATTR fogFloor() {
   return fogFloorEx(valid);
 }
 
-/** Accept string ci as a REAL hand (true) or reject it as fog (false).
- *  Returns true unconditionally when disabled → existing trigger logic intact.
- *  [FOG-FIX] Also returns true (permissive) until at least 2 strings have a valid
- *  sample, so the warm-up window and a multi-dead-sensor case can never wrongly
- *  suppress a real break.  Differential test: amp[ci] ≥ floor + margin.          */
+/** Accept string ci as a real hand (true) or fog scatter (false).
+ *  Disabled → always true.  Fewer than 2 valid samples → permissive true.
+ *  Otherwise: amp[ci] ≥ floor + margin. */
 static inline bool IRAM_ATTR fogAccept(int ci) {
   if (!fogRejectEnabled.load(std::memory_order_relaxed)) return true;
   int valid;

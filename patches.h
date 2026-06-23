@@ -1,66 +1,26 @@
 /* ═════════════════════════════════════════════════════════════════════════════
- * Octopus PRO XL v6.0.00 — Laser Harp Groovebox
+ * Octopus PRO XL v6.1.00 — Laser Harp Groovebox
  * © 2026 DIODAC ELECTRONICS / iSystem. All Rights Reserved.
  *
  * PROPRIETARY AND CONFIDENTIAL. Unauthorized copying, distribution, modification,
  * or use of this software or firmware, in whole or in part, is strictly prohibited
  * without prior written permission from DIODAC ELECTRONICS.
  * ═════════════════════════════════════════════════════════════════════════════
- * patches.h — v6.0.00  LIVE PATCH BRAIN + WEBAPP WIRE ARBITRATION
+ * patches.h — v6.1.00  RUNTIME SSOT + WIRE AUTHORITY
  *
- * Consolidates: patches.h (v5.0.03) + wires.h (v5.0.02)
+ * Atomics (globals.h) are the single source of truth for live sound/state.
+ * livePatch[] arrays are derived via syncLivePatchFromAtomics() — never stored
+ * in NVS directly.  Direction A (boot): settings_sync_to_ssot() → atomics →
+ * livePatch.  Direction B (performance edit): apply*Param / applyMasterParam →
+ * atomics (+ userBank where applicable) → txSysex echo when wire permits.
  *
- * ── STAGE 1: BIDIRECTIONAL LIVE PATCH CONSISTENCY ─────────────────────────
+ * App link: lastWebSysexMs + APP_HEARTBEAT_TIMEOUT_MS (4.5 s) → appSyncActive;
+ * isAppConnected() delegates to pollSyncHeartbeat() + appSyncActive.
+ * checkWireAuthority() blocks local encoder *echo* while connected (params
+ * still apply on-device).  Transport is always hardware-owned (v6.0+).
  *
- *  THE ROOT BUG (fixed here):
- *  handleSysexCommand (midi.cpp) receives cmd 0–63 (synth/drum params) and
- *  writes directly to livePatch[] without updating the corresponding atomic
- *  mirrors (harpAttack, seqCutoff, drumTune[], etc.).  The audio task reads
- *  livePatch[] (correct), but the display, settings save, and interface.cpp
- *  all read the atomics — which remain stale after a WebApp parameter change.
- *  The encoder path (mutateSynth in interface.cpp) correctly updates both
- *  atomic and livePatch[] inside patchMux.  The WebApp path did not.
- *
- *  FIX: applyHarpParam / applySeqParam / applyDrumParam
- *  Each function writes livePatch[], the corresponding atomic, and userBank[]
- *  in one atomic critical section.  handleSysexCommand now calls these instead
- *  of writing livePatch[] directly.
- *
- *  ADDITIONAL FIXES:
- *  [W1] syncLivePatchFromAtomics() — replaces updateHarpPatch / updateSeqPatch
- *       / updateSampleBuffersSync in audio.h.  Canonical atomics → livePatch[]
- *       direction.  Called by settings_sync_to_ssot() after NVS load.
- *  [W2] recallHarpPatch / recallSeqPatch — real implementations (not stubs).
- *  [W3] BPM is the seqBpm atomic (SSOT); DMA-locked step engine reads it live.
- *  [W4] WebApp authority logic absorbed from wires.h — no second file needed.
- *  [W5] Complete parameter footprint table — PARAM_TABLE[PARAM_TABLE_COUNT].
- *       Every controllable CMD is documented with name, group, default, flags.
- *
- * ── THREE-LEVEL PARAMETER MODEL ────────────────────────────────────────────
- *
- *   Level 1  g_settings struct  (settings.h)   — NVS persist / load only
- *   Level 2  atomic mirrors     (globals.h)    — UI read, encoder write
- *   Level 3  livePatch[]        (globals.h)    — DSP read (harp.cpp/groovebox.cpp)
- *
- *   Direction A  NVS load:     g_settings → atomics → livePatch[]
- *                              settings_sync_to_ssot() → syncLivePatchFromAtomics()
- *   Direction B  Encoder turn: atomic + livePatch[] written together in patchMux
- *                              (mutateSynth in interface.cpp, calls txSysex echo)
- *   Direction C  WebApp rx:    applyHarpParam / applySeqParam / applyDrumParam
- *                              (writes both levels, was only livePatch[])
- *   Direction D  NVS save:     atomics → g_settings
- *                              settings_sync_from_ssot() — unchanged
- *
- * ── PARAMETER GROUPS ────────────────────────────────────────────────────────
- *
- *   GROUP 0  HARP_SYNTH    cmd   0–15   (16 params,  P_WAVEFORM..P_SPARE2)
- *   GROUP 1  SEQ_SYNTH     cmd  16–31   (16 params)
- *   GROUP 2  DRUM          cmd  32–63   (32 params,  8 drums × 4)
- *   GROUP 3  MASTER        cmd  64–96   (33 params,  vol/pitch/EQ/FX)
- *   GROUP 4  TRANSPORT     cmd  97–127  (31 params,  BPM/bank/seq control)
- *   GROUP 5  LASER         cmd 128–134  ( 7 params)
- *   GROUP 6  WIRE          cmd 135–137  ( 3 params,  MIDI channel routing)
- *
+ * Canonical apply* entry points for SEQ grid, master/mix/FX, drums, D-BEAM,
+ * song mode, and sendFullStateSync / echo* helpers live in this file.
  * ═════════════════════════════════════════════════════════════════════════════ */
 #pragma once
 #ifndef PATCHES_H
@@ -71,24 +31,12 @@
 #include <cstring>
 #include <algorithm>
 #include "globals.h"
-#include "midi.h"   /* txSysex, CMD_* constants, encodeMasterPitch */
-#include "assets.h" /* SOUND_BANK, PRESET_NAMES, NUM_PATCHES */
-#include "effect.h" /* [P4] FxChain fx — applyFxSend writes fx.*Insert sends */
+#include "midi.h"   
+#include "assets.h" 
+#include "effect.h" 
 
-/* [P4] decodeMasterPitch lives in interface.cpp (declared in interface.h).
- * Forward-declared here so applyMasterParam can map CMD_PITCH without pulling
- * the whole interface/GPIO header into every patches.h consumer.            */
 float decodeMasterPitch(uint16_t v14);
 
-/* ── CMD 138–147 are now declared in midi.h [M1] ───────────────────────── */
-/* CMD_SEQ_CHAIN=138 … CMD_DB_ROUTE=145 come from midi.h via #include chain */
-
-/* ═══════════════════════════════════════════════════════════════════════════
- * SECTION 1 — PARAMETER FOOTPRINT INDEX
- * Complete registry of every controllable parameter in the system.
- * ═══════════════════════════════════════════════════════════════════════════ */
-
-/* Parameter group identifiers */
 enum class PGroup : uint8_t {
   HARP_SYNTH = 0,
   SEQ_SYNTH = 1,
@@ -99,17 +47,16 @@ enum class PGroup : uint8_t {
   WIRE = 6
 };
 
-/* Parameter entry — one row per CMD in the footprint table */
+
 struct ParamEntry {
-  uint8_t cmd;          /* sysex CMD constant                           */
-  PGroup group;         /* logical group                                */
-  const char name[28];  /* human-readable label (max 27 chars + NUL)    */
-  uint16_t default_v14; /* factory default in 14-bit wire format         */
-  bool automatable;     /* can be recorded as a P-lock motion lane       */
-  bool echo_on_hw;      /* hardware encoder change fires txSysex echo    */
+  uint8_t cmd;          
+  PGroup group;        
+  const char name[28];  
+  uint16_t default_v14; 
+  bool automatable;     
+  bool echo_on_hw;      
 };
 
-/* clang-format off */
 static const ParamEntry PARAM_TABLE[] = {
   /* ── GROUP 0: HARP SYNTH (cmd 0–15) ──────────────────────────────────── */
   { CMD_H_WAVE +  0, PGroup::HARP_SYNTH, "H.Waveform",        0,    true,  true  },
@@ -212,7 +159,7 @@ static const ParamEntry PARAM_TABLE[] = {
   /* ── GROUP 4: TRANSPORT (cmd 97–127) ──────────────────────────────────── */
   { CMD_BPM,       PGroup::TRANSPORT, "BPM",            120,  false, true  },
   { CMD_BANK,      PGroup::TRANSPORT, "Seq Bank",        0,    false, true  },
-  { CMD_TRANSPOSE, PGroup::TRANSPORT, "Transpose",       12,   false, true  }, /* discrete v14 — not P-lockable */
+  { CMD_TRANSPOSE, PGroup::TRANSPORT, "Transpose",       12,   true,  true  }, /* -12..+12, 0=12 */
   { CMD_HW_S_LEN,  PGroup::TRANSPORT, "Seq Length",      16,   false, true  },
   { CMD_TRIG_MODE, PGroup::TRANSPORT, "Play/Stop",       0,    false, false },
   { CMD_GRID_TOG,  PGroup::TRANSPORT, "Grid Toggle",     0,    false, false },
@@ -265,7 +212,7 @@ static const ParamEntry PARAM_TABLE[] = {
   { CMD_S_MUTE,   PGroup::MASTER,     "Seq Mute",           0,    false, true  },
   { CMD_D_MUTE,   PGroup::MASTER,     "Drum Mute",          0,    false, true  },
 
-  /* ── Aux FX holes (cmd 142–143) ───────────────────────────────────────── */
+  /* ── Aux bus feedback/damping (cmd 142–143) ───────────────────────────── */
   { CMD_AUX_DLY_FB,  PGroup::MASTER,  "Aux Dly Feedback",  11469,true,  true  },
   { CMD_AUX_REV_DMP, PGroup::MASTER,  "Aux Rev Damp",      3277, true,  true  },
 
@@ -299,29 +246,6 @@ static inline const ParamEntry* findParamEntry(uint8_t cmd) {
   for (int i = 0; i < PARAM_TABLE_COUNT; ++i)
     if (PARAM_TABLE[i].cmd == cmd) return &PARAM_TABLE[i];
   return nullptr;
-}
-
-/* shouldRecordMotionCmd — PARAM_TABLE.automatable gate + discrete-encoding blocklist.
- * Discrete layout cmds use compact wire values; storing full-scale v14 corrupts
- * playback validation in seq_apply_motion().                                  */
-static inline bool shouldRecordMotionCmd(uint8_t cmd) {
-  switch (cmd) {
-  case CMD_HW_H_OCT:  case CMD_HW_S_OCT:  case CMD_HW_S_LEN:
-  case CMD_TRANSPOSE: case CMD_HW_MARGIN: case CMD_HW_GATE: case CMD_HW_WHITE:
-  case CMD_BPM:       case CMD_BANK:      case CMD_TRIG_MODE:
-  case CMD_GRID_TOG:  case CMD_CLR_PLOCKS: case CMD_STEP_SYNC:
-  case CMD_FETCH:     case CMD_HARD_SAVE: case CMD_PING:
-  case CMD_APP_SYNC_REQ:
-    return false;
-  default: break;
-  }
-  const ParamEntry* e = findParamEntry(cmd);
-  return e && e->automatable;
-}
-
-/* captureMotionParam — canonical P-lock capture hook (apply* + handleSysexCommand). */
-static inline void captureMotionParam(uint8_t cmd, uint16_t v14) {
-  if (shouldRecordMotionCmd(cmd)) recordMotionParam(cmd, v14);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -415,7 +339,7 @@ static inline uint16_t norm_to_v14(float f) {
   return (uint16_t)std::min(16383.0f, std::max(0.0f, f * 16383.0f));
 }
 
-/* ── applyHarpParam — write one HARP synth parameter (Direction C) ───────── */
+/* ── applyHarpParam — write one HARP synth parameter (Direction B) ───────── */
 static inline void applyHarpParam(int idx, uint16_t v14) {
   if (idx < 0 || idx >= PARAMS_PER_PRESET) return;
 
@@ -423,7 +347,7 @@ static inline void applyHarpParam(int idx, uint16_t v14) {
   const int pi = harpPatchIndex.load(std::memory_order_relaxed) & (NUM_PATCHES - 1);
   harpLivePatch[idx] = v14;
   userBank[pi][idx] = v14;
-  /* [W1-FIX] Also update the atomic mirror so UI/display/settings stay in sync */
+  /* Also update the atomic mirror so UI/display/settings stay in sync */
   switch (idx) {
     case (int)SynthParam::P_WAVEFORM:
       harpWaveform.store((float)(v14 % 25u), std::memory_order_relaxed);
@@ -472,7 +396,6 @@ static inline void applyHarpParam(int idx, uint16_t v14) {
     default: break; /* P_SPARE1/P_SPARE2 — no atomic to update */
   }
   portEXIT_CRITICAL(&patchMux);
-  captureMotionParam((uint8_t)(CMD_H_WAVE + idx), v14);
 }
 
 /* ── applySeqParam — write one SEQ synth parameter ───────────────────────── */
@@ -483,7 +406,7 @@ static inline void applySeqParam(int idx, uint16_t v14) {
   const int pi = seqPatchIndex.load(std::memory_order_relaxed) & (NUM_PATCHES - 1);
   seqLivePatch[idx] = v14;
   seqBank[pi][idx] = v14;
-  /* [W1-FIX] atomic mirror sync */
+  /* atomic mirror sync */
   switch (idx) {
     case (int)SynthParam::P_WAVEFORM:
       seqWaveform.store((float)(v14 % 25u), std::memory_order_relaxed);
@@ -531,7 +454,6 @@ static inline void applySeqParam(int idx, uint16_t v14) {
     default: break;
   }
   portEXIT_CRITICAL(&patchMux);
-  captureMotionParam((uint8_t)(CMD_S_WAVE + idx), v14);
 }
 
 /* ── applyDrumParam — write one DRUM parameter (idx = drum_ch*4 + param) ─── */
@@ -541,7 +463,7 @@ static inline void applyDrumParam(int idx, uint16_t v14) {
   const int par = idx & 3; /* 0=tune 1=decay 2=vol 3=noise */
   portENTER_CRITICAL(&patchMux);
   drumLivePatch[idx] = v14;
-  /* [W1-FIX] atomic mirror sync */
+  /* atomic mirror sync */
   const float fv = v14_to_norm(v14);
   switch (par) {
     case 0: drumTune[ch].store(fv, std::memory_order_relaxed); break;
@@ -550,7 +472,6 @@ static inline void applyDrumParam(int idx, uint16_t v14) {
     case 3: drumNoiseMix[ch].store(fv, std::memory_order_relaxed); break;
   }
   portEXIT_CRITICAL(&patchMux);
-  captureMotionParam((uint8_t)(32 + idx), v14);
 }
 
 /* ── encodeHarpParam — get current v14 value for any harp param (for echo) ── */
@@ -606,19 +527,17 @@ static inline uint16_t encodeSeqParam(int idx) {
 /* ═══════════════════════════════════════════════════════════════════════════
  * SECTION 4 — DIRECTION A: ATOMICS → LIVEPATCH (NVS load, patch recall)
  *
- * [W1] syncLivePatchFromAtomics — replaces updateHarpPatch / updateSeqPatch /
- *      updateSampleBuffersSync from audio.h.  Call after settings_sync_to_ssot()
- *      and after any bulk-atomic update that should be immediately audible.
+ * syncLivePatchFromAtomics() is the sole atomics → livePatch[] translator.
+ * Call after settings_sync_to_ssot() and after any bulk-atomic update that
+ * should be immediately audible.
  * ═══════════════════════════════════════════════════════════════════════════ */
 static inline void syncLivePatchFromAtomics() {
   /* [PATCH-PERF] Snapshot atomics outside patchMux; the lock only copies the
    * derived v14 arrays (~96 B) so audio/encoder writers aren't blocked for 32+
-   * atomic loads.
-   * [FIX-SPARE] Zero-initialise all arrays so P_SPARE1/P_SPARE2 (indices 14-15)
-   * don't carry stack garbage into livePatch — they have no corresponding atomic. */
-  uint16_t hp[PARAMS_PER_PRESET] = {};
-  uint16_t sp[PARAMS_PER_PRESET] = {};
-  uint16_t dp[32] = {};
+   * atomic loads. */
+  uint16_t hp[PARAMS_PER_PRESET];
+  uint16_t sp[PARAMS_PER_PRESET];
+  uint16_t dp[32];
 
   hp[(int)SynthParam::P_WAVEFORM] = (uint16_t)(std::min((float)24u, std::max(0.f, harpWaveform.load(std::memory_order_relaxed))));
   hp[(int)SynthParam::P_ATTACK] = norm_to_v14(std::min(1.f, std::max(0.f, harpAttack.load(std::memory_order_relaxed))));
@@ -674,8 +593,7 @@ static inline void syncPatchesToAudio() {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
- * SECTION 5 — PATCH RECALL
- * [W2] Real implementations — were bare-fence stubs in v5.0.03
+ * SECTION 5 — PATCH RECALL (userBank / factory SOUND_BANK → atomics → livePatch)
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 /* recallHarpPatch — load from userBank[] or factory SOUND_BANK and apply. */
@@ -722,8 +640,8 @@ static inline void recallHarpPatch(int idx, ParamSource src) {
   txPatchBlob(0u);
 }
 
-/* [SEQ-SOUND-PERSIST] Fan the current seqLivePatch[] out to the seq atomic
- * mirrors.  The atomics are the SSOT that settings_sync_from_ssot() reads at
+/* Fan seqLivePatch[] into seq atomics so NVS save captures live sound.
+ * The atomics are the SSOT that settings_sync_from_ssot() reads at
  * SAVE time, so ANY code that writes seqLivePatch[] directly (recallSeqPatch,
  * loadFactorySynthPattern companion preset, …) MUST call this — otherwise the
  * sound you HEAR (driven by seqLivePatch) and the sound that gets SAVED (driven
@@ -755,7 +673,7 @@ static inline void recallSeqPatch(int idx, ParamSource /*src*/) {
   sanitizePatch(seqLivePatch); /* clamp before atomics derive from it */
   portEXIT_CRITICAL(&patchMux);
 
-  syncSeqAtomicsFromLivePatch(); /* [SEQ-SOUND-PERSIST] keep atomics == live sound */
+  syncSeqAtomicsFromLivePatch(); /* keep seq atomics aligned with live sound */
 
   uint8_t newVer = (seqLivePatchVersion.load(std::memory_order_relaxed) + 1u) & 0xFFu;
   seqLivePatchVersion.store(newVer, std::memory_order_release);
@@ -776,11 +694,14 @@ static inline void recallSeqPatch(int idx, ParamSource /*src*/) {
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 /* ═══════════════════════════════════════════════════════════════════════════
- * SECTION 7 — WEBAPP WIRE ARBITRATION (absorbed from wires.h)
- * [W4] Heartbeat watchdog + authority router merged here — no second file.
+ * SECTION 7 — WEBAPP WIRE ARBITRATION
+ * Heartbeat watchdog + encoder echo lock.  OctopusApp PINGs ~800 ms; link drops
+ * after APP_HEARTBEAT_TIMEOUT_MS with no SysEx from the App.
  * ═══════════════════════════════════════════════════════════════════════════ */
 
-/* Thread-safe flag: WebApp has been heard from in the last 4.5 seconds */
+static constexpr uint32_t APP_HEARTBEAT_TIMEOUT_MS = 4500u;
+
+/* Thread-safe flag: WebApp has been heard from within APP_HEARTBEAT_TIMEOUT_MS */
 inline std::atomic<bool> appSyncActive{ false };
 
 /* Check WebApp heartbeat — called from checkWireAuthority and display task */
@@ -789,7 +710,7 @@ static inline void pollSyncHeartbeat() {
   const uint32_t last = lastWebSysexMs.load(std::memory_order_relaxed);
   const bool wasConnected = appSyncActive.load(std::memory_order_relaxed);
   /* last==0 → no app sysex ever received; never report connected at boot. */
-  const bool nowConnected = (last != 0UL) && (now - last < 4500UL);
+  const bool nowConnected = (last != 0UL) && (now - last < APP_HEARTBEAT_TIMEOUT_MS);
   appSyncActive.store(nowConnected, std::memory_order_release);
   /* [v6.0] Connection state changed → repaint (splash ⇄ dashboard).  Transport
    * ownership no longer toggles here: the hardware always owns it.            */
@@ -802,9 +723,9 @@ static inline void pollSyncHeartbeat() {
  * Rules:
  *   — Transport-critical params (CMD_TRIG_MODE, CMD_BPM, CMD_CLR_PLOCKS)
  *     always pass through regardless of WebApp lock.
- *   — When the WebApp has been active in the last 4.5 s, local hardware
- *     encoder turns are blocked from *echoing* (prevents wire fights) but
- *     [WS4] the parameter still applies on-device for live performance.
+ *   — When the App has been active within APP_HEARTBEAT_TIMEOUT_MS, local hardware
+ *     encoder turns are blocked from *echoing* (prevents wire fights) but the
+ *     parameter still applies on-device for live performance.
  *   — All WebApp-sourced changes and all non-local calls always pass. */
 static inline bool checkWireAuthority(uint8_t cmdKey, bool isLocalUiHardwareCall) {
   pollSyncHeartbeat();
@@ -825,45 +746,22 @@ static inline void wireTransmitParameter(uint8_t cmdKey, uint16_t value14Bit,
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
- * SECTION 8 — [P0 CLEANUP] removed updateHarpPatch / updateSeqPatch /
- * updateSampleBuffersSync inline aliases (no remaining callers).  All call
- * sites use syncLivePatchFromAtomics() directly — the canonical atomics →
- * livePatch[] sync.
+ * SECTION 8 — (reserved; legacy updateHarpPatch aliases removed — use
+ * syncLivePatchFromAtomics() directly)
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 /* ═══════════════════════════════════════════════════════════════════════════
  * SECTION 9 — SEQUENCER & GRID PARAMETER MANAGEMENT
  *
- * Covers the 4 holes found in the audit:
+ * Canonical applySeq* writers: store atomics, set displayDirty, txSysex echo.
+ * Wire CMDs: CMD_BANK, CMD_SEQ_CHAIN (138), CMD_HW_S_LEN, CMD_TRANSPOSE,
+ * CMD_H_MUTE (139), CMD_S_MUTE (140), CMD_D_MUTE (141) — handled in midi.cpp.
  *
- *  HOLE #1  seqActiveChain — no CMD constant existed (CMD_SEQ_CHAIN = 138)
- *  HOLE #2  mixHarpMute    — no CMD constant existed (CMD_H_MUTE    = 139)
- *  HOLE #3  mixSeqMute     — no CMD constant existed (CMD_S_MUTE    = 140)
- *  HOLE #4  mixDrumsMute   — no CMD constant existed (CMD_D_MUTE    = 141)
+ * seqUI_row / seqUI_col / seqUI_move* are local matrix cursor state only
+ * (globals.h + interface.cpp) — no SysEx CMD, not managed here.
  *
- *  ECHO GAP  interface.cpp SEQ SETUP changed bank/chain/length/transpose
- *            without txSysex echo — WebApp display was permanently stale.
- *            Fixed: use applySeqBank/Chain/Length/Transpose from here.
- *
- *  FETCH GAP sendFullStateSync missed 12+ parameters.
- *            Fixed: call echoFullSeqState() at the end of sendFullStateSync().
- *
- *  BOUNDARY  seqUI_row / seqUI_col / seqUI_move* / seqUI_renderMatrix:
- *            Pure local grid cursor state — NO CMD, no echo, no WebApp need.
- *            Lives in globals.h; driven by the SEQ MATRIX editor in interface.cpp.
- *            Not managed here.
- *
- * NEW CMD constants required in midi.h (add after CMD_WIRE_DRUM_CH = 137):
- *   static constexpr uint8_t CMD_SEQ_CHAIN = 138;
- *   static constexpr uint8_t CMD_H_MUTE    = 139;
- *   static constexpr uint8_t CMD_S_MUTE    = 140;
- *   static constexpr uint8_t CMD_D_MUTE    = 141;
- *
- * NEW handleSysexCommand cases required in midi.cpp extended switch:
- *   case CMD_SEQ_CHAIN: seqActiveChain.store((uint8_t)(v14&3u)); displayDirty.store(true); break;
- *   case CMD_H_MUTE:    mixHarpMute .store(v14 > 0u); break;
- *   case CMD_S_MUTE:    mixSeqMute  .store(v14 > 0u); break;
- *   case CMD_D_MUTE:    mixDrumsMute.store(v14 > 0u); break;
+ * sendFullStateSync() ends with echoFullSeqState() so the App receives the
+ * full SEQ transport + mute snapshot after APP_SYNC_REQ or SAVE/LOAD/RESET.
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 /* ── seqSyncTransposeToActivePattern — [PER-PATTERN-TRANSPOSE] ─────────────────
@@ -888,8 +786,9 @@ static inline void applySeqBank(uint8_t bank) {
   seqSyncTransposeToActivePattern(); /* new pattern → its own transpose */
 }
 
-/* ── applySeqChain — set active chain (0=synth 1=drum) + echo ────────────── */
-/* Requires CMD_SEQ_CHAIN = 138 to be added to midi.h                         */
+/* ── applySeqChain — set active pattern chain 0–3 + echo ───────────────────
+ * Chain selects which of four pattern rows is active per bank.  The UI pins
+ * this to chain 0 (melody row); the wire CMD exists for App/full-state sync. */
 static inline void applySeqChain(uint8_t chain) {
   chain = chain & 0x03u;
   seqActiveChain.store(chain, std::memory_order_release);
@@ -1039,23 +938,22 @@ static inline void echoAllDrumWaves();
 static inline void echoDbeamExprState();
 static inline void echoPbMapping();
 
-/* [G2] echoGridRow — send one row's ABSOLUTE 64-step state to the App.
- * [FIX-GRID-ENC] Now uses txGridRow (SX_SUB_GRID_ROW, sub 0x05) instead of
- * the old txSysex(CMD_GRID_ROW_LO/HI, pageAddr|byte) encoding.  The old format
- * overlapped page bits with byte bits (both shared bits 4-5 of v14), causing
- * steps 4 and 5 to be spuriously set for pages 1-3 even when they were inactive.
- * New format packs all fields into dedicated bytes — no overlap, no data loss.
- * Grid uses chain 0 (synth rows 0-7, drum rows 8-15) — the OctopusApp model.  */
+/* [G2] echoGridRow — send one row's ABSOLUTE 64-step state to the App as eight
+ * half-row messages (4 pages × LO/HI).  Grid uses chain 0 (synth rows 0-7,
+ * drum rows 8-15) — the OctopusApp matrix model.                             */
 static inline void echoGridRow(uint8_t bank, uint8_t row) {
   bank &= 3u;
   row &= 15u;
   portENTER_CRITICAL(&patchMux);
   const uint64_t mask = hwSeqData[bank][0][row]; /* chain pinned 0 */
   portEXIT_CRITICAL(&patchMux);
+  const uint16_t addr = (uint16_t)(((uint16_t)bank << 12) | ((uint16_t)row << 8));
   for (uint8_t page = 0; page < 4u; ++page) {
-    const uint8_t lo = (uint8_t)((mask >> (page * 16u))      & 0xFFu);
-    const uint8_t hi = (uint8_t)((mask >> (page * 16u + 8u)) & 0xFFu);
-    txGridRow(bank, row, page, lo, hi);
+    const uint16_t pageAddr = (uint16_t)(addr | ((uint16_t)page << 4));
+    const uint8_t lo = (uint8_t)((mask >> (page * 16)) & 0xFFu);
+    const uint8_t hi = (uint8_t)((mask >> (page * 16 + 8)) & 0xFFu);
+    txSysex(CMD_GRID_ROW_LO, (uint16_t)(pageAddr | lo));
+    txSysex(CMD_GRID_ROW_HI, (uint16_t)(pageAddr | hi));
   }
 }
 
@@ -1082,16 +980,15 @@ static inline void echoFullSeqState() {
   txSysex(CMD_BPM, (uint16_t)seqBpm.load(std::memory_order_relaxed));
   txSysex(CMD_TRIG_MODE, playingNow ? 16383u : 0u);
   txSysex(CMD_TRANSPORT, playingNow ? 1u : 0u);
-  /* Read seqRecording atomically — snapshot only, no seq_set_recording() echo. */
   txSysex(CMD_TRANSPORT, seqRecording.load(std::memory_order_relaxed) ? 3u : 4u);
-  /* Always echo step position — running or stopped (hardware bar never hides). */
-  txSysex(CMD_STEP_SYNC, (uint16_t)(seqCurrentStep.load(std::memory_order_relaxed) & 63u));
+  if (playingNow)
+    txSysex(CMD_STEP_SYNC, (uint16_t)(seqCurrentStep.load(std::memory_order_relaxed) & 63u));
   txSysex(CMD_SONG_MODE, songModeActive.load(std::memory_order_relaxed) ? 16383u : 0u);
   txSysex(CMD_BANK, (uint16_t)(seqActiveBank.load(std::memory_order_relaxed) & 15u));
   txSysex(CMD_SEQ_CHAIN, (uint16_t)(seqActiveChain.load(std::memory_order_relaxed) & 3u));
   txSysex(CMD_HW_S_LEN, (uint16_t)seqLength.load(std::memory_order_relaxed));
   txSysex(CMD_TRANSPOSE, (uint16_t)(seqTranspose.load(std::memory_order_relaxed) + 12));
-  /* [WS1] Harp continuous pitch-bend: v14 = (12·log2(mult))/12·8192 + 8192. */
+  /* Harp continuous pitch-bend: v14 = (12·log2(mult))/12·8192 + 8192. */
   {
     const float mult = harpPitchMult.load(std::memory_order_relaxed);
     const float semis = 12.0f * log2f(mult > 0.0001f ? mult : 0.0001f);
@@ -1129,7 +1026,7 @@ static inline void echoFullSeqState() {
   echoFullGrid();
 }
 /* ═════════════════════════════════════════════════════════════════════════════
- * SECTION 10 — SOUND ADDITIONS  (v6.0.00)
+ * SECTION 10 — SOUND ADDITIONS  (v6.1.00)
  *
  *   A. Two missing FX globals (aux delay feedback + reverb damp)
  *   B. Sound bank preset management (factory recall, user save, name query)
@@ -1198,7 +1095,7 @@ static inline void applyAuxParam(uint8_t cmd, uint16_t v14) {
   const float f = v14_to_norm(v14);
   switch (cmd) {
     case CMD_AUX_DLY_FB:
-      /* [WS11-FIX2] Hardware encoder sends v14 in [0,16383] → scale to [0,0.95]
+      /* Hardware encoder sends v14 in [0,16383] → scale to [0,0.95]
        * so that full-turn = max safe feedback, matching the App's AUX_ENC encoding.
        * Echo via echoAuxParams encoding (stored/0.95) keeps App display in sync. */
       masterAuxDlyFb.store(std::min(0.95f, f * 0.95f), std::memory_order_relaxed);
@@ -1220,9 +1117,8 @@ static inline void applyAuxParam(uint8_t cmd, uint16_t v14) {
       masterAuxRevSize.store(std::min(0.95f, f), std::memory_order_relaxed);
       txSysex(cmd, v14);
       break;
-    default: return;
+    default: break;
   }
-  captureMotionParam(cmd, v14);
 }
 
 /* Encode aux params back to v14 for echo / sendFullStateSync */
@@ -1234,7 +1130,7 @@ static inline void echoAuxParams() {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
- * SECTION 9B — CANONICAL MASTER / MIX / FX APPLY LAYER  [P4: single source]
+ * SECTION 9B — CANONICAL MASTER / MIX / FX APPLY LAYER (single source)
  *
  * The v14 ↔ value scaling for every master/mix/FX scalar lives HERE ONLY.
  * App-RX (midi.cpp), and optionally the encoder side (interface.cpp), funnel
@@ -1285,7 +1181,7 @@ static inline void applyMasterParam(uint8_t cmd, uint16_t v14, Origin o) {
     case CMD_S_FX_TIME: masterAuxDlyTime.store(n * 1.5f); break;
     case CMD_H_FX_SIZE:
     case CMD_S_FX_SIZE: masterAuxRevSize.store(std::min(0.95f, n)); break;
-    /* [WS11-FIX2] App encodes as v14 = (f/0.95)*16383; decode back with *0.95.
+    /* App encodes as v14 = (f/0.95)*16383; decode back with *0.95.
      * Previously min(0.95,n) stored n≈f/0.95 instead of f, drifting ~5% high. */
     case CMD_AUX_DLY_FB: masterAuxDlyFb.store(n * 0.95f); break;
     case CMD_AUX_REV_DMP: masterAuxRevDamp.store(n); break;
@@ -1307,14 +1203,11 @@ static inline void applyMasterParam(uint8_t cmd, uint16_t v14, Origin o) {
     }
     case CMD_LSR_DRUMFLASH: laserDrumFlash.store(n); break;
     case CMD_DB_ENABLED: dbeamEnabled.store(v14 > 0u); break;
-    /* [FIX-CURVE] Clamp to valid DBEAMCurve range (0-4). Old code stored
-     * v14 & 0xFF which allowed invalid enum values 5-255 to corrupt the state. */
-    case CMD_DB_CURVE: currentDbeamCurve.store((DBEAMCurve)(v14 % 5u)); break;
+    case CMD_DB_CURVE: currentDbeamCurve.store((DBEAMCurve)(v14 & 0xFFu)); break;
     case CMD_DB_OFFSET: dbeamHWCfg.offsetAdc = (int)v14; break;
     case CMD_DB_RANGE: dbeamHWCfg.rangeAdc = (int)v14; break;
     default: return; /* not ours → caller (RX switch) handles it, no echo */
   }
-  captureMotionParam(cmd, v14);
   echoIfNotApp(cmd, v14, o);
 }
 
@@ -1333,25 +1226,21 @@ static inline void applyFxSend(uint8_t cmd, uint16_t v14, Origin o) {
     default: owned = false; break;
   }
   portEXIT_CRITICAL(&patchMux);
-  if (owned) {
-    captureMotionParam(cmd, v14);
-    echoIfNotApp(cmd, v14, o);
-  }
+  if (owned) echoIfNotApp(cmd, v14, o);
 }
 
 /* Drum insert-A live tweak (CMD 190–192) — independent of D.REV/D.DLY aux atomics. */
 static inline void applyDrumInsertParam(uint8_t cmd, uint16_t v14, Origin o) {
   const float n = (float)v14 / 16383.0f;
-  bool owned = false;   /* [FIX-ECHO] only echo if cmd was actually handled */
   portENTER_CRITICAL(&patchMux);
   switch (cmd) {
-    case CMD_D_FX_WET: fx.drumInsert.fx.fx_mix = n;         owned = true; break;
-    case CMD_D_FX_P1:  fx.drumInsert.fx.p1 = n * 30.f;     owned = true; break;
-    case CMD_D_FX_P2:  fx.drumInsert.fx.p2 = n * 250.f;    owned = true; break;
+    case CMD_D_FX_WET: fx.drumInsert.fx.fx_mix = n; break;
+    case CMD_D_FX_P1:  fx.drumInsert.fx.p1 = n * 30.f; break;
+    case CMD_D_FX_P2:  fx.drumInsert.fx.p2 = n * 250.f; break;
     default: break;
   }
   portEXIT_CRITICAL(&patchMux);
-  if (owned) echoIfNotApp(cmd, v14, o);
+  echoIfNotApp(cmd, v14, o);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -1485,7 +1374,7 @@ static inline void loadFactoryPreset(bool isHarp, int idx) {
   std::atomic_thread_fence(std::memory_order_release);
 
   /* Echo all 16 params + patch-select so the WebApp display updates at once.
-   * [WS4] LFO route uses base+11 (cmd 11/27), not legacy 86/87 — matches App. */
+   * LFO route uses base+11 (cmd 11/27), matching OctopusApp wire encoding. */
   const uint8_t baseCmd = isHarp ? CMD_H_WAVE : CMD_S_WAVE;
   const uint8_t selCmd = isHarp ? CMD_H_PATCH : CMD_S_PATCH;
   for (int i = 0; i < PARAMS_PER_PRESET; ++i)
@@ -1577,9 +1466,7 @@ static inline void applyDrumWave(uint8_t ch, uint8_t wave_idx) {
   if (ch == 2u || ch == 3u || ch == 4u) return;
   drumWaveIdx[ch].store(wave_idx, std::memory_order_relaxed);
   /* v14 = (ch << 5) | wave_idx — pack both into one sysex */
-  const uint16_t v14 = (uint16_t)((ch << 5u) | wave_idx);
-  captureMotionParam(CMD_DRUM_WAVE, v14);
-  txSysex(CMD_DRUM_WAVE, v14);
+  txSysex(CMD_DRUM_WAVE, (uint16_t)((ch << 5u) | wave_idx));
 }
 
 /* applyDrumKit — select a drum kit: store the kit id (drives kick/hat character
@@ -1714,36 +1601,18 @@ static inline void echoDbeamExprState() {
 
 
 /* ═══════════════════════════════════════════════════════════════════════════
- * SECTION 10F — APP CONNECTIVITY + TRANSPORT ARBITRATION + SONG MODE  [v5.3.1]
+ * SECTION 10F — APP CONNECTIVITY + SONG MODE
+ * Transport is always hardware-owned (no App hand-off).  Song slot echo/apply
+ * helpers for CMD_SONG_* wire protocol.
  * ═══════════════════════════════════════════════════════════════════════════ */
 
-/* isAppConnected — true if the app sent a sysex heartbeat within 4.5 seconds.
- * Used by display_refresh_task to switch to the "APP CONNECTED" page, and
- * by midi.cpp when sending non-transport echoes.
- * [FIX-HEARTBEAT] Window changed from 3000ms → 4500ms to match pollSyncHeartbeat().
- * Old value (3000ms) caused a 1.5-second window where the OLED still showed
- * "APP CONNECTED" but txSysex() was already returning early — hardware encoder
- * turns during that gap were silently lost with no App knob update.            */
+/* isAppConnected — same predicate as appSyncActive after pollSyncHeartbeat().
+ * Used by display_refresh_task (APP CONNECTED splash), midi.cpp (echo gate),
+ * and settings_persist_blocking (defer non-critical echoes while saving).    */
 static inline bool isAppConnected() {
-  const uint32_t last = lastWebSysexMs.load(std::memory_order_relaxed);
-  /* last==0 = no app sysex ever received → never "connected" at boot.
-   * (Without this guard the first 4.5 s after power-on read as connected because
-   *  millis()-0 < 4500.) */
-  if (last == 0u) return false;
-  const uint32_t now = millis();
-  if ((now - last) < 4500u) return true;
-  /* Persist just finished — heartbeats may have stalled during flash write. */
-  if (now < g_linkExtendUntilMs.load(std::memory_order_relaxed)) return true;
-  /* Persist in flight — App initiated save/load/reset; keep TX path alive until
-   * the NvsWorker ACK/NACK is sent (heartbeats may stall during flash writes). */
-  return g_saveRequest.load(std::memory_order_acquire) ||
-         g_saveArmed.load(std::memory_order_acquire) ||
-         g_resetInProgress.load(std::memory_order_acquire) ||
-         g_loadInProgress.load(std::memory_order_acquire);
+  pollSyncHeartbeat();
+  return appSyncActive.load(std::memory_order_acquire);
 }
-
-/* [v6.0] transport_available() was removed — the hardware ALWAYS owns transport
- * (play/stop/record/BPM); there is no App hand-off to gate against anymore.   */
 
 /* echoSongState — echo all 16 song slots + current position to OctopusApp.
  * Called on CMD_APP_SYNC_REQ and after song mode state changes.            */
@@ -1761,15 +1630,9 @@ static inline void echoSongState() {
     const uint16_t v14 = (uint16_t)(((uint16_t)(i & 0xFu) << 10) | ((uint16_t)(st.bank & 0xFu) << 6) | ((uint16_t)(st.chain & 0x3u) << 4) | ((uint16_t)(st.repeats & 0xFu)));
     txSysex(CMD_SONG_STEP, v14);
   }
-  /* [FIX-SONG-POS] Use same CMD_SONG_POS encoding as the ring (groovebox.cpp):
-   *   v14 = (step & 0xF) << 4
-   * Old echoSongState used (step<<8|repeat)>>1 which puts step in bits 7-11,
-   * while the App decoder reads (v14>>4)&0xF (bits 4-7) and the ring sets bit
-   * pattern step<<4.  Old encoding: step=1 → v14=128, App reads (128>>4)&0xF=8.
-   * New encoding: step=1 → v14=16, App reads (16>>4)&0xF=1.  Repeat is ignored
-   * by the App so it is not included.                                           */
-  txSysex(CMD_SONG_POS,
-          (uint16_t)((songCurrentStep.load(std::memory_order_relaxed) & 0xFu) << 4));
+  /* Current play position */
+  const uint16_t pos = (uint16_t)(((uint16_t)songCurrentStep.load(std::memory_order_relaxed) << 8) | ((uint16_t)songCurrentRepeat.load(std::memory_order_relaxed)));
+  txSysex(CMD_SONG_POS, pos >> 1u); /* fit in v14: shift >>1 (scale 0-127) */
 }
 
 /* applySongStep — decode CMD_SONG_STEP v14 and update hwSongData.          */

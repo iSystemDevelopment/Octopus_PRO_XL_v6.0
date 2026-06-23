@@ -1,40 +1,20 @@
 /* ═════════════════════════════════════════════════════════════════════════════
- * Octopus PRO XL v6.0.00 — Laser Harp Groovebox
+ * Octopus PRO XL v6.1.00 — Laser Harp Groovebox
  * © 2026 DIODAC ELECTRONICS / iSystem. All Rights Reserved.
  *
  * PROPRIETARY AND CONFIDENTIAL. Unauthorized copying, distribution, modification,
  * or use of this software or firmware, in whole or in part, is strictly prohibited
  * without prior written permission from DIODAC ELECTRONICS.
  * ═════════════════════════════════════════════════════════════════════════════
- * groovebox.h — v6.0.00  MELODY SEQUENCER + DRUM ENGINE — PUBLIC INTERFACE
+ * groovebox.h — v6.1.00  MELODY SEQUENCER + DRUM ENGINE — PUBLIC INTERFACE
  *
- * [GB-MERGE] Consolidates: sequencer.h/cpp · patterns.h · drum_synth.h
+ * Seq melody synth (8 voices, voice 7 = arp output), TR-909 drum engine,
+ * pattern/transport/grid UI hooks.  HARP is in harp.h — not here.
  *
- * SCOPE: seq melody engine + TR-909 drum engine + pattern management +
- *        transport + grid UI.  HARP IS NOT HERE — laser harp is in harp.h/cpp.
- *
- * [v6.0.00] Maintenance fixes (seq note-off under patchMux, drum snapshot):
- *  [FIX-1] release_seq_note serialised under patchMux (matches harp path).
- *          ADSR rates come from seq_synth_fill_buf each buffer — no integer
- *          release_step recompute on note-off.
- *  [FIX-2] fire_tuned_drum snapshots drumLivePatch[ch*4..+3] under patchMux
- *          before touching any DrumVoice field — no torn reads on concurrent
- *          App/encoder write + audio-task trigger.
- *  [FIX-3] body_wave pointer moved from global s_drumBodyWave[] into DrumVoice
- *          (requires globals.h DrumVoice += `const int16_t* body_wave`).
- *          Disarm→update→arm sequence makes the read in drum_fill_buf safe
- *          across the Core-0 task boundary without an extra lock.
- *  [FIX-4] seqVoiceOwner[row] written BEFORE trigger_seq_note in render_block
- *          so MIDI noteOff path never reads a stale owner after a voice arms.
- *  [FIX-5] lastDrumMask removed — dead state; drums are one-shot (no gate-off).
- *  [FIX-6] g_saveArmed early-exit documented as intentional transport hold.
- *  [FIX-OV] Drum bus accumulator bounds verified + comment; scales safely in
- *           int32_t for 8 voices (max ~16 k per voice after all scaling).
- *
- * ── GLOBALS.H REQUIRED ADDITION ─────────────────────────────────────────────
- *   Add to struct DrumVoice (after `uint8_t kit`):
- *     const int16_t* body_wave = nullptr;
- *   Eliminates the global s_drumBodyWave[] pointer cache (FIX-3).
+ * Core 0 audio path: gb_seq_fill_buf / drum_fill_buf (groovebox.cpp).
+ * Pattern data: hwSeqData, hwMotionData (globals.h); persistence in settings.h.
+ * Seq note-off and drum triggers serialise drumLivePatch reads under patchMux.
+ * DrumVoice.body_wave set in fire_tuned_drum (disarm→write→arm).
  * ═════════════════════════════════════════════════════════════════════════════ */
 #pragma once
 #ifndef GROOVEBOX_H
@@ -54,7 +34,7 @@
  * §2  SEQUENCER VOICE OPS  (implemented in groovebox.cpp)
  *
  * trigger_seq_note / release_seq_note / seq_synth_fill_buf are out-of-line in
- * groovebox.cpp — dedicated sequencer-only DSP (no synth_core.h, no HARP path).
+ * groovebox.cpp — dedicated sequencer-only DSP (no harp path).
  * seq_active_voice_count stays inline (telemetry only).
  * ─────────────────────────────────────────────────────────────────────────────*/
 
@@ -77,22 +57,9 @@ static inline int seq_active_voice_count() {
  * §3  DRUM SYNTH ENGINE  (TR-909 oversampled, 8 voices)
  *
  * Voice map: KICK(0) SNARE(1) CLAP(2) HAT-C(3) HAT-O(4) TOM-H(5) TOM-L(6) PERC(7)
- * drumLivePatch[]: [ch*4+0]=Tune [ch*4+1]=Decay [ch*4+2]=Volume [ch*4+3]=Noise
- *
- * [FIX-2] fire_tuned_drum snapshots all 4 drumLivePatch words for the channel
- *         under patchMux before touching the DrumVoice — avoids a torn read
- *         when App/encoder writes drum params while the step engine fires drums.
- *
- * [FIX-3] body_wave pointer lives in DrumVoice (not a global array).  The
- *         disarm(active=false) → write body_wave → arm(active=true,release)
- *         sequence gates all reads in drum_fill_buf through the acquire fence,
- *         so the pointer swap cannot be observed mid-buffer.
- *         Requires DrumVoice to have `const int16_t* body_wave` (globals.h).
- *
- * [FIX-OV] Drum bus accumulator: per-voice max contribution is ~2047 counts
- *          after the three-stage >>15/>>15/>>19 scaling chain.  8 voices ×2047
- *          = ~16 k, ×3/4 = ~12 k — well within int32_t.  No int64_t needed
- *          (unlike the synth path which uses int64_t for the SVF output chain).
+ * drumLivePatch[ch*4+0..+3] = Tune / Decay / Volume / Noise.
+ * fire_tuned_drum snapshots patch words under patchMux; disarm→write→arm sequence.
+ * Drum bus mix stays within int32_t for 8 voices at full level.
  * ─────────────────────────────────────────────────────────────────────────────*/
 
 static constexpr float    DRUM_PITCH_MAGIC = 4294967296.0f / (float)SAMPLE_RATE;
@@ -116,16 +83,12 @@ static inline int32_t IRAM_ATTR drum_wave(const int16_t* tbl, uint32_t phase) {
   return (int32_t)tbl[i0] + (((int32_t)(tbl[(i0 + 1u) & 255u] - tbl[i0]) * (int32_t)frac) >> 8);
 }
 
-/* fire_tuned_drum — arm one drum voice.
- * Thread-safe: called from Core 0 (audio task render_block + MIDI noteOnDrums).
- * [FIX-2] Snapshot of 4 drum patch params under patchMux before any write.
- * [FIX-3] body_wave stored in voice struct; disarm→write→arm gates access.   */
+/* fire_tuned_drum — arm one drum voice (Core 0 audio / MIDI). */
 static inline void IRAM_ATTR fire_tuned_drum(int ch, float velocity) {
   if ((unsigned)ch >= 8u) return;
 
-  /* [FIX-2] Snapshot 4 drum params atomically — prevents torn reads if the App
-   * or encoder writes drum params concurrently with the step engine trigger.  */
-  uint16_t drumSnap[4] = {};  /* [FIX-INIT] zero before critical section */
+  /* Snapshot drumLivePatch under patchMux. */
+  uint16_t drumSnap[4];
   {
     portENTER_CRITICAL(&patchMux);
     const int base = ch << 2;
@@ -143,7 +106,7 @@ static inline void IRAM_ATTR fire_tuned_drum(int ch, float velocity) {
   }
 
   DrumVoice* d = &drums[ch];
-  /* Disarm first so drum_fill_buf skips this voice during reinit. [FIX-3]    */
+  /* Disarm voice before reinit so drum_fill_buf skips it. */
   d->active.store(false, std::memory_order_relaxed);
 
   const uint8_t kitRaw = drumKit.load(std::memory_order_relaxed);
@@ -151,7 +114,7 @@ static inline void IRAM_ATTR fire_tuned_drum(int ch, float velocity) {
   d->kit = kit;
 
   const float    pMult = drumPitchMult.load(std::memory_order_relaxed);
-  const float    pm    = pMult * DRUM_PITCH_MAGIC;  /* [gbox OPT-8] hoist once */
+  const float    pm    = pMult * DRUM_PITCH_MAGIC;
   const float    vTune = (float)drumSnap[0] / 16383.0f;
   const float    vDec  = (float)drumSnap[1] / 16383.0f;
   const uint16_t vVol  = drumSnap[2];
@@ -207,9 +170,7 @@ static inline void IRAM_ATTR fire_tuned_drum(int ch, float velocity) {
   };
   d->type = kTypeMap[ch];
 
-  /* [FIX-3] body_wave in voice struct — gated by the disarm/arm sequence.
-   * drum_fill_buf only reads body_wave AFTER acquiring the active fence,
-   * which synchronises with the release store below.                         */
+  /* body_wave: nullptr for noise-only voices (CLAP, hats). */
   d->body_wave = (ch != 2u && ch != 3u && ch != 4u)
     ? WAVE_TABLE_RAM[drumWaveIdx[ch].load(std::memory_order_relaxed) % NUM_WAVE_TABLES]
     : nullptr;
@@ -227,15 +188,9 @@ static inline void IRAM_ATTR fire_tuned_drum(int ch, float velocity) {
   d->active.store(true, std::memory_order_release);
 }
 
-/* drum_fill_buf — per-sample 909-style synthesis, 8 voices.
- * [FIX-3] Uses d->body_wave (per-voice pointer) instead of global cache.
- * [FIX-OV] Per-voice max contribution ≈ 2047 after >>15/>>15/>>19 chain;
- *           8 voices × 2047 × 3/4 ≈ 12 k — safe in int32_t.                */
+/* drum_fill_buf — per-sample 909-style synthesis, 8 voices. */
 static inline bool IRAM_ATTR drum_fill_buf(int16_t* out_buf, size_t frames) {
-  /* [MUTE-GATE] Drums muted → skip synthesis and free voices (the env ager that
-   * frees them runs in the loop below).  FX already applies gain 0 to a muted
-   * engine, so rendering is pure waste; freeing avoids an un-aged voice pile-up
-   * on unmute.  Drums are one-shots, so unmute simply starts firing fresh. */
+  /* Drums muted → skip synthesis and free voices (env ager runs in the loop below). */
   if (mixDrumsMute.load(std::memory_order_relaxed)) {
     for (int ch = 0; ch < 8; ++ch)
       drums[ch].active.store(false, std::memory_order_relaxed);
@@ -243,20 +198,17 @@ static inline bool IRAM_ATTR drum_fill_buf(int16_t* out_buf, size_t frames) {
     return false;
   }
 
-  /* [PERF] Idle early-out — bail to silence when no drum voice is active so an
-   * idle kit costs ~0 instead of clipping 512 zero-mix samples every buffer. */
+  /* Idle early-out when no drum voice is active. */
   bool any_active = false;
   for (int ch = 0; ch < 8; ++ch) {
     if (drums[ch].active.load(std::memory_order_relaxed)) { any_active = true; break; }
   }
   if (!any_active) {
     memset(out_buf, 0, frames * sizeof(int16_t));
-    return false;                         // [3a]
+    return false;
   }
 
-  /* [gbox OPT-2] One acquire load per voice per buffer instead of 4096; the
-   * inner loop tests a plain bitmask. Voices that exhaust their envelope clear
-   * their bit so they are skipped for the remaining samples (same behaviour).  */
+  /* One acquire load per voice per buffer; inner loop uses a live bitmask. */
   uint8_t live_mask = 0;
   for (int ch = 0; ch < 8; ++ch)
     if (drums[ch].active.load(std::memory_order_acquire))
@@ -292,25 +244,18 @@ static inline bool IRAM_ATTR drum_fill_buf(int16_t* out_buf, size_t frames) {
           const uint32_t step = d->step1
               + (uint32_t)(((uint64_t)d->step1 * ps * KIT_KICK_SWEEP[d->kit]) >> 31);
           d->phase1 += step;
-          const int32_t body = drum_wave(d->body_wave, d->phase1); /* [FIX-3] */
-          d->filter_low += ((body - d->filter_low) * (int32_t)d->tone_val) >> 15;
+          const int32_t body = drum_wave(d->body_wave, d->phase1);          d->filter_low += ((body - d->filter_low) * (int32_t)d->tone_val) >> 15;
           d->filter_low = std::min(DRUM_SAT_LIMIT, std::max(-DRUM_SAT_LIMIT, d->filter_low));
-          /* [FIX-CLICK] Cast (180u - phase3) to int32 before multiplying by the
-           * signed fast_noise() result.  Without the cast C++ promotes the
-           * int32 noise value to uint32, turning any negative noise sample into
-           * a huge positive, producing a distorted click on ~50% of samples.  */
           const int32_t click = (d->phase3 < 180u)
-              ? ((int32_t)(180u - d->phase3) * (fast_noise() >> 5)) : 0;
-          /* [gbox BUG-1] |click| can reach ~91980; click * noise_mix (≤32766)
-           * exceeds int32 (~3.0e9). Widen only this multiply to int64.        */
+              ? (int32_t)((180u - d->phase3) * (fast_noise() >> 5)) : 0;
+          /* Kick click × noise_mix uses int64 — product can exceed int32. */
           out = drum_clip(((d->filter_low * (int32_t)(32768 - d->noise_mix)) >> 15) +
                           (int32_t)(((int64_t)click * d->noise_mix) >> 15));
           break;
         }
         case DrumType::DRUM_SNARE: {
           d->phase1 += d->step1 + (uint32_t)(((uint64_t)d->step1 * d->env_pitch * 3u) >> 32);
-          const int32_t body      = drum_wave(d->body_wave, d->phase1); /* [FIX-3] */
-          const int32_t snap_fc   = (int32_t)d->tone_val;
+          const int32_t body      = drum_wave(d->body_wave, d->phase1);          const int32_t snap_fc   = (int32_t)d->tone_val;
           const int32_t rattle_fc = std::max<int32_t>(1000, snap_fc - 6000);
           const int32_t wn = fast_noise();
           d->filter_low  += ((wn           - d->filter_low)  * snap_fc)   >> 15;
@@ -354,16 +299,14 @@ static inline bool IRAM_ATTR drum_fill_buf(int16_t* out_buf, size_t frames) {
           const uint32_t pm = (uint32_t)(((uint64_t)d->env_pitch * d->env_pitch) >> 31);
           d->phase1 += d->step1 + (uint32_t)(((uint64_t)d->step1 * pm * 5u) >> 31);
           out = drum_clip(
-              ((drum_wave(d->body_wave, d->phase1) * (int32_t)(32768 - d->noise_mix)) >> 15) + /* [FIX-3] */
-              ((fast_noise() * (int32_t)d->noise_mix) >> 15)); /* [gbox BUG-2] >>15, consistent with all other voices */
+              ((drum_wave(d->body_wave, d->phase1) * (int32_t)(32768 - d->noise_mix)) >> 15) +
+              ((fast_noise() * (int32_t)d->noise_mix) >> 15));
           break;
         }
         case DrumType::DRUM_PERC: {
           d->phase1 += d->step1; d->phase2 += d->step2;
           const int32_t ring =
-            (drum_wave(d->body_wave, d->phase1) *           /* [FIX-3] */
-             drum_wave(d->body_wave, d->phase2)) >> 15;     /* [FIX-3] */
-          const int32_t wn = fast_noise();
+            (drum_wave(d->body_wave, d->phase1) *                       drum_wave(d->body_wave, d->phase2)) >> 15;              const int32_t wn = fast_noise();
           d->filter_low += ((wn - d->filter_low) * (int32_t)d->tone_val) >> 15;
           out = drum_clip(((ring * (int32_t)(32768 - d->noise_mix)) >> 15) +
                           (((wn - d->filter_low) * (int32_t)d->noise_mix) >> 15));
@@ -371,8 +314,7 @@ static inline bool IRAM_ATTR drum_fill_buf(int16_t* out_buf, size_t frames) {
         }
       }
 
-      /* Per-voice scaling: [FIX-OV] max = (32767>>16)*(32767>>15)*(32766>>19)
-       * = 32767 * 32767 / 32768 / 524288 ≈ 2047 per voice, 8 voices = 16376  */
+      /* Per-voice scaling: max ≈ 2047/voice; 8 voices ≈ 16 k before soft clip. */
       const int32_t s = (out * (int32_t)(d->env_amp >> 16)) >> 15;
       mix += (((s * (int32_t)d->velocity) >> 15) * (int32_t)d->vol_q15) >> 19;
     }
@@ -398,8 +340,8 @@ struct DrumPatternROM {
   uint16_t preset[32];  /* companion drum patch: 8 drums × 4 params  */
 };
 
-static constexpr int NUM_SYNTH_PATS = 29; /* [WS5] 8 cosmic + 21 appended (patt.md) */
-static constexpr int NUM_DRUM_PATS  = 29; /* [WS5] 8 cosmic + 21 appended (patt.md) */
+static constexpr int NUM_SYNTH_PATS = 29;
+static constexpr int NUM_DRUM_PATS  = 29;
 
 /* ─────────────────────────────────────────────────────────────────────────────
  * §5  PATTERN MANAGEMENT API  (extern — groovebox.cpp)
@@ -414,13 +356,9 @@ void clearPatternSlot(uint8_t bankIdx, uint8_t chainIdx);
 void clearActivePattern();
 void clearAllPatterns();
 void copyPatternSlot(uint8_t srcBank, uint8_t srcChain, uint8_t dstBank, uint8_t dstChain);
-/* [SEQ-CLEAR] Blank the active pattern (steps + P-locks) and reset both seq-synth
- * and drum sound to the factory default image — used by the SEQ SETUP Clear
- * confirm dialog.  Not a factory reset (active bank/chain only). */
+/* Clear active pattern + reset companion synth/drum sounds to factory defaults. */
 void seqClearActiveAndResetSounds();
-void seqSoftResetWorkingImage();   /* [SOFT-RESET] factory settings + sounds + seq nav → initial (RAM-only); echoes full state to App */
-/* [USER-PAT-SLOTS] Save/load the active bank/chain pattern into the 64-slot
- * user pattern library (melody+drum grid + companion sounds + transpose). */
+/* Save/load the active bank/chain pattern into the 64-slot user pattern library. */
 bool saveActivePatternToUserSlot(uint8_t uidx);
 void loadUserPatternToActive(uint8_t uidx);
 
@@ -437,19 +375,9 @@ void seq_start();
 void seq_stop();
 void seq_pause();
 void seq_toggle();
-/* Pattern record arm — sole mutation path for seqRecording (except seq_stop disarm).
- * v14 on the wire: 3 = record ON, 4 = record OFF (SET, not toggle).
- * Echoes go through coalesced hi slots / seq_ext ring → SeqSysexOut → txSysex
- * (no midiMutex race from ControlPoll / MidiUsbRx).  Idempotent.              */
-void seq_set_recording(bool on);
-void seq_toggle_recording();
-/* [RND-RESTART] Reset step counter to 0 while keeping playback running.
- * Called by CMD_SEQ_RESTART (App → firmware) after pattern randomisation. */
-void IRAM_ATTR seq_restart_from_step_zero();
-/* BPM echo uses the same coalesced hi slot as transport (setSequencerBpm).   */
 void setSequencerBpm(int32_t bpm);
 void initSequencer();
-void song_rewind_rt();   /* [SONG-FIX] reset song chain to step 0 + load its bank */
+void song_rewind_rt();   /* reset song chain to step 0 + load its bank */
 
 void seqUI_moveUp();
 void seqUI_moveDown();

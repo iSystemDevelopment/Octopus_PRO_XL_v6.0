@@ -1,37 +1,24 @@
 /* ═════════════════════════════════════════════════════════════════════════════
- * Octopus PRO XL v6.0.00 — Laser Harp Groovebox
+ * Octopus PRO XL v6.1.00 — Laser Harp Groovebox
  * © 2026 DIODAC ELECTRONICS / iSystem. All Rights Reserved.
  *
  * PROPRIETARY AND CONFIDENTIAL. Unauthorized copying, distribution, modification,
  * or use of this software or firmware, in whole or in part, is strictly prohibited
  * without prior written permission from DIODAC ELECTRONICS.
  * ═════════════════════════════════════════════════════════════════════════════
- * harp.h — v6.0.00  LASER-HARP INSTRUMENT — PUBLIC INTERFACE
+ * harp.h — v6.1.00  LASER-HARP INSTRUMENT — PUBLIC INTERFACE
  *
- * Dedicated, self-contained laser-harp engine.  Replaces the former
- * synth.h + synth.cpp and the HARP half of the shared synth_core.h:
+ * Self-contained laser-harp engine (harp.cpp, private anonymous namespace).
+ * Seq/drum use shared register helpers from globals.h; harp does not share
+ * synthesis code with groovebox.h.
  *
- *   • Pure laser-harp DSP (8-voice ADSR + dual-osc + SVF + LFO) — implemented
- *     out-of-line in harp.cpp, FULLY ISOLATED in a private anonymous namespace
- *     (its own copies of sinf / noise / wavetable / SVF / soft-clip), so the
- *     harp shares no symbols with the groovebox seq/drum engine (synth_core.h).
+ * Play modes: POLY8 (8-voice MIDI), STRINGS (1:1 pluck + string vibrato),
+ * SOLO (monophonic last-note priority with held-beam stack).
  *
- *   • Three play modes, exposed as one semantic vocabulary:
- *       POLY8   — 8-voice polyphony, free-voice allocation (MIDI keyboard).
- *       STRINGS — 1:1 string→voice, plucked envelope (sustain = 0), physical
- *                 string-vibration emulation + laser hue ADSR.
- *       SOLO    — monophonic, bidirectional last-note priority. Newest beam
- *                 sounds; older still-held beams are remembered on a stack and
- *                 the most-recent one re-sounds when the newest is lifted.
+ * D-BEAM: consumes dbeam.h expression only (harpPumpExpression reads addends);
+ * does not reimplement the ADC follower.
  *
- *   • D-BEAM expression is CONSUMED, not reimplemented.  dbeam.cpp stays the
- *     single source of the amplitude-follower expression; harp only calls
- *     updateDbeamExpression()/routeDbeamExpression() (harpPumpExpression) and reads
- *     dbeam_svf_cutoff / dbeam_mod_depth / mixHarpVol in its DSP.
- *
- * BOUNDARY: harp owns synthesis + expression CONTROL (voice DSP, string
- * vibration value, hue ADSR engine).  laser.cpp keeps the hardware rendering
- * (galvo DAC writes, RGB PWM) and calls into this module.
+ * Boundary: harp = synthesis + expression control; laser.h = galvo/PWM render.
  * ═════════════════════════════════════════════════════════════════════════════ */
 #pragma once
 #ifndef HARP_H

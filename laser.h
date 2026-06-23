@@ -1,73 +1,23 @@
 /* ═════════════════════════════════════════════════════════════════════════════
- * Octopus PRO XL v6.0.00 — Laser Harp Groovebox
+ * Octopus PRO XL v6.1.00 — Laser Harp Groovebox
  * © 2026 DIODAC ELECTRONICS / iSystem. All Rights Reserved.
  *
  * PROPRIETARY AND CONFIDENTIAL. Unauthorized copying, distribution, modification,
  * or use of this software or firmware, in whole or in part, is strictly prohibited
  * without prior written permission from DIODAC ELECTRONICS.
  * ═════════════════════════════════════════════════════════════════════════════
- * laser.h — v6.0.00  MCPWM LASER KERNEL + BEAM DETECTION PRIMITIVES
+ * laser.h — v6.1.00  MCPWM LASER KERNEL + BEAM DETECTION PRIMITIVES
  *
- * Changes vs v5.1.02:
+ * IRAM_ATTR inline helpers for laser_sweep_task (Core 1).  Implementation of
+ * setupMCPWM, initLaserSPI, tickAnimation, laser_sweep_task → laser.cpp.
  *
- *  [L1] MCPWM carrier matched to the sensor MFB band-pass centre = 9 656 Hz.
- *       10 MHz timer / 1036 ticks = 9 652.5 Hz — the closest integer-tick match,
- *       −3.5 Hz (0.04 %) from target, well inside the MFB passband.  (Earlier
- *       builds ran 25 kHz, then 9 569 Hz; both were off the filter centre and
- *       produced dim/uneven beams.)
+ * Carrier/dwell from globals.h DBEAM_CARRIER_SEL table (default 9652 Hz,
+ * 10 PWM cycles ≈ 1036 µs dwell).  laserOffAndSync() resets PWM phase after
+ * every off to avoid partial-pulse flicker.  Beam colour: scale RGB + preset
+ * amp-envelope white blend (harp modes) or LASER SHOW v2 projector engine.
  *
- *       Consequence: dwell times are derived with a CEIL conversion so each
- *       dwell spans an INTEGER number of full PWM periods (103.6 µs), e.g.
- *       BEAM_DWELL = 10 cycles → 1036 µs.  Plain truncation left the final cycle
- *       short → a dim partial pulse (per-beam faint flicker).
- *
- *  [L2] resetLaserPhase() now called after EVERY laserOff().
- *       Without the post-off phase reset the PWM counter is at an arbitrary
- *       position; the next laserWhite/laserRGB call begins mid-cycle, creating
- *       a partial first pulse that appears as a dim flash at the start of each
- *       dwell.  The fix ensures the next fire always starts from phase 0.
- *       Combined with the pre-fire reset this eliminates all residual light.
- *
- *  [L3] EDGE_COMP_NORMAL/RAINBOW and GLOBAL_RAINBOW_R/G/B removed — now
- *       canonical in dbeam.h.  #include "dbeam.h" added here.
- *
- *  [L4] mcp4922Write: SPI.beginTransaction/endTransaction removed from hot
- *       path.  initLaserSPI() (laser.cpp) configures the SPI peripheral ONCE
- *       at boot; hot-path calls are raw SPI transfers with manual CS/LDAC.
- *       Removes ~40 µs of mutex + reconfiguration overhead per galvo step.
- *
- *  [L5] Hue ADSR connected.  advanceHueEnv() added: driven by laser_sweep_task
- *       each time a string is visited.  laserForString() reads stringHueEnv[i]
- *       and interpolates beam colour toward white as the hue envelope rises.
- *       Beam break → attack; finger lift → release.  Depth follows the hue
- *       ADSR parameters from settings (hueAttack/Decay/Sustain/Release).
- *
- *  [L6] Populate opening animation — see laser.cpp tickAnimation().
- *       beamRevealMask (new) tracks which beams are lit during opening fan-out.
- *       All revealed beams are scanned continuously so they appear persistent.
- *
- *  [L7] laserForString(): SCALES[si].isRainbow used instead of (si >= 14).
- *       seqVoices hue scramble replaced with harpVoices step for correct string.
- *
- *  [L8] safe_sinf() defined here with guard — IRAM-safe Bhaskara I polynomial
- *       approximation; no flash-page dependency during NVS write windows.
- *
- * ARCHITECTURE:
- *   laser.h  — all IRAM_ATTR inline functions called from the Core 1 scan loop.
- *   laser.cpp — setupMCPWM, initLaserSPI, tickAnimation, laser_sweep_task.
- *   The .ino's laser_sweep_task has been moved to laser.cpp (cleaner split).
- *
- * DWELL TIMING (per beam):
- *   galvoMoveDark (blocking settle: 200–1000 µs) →
- *   resetLaserPhase() →
- *   laserForString() (laser ON) →
- *   LASER_STAB_US settle for comparator latch →
- *   enable 74HC74 latch →
- *   BEAM_DWELL_US (10 × PWM period = 1036 µs) →
- *   laserOff() →
- *   resetLaserPhase() →
- *   [advance galvo to next position]
- *   No laser light during galvo movement — zero faint lines.
+ * Scan cycle per string: galvoMoveDark → laser ON → comparator latch → dwell →
+ * laserOffAndSync → advance galvo (no light during galvo slew).
  * ═════════════════════════════════════════════════════════════════════════════ */
 #pragma once
 #ifndef LASER_H
@@ -82,13 +32,13 @@
 #include "globals.h"
 #include "interface.h"  /* fastWrite(), fastRead() — bare-metal GPIO */
 #include "patches.h"    /* SCALES[], scaleWhiteLevel[], scaleR/G/B[]   */
-#include "dbeam.h"      /* GLOBAL_RAINBOW_R/G/B, EDGE_COMP_* [L3]      */
+#include "dbeam.h"      /* GLOBAL_RAINBOW_R/G/B factory tables */
 
 /* ═══════════════════════════════════════════════════════════════════════════
  * SECTION 1 — CONSTANTS
  * ═══════════════════════════════════════════════════════════════════════════ */
 
-/* ── MCPWM [L1] ─────────────────────────────────────────────────────────── */
+/* ── MCPWM carrier + dwell (from globals.h DBEAM_CARRIER_SEL) ───────────── */
 /* Carrier + dwell come from the single-source sweep table in globals.h
  * (DBEAM_CARRIER_SEL → DBEAM_CARRIER_TICKS / DBEAM_DWELL_CYCLES).  Carrier =
  * 10 MHz / ticks; dwell cycles scale so dwell TIME stays ~constant. */
@@ -109,7 +59,7 @@ static constexpr uint32_t LASER_PWM_PERIOD_US = 1000000u / LASER_PWM_FREQ_HZ;
  * point-source flicker-fusion threshold.  Dial back toward 8 if any beam
  * shimmer appears on long throws. */
 static constexpr uint32_t BEAM_DWELL_US =
-    (BEAM_DWELL_CYCLES * 1000000u + LASER_PWM_FREQ_HZ - 1u) / LASER_PWM_FREQ_HZ; /* 726 µs */
+    (BEAM_DWELL_CYCLES * 1000000u + LASER_PWM_FREQ_HZ - 1u) / LASER_PWM_FREQ_HZ; /* ~1036 µs @ sel 0 */
 static constexpr uint32_t ANIM_DWELL_US_L =
     (4u * 1000000u + LASER_PWM_FREQ_HZ - 1u) / LASER_PWM_FREQ_HZ;                /* 415 µs */
 
@@ -120,10 +70,7 @@ static constexpr uint16_t GALVO_CENTER = 2048u;
 static constexpr uint16_t BEAM_WINDOW_MIN = 560u; /* safety margins    */
 static constexpr uint16_t BEAM_WINDOW_MAX = 3440u;
 
-/* [LASER-SHOW v2] Fixed 8-beam fan for projector mode — evenly spaced across the
- * physical galvo range, INDEPENDENT of the selected harp scale (the show is a
- * light display, not a playable instrument, so its geometry shouldn't shift when
- * the scale changes).  Spacing = (3500-500)/7 ≈ 428 counts.                     */
+/* Fixed 8-beam fan for LASER SHOW — evenly spaced, independent of harp scale. */
 static constexpr uint16_t SHOW_DAC_POS[8] = {
   500u, 929u, 1357u, 1786u, 2214u, 2643u, 3071u, 3500u
 };
@@ -131,14 +78,7 @@ static constexpr uint16_t SHOW_DAC_POS[8] = {
 /* ── Opening animation ───────────────────────────────────────────────────── */
 static constexpr uint32_t ANIM_STEP_INTERVAL_US = 120000u; /* 120 ms per fan step */
 
-/* ── Core-1 breathe interval [CORE1-LOCAL] ─────────────────────────────────────
- * The scan loop times every phase with a Core-1-local esp_rom_delay_us busy-wait
- * (precise, independent of the Core-0 esp_timer task — see laser.cpp).  To keep
- * IDLE1 + the latency-tolerant Core-1 data tasks (MidiUsbRx / SeqSysexOut /
- * NvsWorker) alive and feed the idle-task watchdog, the laser hands the core to
- * them for one tick every LASER_BREATHE_MS, gated to the DARK (MOVING) phase so a
- * lit beam is never chopped.  8 ms ≈ one full ping-pong sweep → a ~1 ms yield per
- * sweep is invisible at the scan cadence but is what keeps Core 1 from starving. */
+/* Core-1 yield during galvo MOVING phase — keeps MidiUsbRx / NvsWorker fed. */
 static constexpr uint32_t LASER_BREATHE_MS = 8u;
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -159,7 +99,7 @@ static uint32_t cache_val_r = 0, cache_val_g = 0, cache_val_b = 0;
 static int8_t cache_force_r = -1, cache_force_g = -1, cache_force_b = -1;
 
 /* ═══════════════════════════════════════════════════════════════════════════
- * SECTION 3 — IRAM-SAFE FAST-PATH HELPERS  [L8]
+ * SECTION 3 — IRAM-SAFE FAST-PATH HELPERS
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 /* fastPinRead — gpio_num_t overload; delegates to interface.h fastRead() so the
@@ -171,8 +111,7 @@ static inline bool IRAM_ATTR fastPinRead(gpio_num_t pin) {
 }
 #endif
 
-/* safe_sinf — Bhaskara I polynomial approximation, no flash lookup.
- * Max error < 0.17 %.  IRAM-safe; survives NVS-write cache evictions. [L8] */
+/* safe_sinf — Bhaskara I approximation; IRAM-safe (no flash sinf()). */
 #ifndef SAFE_SINF_DEFINED
 #define SAFE_SINF_DEFINED
 static inline float IRAM_ATTR safe_sinf(float x) {
@@ -188,23 +127,15 @@ static inline float IRAM_ATTR safe_sinf(float x) {
 #endif
 
 /* ═══════════════════════════════════════════════════════════════════════════
- * SECTION 4 — MCP4922 SPI DAC  [L4]
+ * SECTION 4 — MCP4922 SPI DAC
  *
- * Hot path: no beginTransaction/endTransaction.
- * initLaserSPI() (laser.cpp) configures the SPI peripheral ONCE at boot
- * and leaves the transaction "open" (we are the sole SPI user on Core 1).
+ * Hot path: no SPI.beginTransaction (initLaserSPI configures once at boot).
+ * MCP4922: word A = galvo (0x3000|pos), word B = threshold (0xB000|thresh),
+ * separate CS pulses, one LDAC strobe.
  *
- * MCP4922 protocol:
- *   Word A (channel A = galvo):     0x3000 | (galvoPos  & 0x0FFF)
- *   Word B (channel B = threshold): 0xB000 | (threshold & 0x0FFF)
- *   Two separate CS pulses, then one LDAC pulse → simultaneous latch.
+ * g_lastDACWord dedup is invalidated after NVS-save dark park so the physical
+ * threshold DAC is always refreshed when scanning resumes.
  * ═══════════════════════════════════════════════════════════════════════════ */
-/* [SAVE-FIX12] mcp4922Write dedup state is file-scope so it can be INVALIDATED
- * after an NVS-save dark park.  The flash write disables the cache + IPC-stalls
- * the other core; if that glitches the MCP4922's threshold register but the
- * dedup word still matches, the DAC is never re-written and the comparator runs
- * against a stale/garbage threshold → every beam reads "broken".  Forcing the
- * next write past the dedup guarantees the physical DAC is refreshed on resume. */
 inline uint32_t g_lastDACWord = 0xFFFFFFFFu;
 static inline void IRAM_ATTR invalidateDacCache() { g_lastDACWord = 0xFFFFFFFFu; }
 
@@ -217,7 +148,7 @@ static inline void IRAM_ATTR mcp4922Write(uint16_t galvoPos, uint16_t threshold)
 
   /* Channel A — galvo position */
   fastWrite(PIN_DAC_CS, LOW);
-  SPI.transfer16(galvoWord); /* raw, no mutex [L4] */
+  SPI.transfer16(galvoWord);
   fastWrite(PIN_DAC_CS, HIGH);
 
   /* Channel B — beam-detect threshold */
@@ -256,8 +187,7 @@ static inline void IRAM_ATTR laserOff() {
   update_mcpwm_channel(laser_gen_b, laser_cmpr_b, 0u, cache_val_b, cache_force_b);
 }
 
-/* laserOffAndSync — [L2] turns laser off then resets PWM phase so the next
- * fire always starts from cycle 0.  Eliminates partial first-pulse artefacts. */
+/* laserOffAndSync — off + PWM phase reset so the next fire starts at cycle 0. */
 static inline void IRAM_ATTR laserOffAndSync() {
   laserOff();
   if (laser_soft_sync) mcpwm_soft_sync_activate(laser_soft_sync);
@@ -305,12 +235,10 @@ static inline uint32_t IRAM_ATTR getGalvoSettleTime(uint16_t old_, uint16_t new_
   return (t < SETTLE_MAX_US) ? t : SETTLE_MAX_US;
 }
 
-/* galvoMoveDark — [L2] always turns laser off (via laserOffAndSync) before
- * moving the DAC.  blockingSettle = true  → wait inside this call (animation).
- *                 blockingSettle = false → settle tracked by state machine (scan). */
+/* galvoMoveDark — laser off before DAC move; optional blocking settle. */
 static inline void IRAM_ATTR galvoMoveDark(uint16_t pos, uint16_t thresh,
                                            bool blockingSettle = true) {
-  laserOffAndSync(); /* laser OFF + phase reset [L2] */
+  laserOffAndSync();
   mcp4922Write(pos, thresh);
   if (blockingSettle) {
     esp_rom_delay_us(getGalvoSettleTime(lastPos, pos));
@@ -329,28 +257,18 @@ static inline void IRAM_ATTR blitHueToRGB(float h, uint8_t& r, uint8_t& g, uint8
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
- * SECTION 8 — HUE ADSR ENGINE  [L5]
+ * SECTION 8 — HUE ADSR (LASER SHOW + legacy stringHueEnv[])
  *
- * Driven by laser_sweep_task once per string visit (~125 Hz scan rate).
- * stringHueEnv[i].state is set by the sweep task:
- *   beam BREAKS  → ENV_ATTACK
- *   finger LIFTS → ENV_RELEASE
- * laserForString() reads the level and blends beam colour toward white.
+ * Show mode: harpHueAdvance() in harp.cpp drives stringHueEnv[] per visit;
+ * laserForString() reads level for projector brightness.  Harp play modes use
+ * preset amp envelope for white↔scale colour blend (below).
  * ═══════════════════════════════════════════════════════════════════════════ */
 static constexpr uint32_t HUE_LEVEL_MAX = (uint32_t)Q15_ONE * 2u - 1u;
-static constexpr float HUE_SCAN_HZ = 125.0f; /* nominal scan rate */
-
-/* [HARP-SPLIT] The hue ADSR engine moved into harp.cpp (harpHueAdvance /
- * harpHueNoteOn / harpHueNoteOff) so the laser-harp instrument owns its own
- * expression control.  laser_sweep_task calls harpHueAdvance() once per visit;
- * laserForString() below still reads stringHueEnv[].level for the colour blend. */
 
 /* ═══════════════════════════════════════════════════════════════════════════
- * SECTION 9 — BEAM COLOUR OUTPUT  [L5][L7]
+ * SECTION 9 — BEAM COLOUR OUTPUT
  *
- * laserForString — compute and apply RGB for string idx.
- * Hue envelope from stringHueEnv[idx] blends the scale colour toward white
- * as the laser beam is broken (finger pluck) and returns on release.
+ * laserForString — scale RGB + amp-envelope white blend, or LASER SHOW v2 path.
  * ═══════════════════════════════════════════════════════════════════════════ */
 static inline void IRAM_ATTR laserForString(int idx) {
   if (idx < 0 || idx >= MAX_STRINGS) {
@@ -362,18 +280,9 @@ static inline void IRAM_ATTR laserForString(int idx) {
   /* ── Base scale colour ───────────────────────────────────────────────── */
   uint8_t r = 0, g = 0, b = 0;
 
-  /* ── LASER SHOW v2: projector animation engine ────────────────────────────
-   * The 8-beam fan becomes a sequencer-driven light display.  Two independent
-   * toggles:  LASER SHOW arms the engine;  MIDI→Hue makes each beam's LATCHED
-   * melody note rotate the colour wheel (otherwise every beam uses BASE HUE).
-   *
-   *   HUE       = baseHue (+ melody-note offset when MIDI→Hue is on)
-   *   BRIGHT    = per-beam HUE-ADSR envelope (melody note-on/off) shaped by the
-   *               selected Anim Mode (PULSE / CHASE / STROBE / WAVE)
-   *   DRUM FLASH = a drum hit injects a global, linearly-decaying white flash
-   *
-   * Self-contained: harp play-mode shading and SOLO dimming below are skipped
-   * while the show runs (hand detection is also gated off in laser.cpp).        */
+  /* LASER SHOW v2: 8-beam projector — HUE from base (+ MIDI→Hue note offset),
+   * brightness from anim mode + melody ADSR + drum flash.  Skips harp play-mode
+   * shading while active (hand detect gated in laser.cpp). */
   if (laserShowMode.load(std::memory_order_relaxed)) {
     const int      bm    = idx & 7;   /* beam index (avoid shadowing r/g/b) */
     const uint32_t nowUs = (uint32_t)esp_timer_get_time();
@@ -446,7 +355,7 @@ static inline void IRAM_ATTR laserForString(int idx) {
 
   /* ── Base scale colour (POLY8 / STRINGS / SOLO play modes) ───────────────── */
   {
-    const bool isRainbow = SCALES[si].isRainbow; /* [L7] canonical check */
+    const bool isRainbow = SCALES[si].isRainbow;
     r = isRainbow ? GLOBAL_RAINBOW_R[idx & 7] : scaleR[si];
     g = isRainbow ? GLOBAL_RAINBOW_G[idx & 7] : scaleG[si];
     b = isRainbow ? GLOBAL_RAINBOW_B[idx & 7] : scaleB[si];

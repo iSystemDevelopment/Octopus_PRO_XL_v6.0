@@ -1,103 +1,26 @@
 /* ═════════════════════════════════════════════════════════════════════════════
- * Octopus PRO XL v6.0.00 — Laser Harp Groovebox
+ * Octopus PRO XL v6.1.00 — Laser Harp Groovebox
  * © 2026 DIODAC ELECTRONICS / iSystem. All Rights Reserved.
  *
  * PROPRIETARY AND CONFIDENTIAL. Unauthorized copying, distribution, modification,
  * or use of this software or firmware, in whole or in part, is strictly prohibited
  * without prior written permission from DIODAC ELECTRONICS.
  * ═════════════════════════════════════════════════════════════════════════════
- * settings.h — v6.0.00  NVS PERSISTENT STATE + FACTORY DEFAULTS
+ * settings.h — v6.1.00  NVS PERSISTENT STATE + FACTORY DEFAULTS
  *
- * Changes vs v5.1.02:
+ * Four NVS blobs in namespace "octopus" (legacy "octopus_v5" auto-migrated once):
+ *   "settings"     — AllSettings struct (SETTINGS_VERSION 0x0615 = wire layout ID)
+ *   "patterns"     — hwSeqData + per-pattern transpose
+ *   "banks"        — sparse userBank/seqBank deltas vs factory ROM
+ *   "motion"       — sparse P-lock lanes
+ *   + usrnames / usrpat / usrpatnames for user slot libraries
  *
- *  [S1] SETTINGS_VERSION is 0x0615 (harp arpeggiator).  Any
- *       older NVS "settings" blob fails verify() and triggers a clean factory
- *       triggers a clean factory reset — the settings blob itself is NOT
- *       migrated.  (The separate "patterns" blob DOES migrate its v1 uint16
- *       grid → uint64 via PatternsBlobV1; see PATTERNS_VERSION below.)
+ * Boot path: loadSettings() → seedFactoryBanks → settings_load → settings_sync_to_ssot
+ *            → persisted_extras_load().  Scoped SAVE/LOAD/RESET via ResetScope.
+ * Runtime saves go through NvsWorker (16 KB stack) or settings_persist_blocking().
  *
- *  [S2] New struct: SequencerSettings — persists BPM, bank, chain, length,
- *       transpose, octave shifts, harp/seq scale/patch indices, gate hold.
- *       Previously these were never saved; every power cycle reset them.
- *
- *  [S3] New struct: DBeamSettings — persists enabled flag, curve, ADC
- *       calibration (offset_adc/range_adc/hw_gain), the local DSP route
- *       (DbeamRoute OFF/Mod/Vol/Cut) and the expression env attack/release.
- *       [v6.0] D-BEAM is a pure internal-DSP controller — the old CC-routing
- *       mode + cutoff/mod CC-number fields were removed (it emits no MIDI).
- *
- *  [S4] DrumSettings gains wave_idx[8] — drum body waveform per voice.
- *       All default to DRUM_DEFAULT_WAVE_IDX (WT_SINE = 8).
- *
- *  [S6] DrumSettings gains pitch_mult — global drum pitch (default ×0.60),
- *       independent of master_pitch.  SETTINGS_VERSION 0x0612 → 0x0613.
- *
- *  [PD-2] Master Tune SysEx encoding is semitone-linear (unity at v14=8192);
- *         no SETTINGS bump — NVS still stores ratio floats.
- *
- *  [S7] SequencerSettings gains seq_arp_* — seq arpeggiator. SETTINGS_VERSION
- *       0x0613 → 0x0614.  harp_arp_* appended 0x0614 → 0x0615.
- *
- *  [S5] FxSettings: aux_dly_fb and aux_rev_damp added (CMD 142–143).
- *       Dead _reserved_eq_low/_reserved_eq_high padding removed.
- *
- *  [S6] LaserSettings extracted from FxSettings into its own struct.
- *       Reduces FxSettings responsibility and makes intent explicit.
- *
- *  [S7] Factory defaults redesigned for TR-909-inspired drum kit, balanced
- *       harp pluck tone, and tight step-sequencer gate feel.  All values
- *       are derived from instrument physics, not placeholder 0.5f.
- *
- *  [S8] settings_sync_to_ssot() calls syncLivePatchFromAtomics() (patches.h)
- *       instead of repeating the 50-line v14 derivation inline — DRY.
- *       Also calls loadHarpFx/SeqFx/DrumFx to restore the actual FX chain
- *       preset state on boot (previously only the index was stored).
- *
- *  [S9] setupToFactoryDefaults() defined inline here as the authoritative
- *       implementation — replaces the previously-undefined function in the
- *       .ino. Declaration in globals.h §24 remains as the extern signature.
- *
- *  [S10] Sequencer PATTERNS and user PATCH BANKS now persist to NVS, in two
- *        SEPARATE blobs from "settings" (own version + CRC each):
- *          "patterns" — full hwSeqData snapshot (~2 KB).
- *          "banks"    — SPARSE userBank/seqBank deltas vs factory SOUND_BANK
- *                       (NUM_PATCHES=256 ⇒ a verbatim 16 KB dump won't fit the
- *                       stock 20 KB NVS partition, so only customised slots are
- *                       stored, up to MAX_BANK_OVR per bank).
- *        Written inside the same commit as settings_save(); restored by
- *        persisted_extras_load() after the factory-bank seed.  Factory reset
- *        wipes patterns and re-seeds banks to factory.
- *
- *  [S11] P-LOCK MOTION now persists too: a third separate "motion" blob stores
- *        SPARSELY the allocated lanes only (targetCmd != 255), up to
- *        MAX_MOTION_LANES — a full hwMotionData dump (~8.7 KB) would not fit the
- *        stock 20 KB NVS partition alongside the other blobs.  The App is the
- *        primary motion recorder, so standalone playback after a power cycle
- *        needs it saved.  persisted_extras_load() sets the empty sentinel base
- *        then overlays the saved lanes (so the .ino no longer needs
- *        initMotionMatrix()).  Scoped reset menu (ResetScope): FULL /
- *        BANKS_PATTERNS / MOTION / SETTINGS — each wipes only its RAM domain
- *        then persists all blobs.
- *
- * WHICH ATOMICS ARE PERSISTED — three categories:
- *
- *   PERSISTED (change during performance, user expects them to survive reboot):
- *     harp synth 14 params, seq synth 14 params, drum 4×8 params + wave_idx,
- *     sequencer transport (BPM/bank/chain/length/transpose/patches/octaves/gate),
- *     master (vol/pitch/EQ/play_mode/MIDI_ch/pitch_bend), FX chain (tube/DJ/
- *     aux/FX_slots/insert_sends), D-BEAM (enabled/curve/ADC/CC routing),
- *     laser show, mixer (vol/mute), song programs.
- *     [S10] + sequencer patterns (hwSeqData) and user patch banks
- *     (userBank/seqBank deltas) — stored in the separate "patterns"/"banks"
- *     NVS blobs, NOT in the "settings" blob.
- *     [S11] + P-lock motion (hwMotionData) — separate "motion" blob.
- *
- *   NOT PERSISTED (transient, always restart at safe defaults):
- *     harpMode, menuState, seqPlaying, seqRecording, seqCurrentStep,
- *     isMotionPlayback, dbeam_svf_cutoff, dbeam_mod_depth, dbeamAmplitude,
- *     displayDirty, g_saveRequest/Armed, uiSyncPending, panicRequested,
- *     g_audio_load_pct, g_svf_oversample, scopeWritePtr, lastWebSysexMs,
- *     livePatch arrays (rebuilt from atomics by syncLivePatchFromAtomics()).
+ * Persisted vs transient atomics — see code_info.h §2.  Struct fields append-only;
+ * bump SETTINGS_VERSION when the AllSettings layout changes.
  * ═════════════════════════════════════════════════════════════════════════════ */
 #pragma once
 #ifndef SETTINGS_H
@@ -118,18 +41,56 @@
 #include "globals.h"
 #include "effect.h"
 #include "patches.h" /* syncLivePatchFromAtomics(), applyHarpParam… */
-#include "fog.h"      /* [FOG] fogRejectEnabled / fogRejectMargin / FOG_MARGIN_MAX */
-#include "esp_task_wdt.h" /* esp_task_wdt_reset() — called between NVS blob writes */
+#include "fog.h"
 
-/* [RESUME] Defined in groovebox.cpp; forward-declared here so the working-image
- * sync can persist/restore the SEQ view page without pulling in groovebox.h.  */
+/* Forward-declared from groovebox.cpp — working-image SEQ view page for NVS resume. */
 extern std::atomic<int> seqUI_page;
 
-/* [INC-3] Namespace kept as "octopus_v5" deliberately — stable across OTA so
- * the partition is not orphaned; version mismatch is handled by SETTINGS_VERSION
- * verify(), not the namespace name. */
-static constexpr const char* NVS_NAMESPACE = "octopus_v5";
-static constexpr uint16_t SETTINGS_VERSION = 0x0615; /* 0x0614 seq arp; 0x0615 harp arp */
+/* NVS partition namespace — product ID, not a firmware semver.
+ * Legacy "octopus_v5" is copied here once on first boot after the rename. */
+static constexpr const char* NVS_NAMESPACE        = "octopus";
+static constexpr const char* NVS_NAMESPACE_LEGACY = "octopus_v5";
+
+/* Persisted AllSettings wire-layout version (independent of SYSTEM_FW_VERSION). */
+static constexpr uint16_t SETTINGS_VERSION = 0x0615;
+
+static inline bool nvs_migrate_legacy_namespace() {
+  nvs_handle_t leg;
+  if (nvs_open(NVS_NAMESPACE_LEGACY, NVS_READONLY, &leg) != ESP_OK) return false;
+
+  nvs_handle_t neu;
+  if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &neu) != ESP_OK) {
+    nvs_close(leg);
+    return false;
+  }
+
+  static const char* const kBlobKeys[] = {
+    "settings", "patterns", "banks", "usrnames", "usrpat", "usrpatnames", "motion"
+  };
+  bool copied = false;
+  for (const char* key : kBlobKeys) {
+    size_t sz = 0;
+    if (nvs_get_blob(leg, key, nullptr, &sz) != ESP_OK || !sz) continue;
+    uint8_t* buf = (uint8_t*)heap_caps_malloc(sz, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    if (!buf) continue;
+    if (nvs_get_blob(leg, key, buf, &sz) == ESP_OK &&
+        nvs_set_blob(neu, key, buf, sz) == ESP_OK)
+      copied = true;
+    heap_caps_free(buf);
+  }
+  if (copied) nvs_commit(neu);
+  nvs_close(leg);
+  nvs_close(neu);
+  return copied;
+}
+
+/** Open the active NVS namespace; migrates legacy "octopus_v5" on first access. */
+static inline esp_err_t nvs_open_octopus(nvs_open_mode_t mode, nvs_handle_t* out) {
+  esp_err_t err = nvs_open(NVS_NAMESPACE, mode, out);
+  if (err != ESP_ERR_NVS_NOT_FOUND) return err;
+  if (!nvs_migrate_legacy_namespace()) return err;
+  return nvs_open(NVS_NAMESPACE, mode, out);
+}
 
 /* ═══════════════════════════════════════════════════════════════════════════
  * PERSISTENT DATA STRUCTURES
@@ -143,9 +104,8 @@ static constexpr uint16_t SETTINGS_VERSION = 0x0615; /* 0x0614 seq arp; 0x0615 h
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 /* ── Harp synth — 14 active SynthParam fields ───────────────────────────── */
-/* [S7] Factory defaults tuned for a responsive, bright laser-harp pluck:
- *   Quick attack matches beam-break response; moderate sustain while beam is
- *   held; gentle release tail; open filter for natural brightness.          */
+/* Factory defaults: responsive laser-harp pluck — fast attack, moderate sustain
+ * while the beam is held, gentle release, open filter for natural brightness. */
 struct HarpSettings {
   uint16_t waveform = 0;        /* Cosmic Saw — bright pluck character  */
   float attack = 0.008f;        /* 8 ms — fast but not instant          */
@@ -164,9 +124,8 @@ struct HarpSettings {
 };
 
 /* ── Seq synth — 14 active SynthParam fields ────────────────────────────── */
-/* [S7] Factory defaults for a tight step-sequencer bassline/melody gate:
- *   Near-instant attack, low sustain, quick release = punchy 16th notes.
- *   Slight env_cut gives per-note filter articulation without setup.        */
+/* Factory defaults: punchy step-sequencer gate — near-instant attack, low
+ * sustain, quick release; slight env_cut for per-note filter articulation.  */
 struct SeqSettings {
   uint16_t waveform = 1; /* Quantum Sq — classic bass/lead       */
   float attack = 0.005f; /* 5 ms — snappy gate attack            */
@@ -184,8 +143,8 @@ struct SeqSettings {
   float env_cut_amount = 0.20f; /* subtle filter envelope per note      */
 };
 
-/* ── Drum kit — [S4] adds wave_idx[8] ──────────────────────────────────── */
-/* [S7] Calibrated TR-909 inspired defaults.  Values are not arbitrary 0.5:
+/* ── Drum kit — per-voice tune/decay/volume/noise + wave_idx[8] ─────────── */
+/* TR-909 inspired factory calibration (not flat 0.5 placeholders):
  *   KICK: long decay + low noise → deep sub punch
  *   SNARE: balanced body/rattle noise
  *   CLAP: all noise, moderate decay
@@ -202,12 +161,11 @@ struct DrumSettings {
   /* All defaults = DRUM_DEFAULT_WAVE_IDX (8 = WT_SINE).
    * Changed via applyDrumWave(ch, idx) — persists across reboot.           */
   uint8_t kit = 0; /* DrumKitId: 0=TR-909 (factory) 1=808 2=Trap 3=House    */
-  /* [DRUM-PITCH] Global drum pitch multiplier — independent of master_pitch.
-   * Appended at end of struct → requires SETTINGS_VERSION bump. */
+  /* Global drum pitch multiplier — independent of master_pitch. */
   float pitch_mult = 0.60f; /* [MASTER_PITCH_MIN, MASTER_PITCH_MAX]; default ×0.60 */
 };
 
-/* ── Sequencer transport & patch config — [S2] new struct ──────────────── */
+/* ── Sequencer transport & patch config ──────────────────────────────────── */
 struct SequencerSettings {
   uint16_t bpm = 120;          /* 40–240 BPM                              */
   uint8_t active_bank = 0;     /* 0–3 = A/B/C/D (engine supports 0–15)    */
@@ -220,27 +178,24 @@ struct SequencerSettings {
   int8_t oct_harp = 0;         /* octaveShift[0]                          */
   int8_t oct_seq = 0;          /* octaveShift[1]                          */
   uint16_t beam_gate_ms = 200; /* laser gate hold window in ms            */
-  /* [WS1] Harp continuous pitch-bend / manual tune multiplier (1.0 = unity).
-   * [INC-1] Semantically belongs in HarpSettings; kept here to preserve NVS
-   * layout until the next major struct migration. */
+  /* Harp continuous pitch-bend / manual tune multiplier (1.0 = unity).
+   * Stored here (not HarpSettings) to preserve NVS field order. */
   float harp_pitch = 1.0f;
-  /* [STUCK-FIX] Anti-stuck fail-safe timeout (beamStuckReleaseMs) in ms; a held
-   * note is force-released if the beam has not been solidly broken for this long.
-   * 0 = disabled.  Appended at end of struct → requires SETTINGS_VERSION bump. */
+  /* Anti-stuck fail-safe: force-release a held note if the beam has not been
+   * solidly broken for this many ms.  0 = disabled. */
   uint16_t beam_stuck_ms = 350;
-  /* [RESUME] Working-image fields so a save→reboot powers up exactly where the
-   * user saved (dashboard + SEQ view page + last-loaded pattern readouts).
-   * Appended at end of struct → requires SETTINGS_VERSION bump.                */
+  /* Working-image fields — save→reboot restores dashboard, SEQ view page,
+   * and last-loaded pattern readouts. */
   uint8_t dashboard      = 1;  /* DashboardMode: 0 = HARP, 1 = SEQUENCER       */
   uint8_t ui_page        = 0;  /* seqUI_page: 0 = synth rows, 1 = drum rows    */
   uint8_t last_synth_pat = 0;  /* g_lastSynthPreset readout                    */
   uint8_t last_drum_pat  = 0;  /* g_lastDrumPreset  readout                    */
-  /* [SEQ-ARP] Melody arpeggiator — appended; SETTINGS_VERSION 0x0613→0x0614. */
+  /* Melody arpeggiator (SETTINGS_VERSION 0x0613→0x0614). */
   uint8_t seq_arp_en   = 0;
   uint8_t seq_arp_pat  = 0;
   uint8_t seq_arp_rate = 5;    /* default 1/16                                 */
   uint8_t seq_arp_gate = 2;    /* default 50%                                  */
-  /* [HARP-ARP] Harp arpeggiator — appended; SETTINGS_VERSION 0x0614→0x0615. */
+  /* Harp arpeggiator (SETTINGS_VERSION 0x0614→0x0615). */
   uint8_t harp_arp_en   = 0;
   uint8_t harp_arp_pat  = 0;
   uint8_t harp_arp_rate = 2;   /* default 1/16                                 */
@@ -262,7 +217,7 @@ struct MasterSettings {
   bool pb_enabled = true;
 };
 
-/* ── FX chain — [S5] adds aux_dly_fb + aux_rev_damp, removes dead padding ─ */
+/* ── FX chain — tube, DJ filter, drum sends, aux bus, slot indices ──────── */
 struct FxSettings {
   /* Tube saturation insert */
   float tb_drive = 0.00f;
@@ -275,11 +230,11 @@ struct FxSettings {
   /* Drum aux sends */
   float drum_rev_send = 0.00f;
   float drum_dly_send = 0.00f;
-  /* Shared aux bus — all four parameters now persisted [S5] */
+  /* Shared aux bus — delay time/feedback + reverb size/damping */
   float aux_dly_time = 0.35f; /* 0.0–1.5 s                           */
-  float aux_dly_fb = 0.45f;   /* CMD_AUX_DLY_FB  — NEW v5.3          */
+  float aux_dly_fb = 0.45f;   /* CMD_AUX_DLY_FB                        */
   float aux_rev_size = 0.55f; /* 0.0–0.95                            */
-  float aux_rev_damp = 0.35f; /* CMD_AUX_REV_DMP — NEW v5.3          */
+  float aux_rev_damp = 0.35f; /* CMD_AUX_REV_DMP                       */
   /* FX preset slot indices (0–15) */
   int master_fx_idx = 0;
   int harp_fx_idx_a = 0;
@@ -295,25 +250,24 @@ struct FxSettings {
   float seq_rev_send = 0.00f;
 };
 
-/* ── D-BEAM expression — [S3] new struct ───────────────────────────────── */
+/* ── D-BEAM expression ─────────────────────────────────────────────────── */
 struct DBeamSettings {
   bool enabled = true;       /* sensor active on boot               */
   uint8_t curve = 0;         /* DBEAMCurve::LINEAR                  */
-  /* [INC-2] uint16: ADC is 12-bit (0–4095).  [GAP-3] Persisted for the
-   * hardware menu; the adaptive peak normaliser in adc_dma_processing_task is
-   * the primary gain path — offset/range are calibration anchors only. */
+  /* ADC calibration anchors (12-bit 0–4095).  The adaptive peak normaliser in
+   * adc_dma_processing_task is the primary gain path; offset/range seed the
+   * hardware menu defaults. */
   uint16_t offset_adc = 2048u;
   uint16_t range_adc  = 1000u;
   float hw_gain = 1.2f;      /* amplitude gain — used in applyDBEAMCurve() */
   uint8_t route = 0;       /* DbeamRoute::OFF — user enables per session */
   float expr_attack = 0.50f; /* Branch B envelope attack (0.20–0.50) */
   float expr_release = 0.008f;/* Branch B envelope release (0.007–0.020) */
-  /* [DBEAM-TGT] Target synth: 0 = Harp engine, 1 = Melody (seq) synth.
-   * Appended at end of struct → requires SETTINGS_VERSION bump. */
+  /* Target synth: 0 = Harp engine, 1 = Melody (seq) synth. */
   uint8_t target = 0;      /* DbeamTarget::HARP */
 };
 
-/* ── Laser show — [S6] extracted from FxSettings ───────────────────────── */
+/* ── Laser show — beam detect, per-scale cal, fog reject, projector anim ─ */
 struct LaserSettings {
   bool show_mode = false;
   bool midi_hue_control = false;
@@ -322,14 +276,12 @@ struct LaserSettings {
   float hue_decay = 0.10f;
   float hue_sustain = 1.00f;
   float hue_release = 0.20f;
-  /* [S12] Per-scale beam-detect comparator margin (DAC threshold seed).
-   * Appended at the end of the struct so old layout offsets are preserved.
-   * Factory seed = 1100: playable range without exaggerated reach AND resists
-   * higher-than-average fog density (great beam visibility on a 5 W laser).
-   * Live HARP-SETUP edits override and persist. */
+  /* Per-scale beam-detect comparator margin (DAC threshold seed).
+   * Factory seed = 1100: playable range without exaggerated reach and resists
+   * higher-than-average fog density.  HARP-SETUP edits override and persist. */
   uint16_t margin[NUM_SCALES] = { 1100, 1100, 1100, 1100, 1100, 1100, 1100, 1100,
                                   1100, 1100, 1100, 1100, 1100, 1100, 1100, 1100 };
-  /* [SET-GAP1/2] Appended at v0x0606 — laser screensaver + per-scale beam cal */
+  /* Screensaver + per-scale beam calibration (white level, touch/release confirm, RGB). */
   bool screensaver = false;
   uint8_t white_level[NUM_SCALES]     = { 32, 64, 32, 64, 32, 64, 32, 40, 45, 50, 32, 64, 32, 10, 0, 0 };
   uint8_t touch_confirm[NUM_SCALES]   = { 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2 };
@@ -337,17 +289,13 @@ struct LaserSettings {
   uint8_t scale_r[NUM_SCALES] = { 0, 255, 0, 255, 127, 0, 255, 200, 50, 255, 100, 255, 0, 255, 255, 255 };
   uint8_t scale_g[NUM_SCALES] = { 255, 0, 255, 127, 0, 255, 255, 50, 200, 100, 255, 0, 255, 255, 255, 255 };
   uint8_t scale_b[NUM_SCALES] = { 255, 255, 0, 0, 255, 127, 0, 255, 255, 255, 100, 100, 255, 255, 255, 255 };
-  /* [EDGE-PERSCALE] Independent per-string edge-comp (percent, 100 = ×1.00) for
-   * EVERY scale — trigger height depends on beam colour, so each scale (and each
-   * rainbow string) can differ.  Seeded from the shared EDGE_COMP_DEFAULT_ROWS. */
+  /* Independent per-string edge-comp (percent, 100 = ×1.00) for every scale. */
   uint8_t edge_comp[NUM_SCALES][8] = { EDGE_COMP_DEFAULT_ROWS };
-  /* [FOG] Fog-reject module: differential (common-mode rejection) gate.
-   * fog_reject = enable (0/1, default OFF → no-op); fog_margin = mV the active
-   * string must clear the across-string fog floor by.  Appended → version bump. */
+  /* Fog-reject: differential gate.  fog_reject = enable (default OFF);
+   * fog_margin = mV the active string must clear the across-string floor by. */
   uint8_t  fog_reject = 0;
   uint16_t fog_margin = 50;
-  /* [LASER-SHOW v2] Projector animation: anim_mode (0=Pulse 1=Chase 2=Strobe
-   * 3=Wave) + drum-flash depth (0..1).  Appended → version bump.               */
+  /* Projector animation: anim_mode (0=Pulse 1=Chase 2=Strobe 3=Wave) + drum-flash depth. */
   uint8_t  anim_mode = 0;
   float    drum_flash = 0.50f;
 };
@@ -360,7 +308,7 @@ struct MixSettings {
   bool harp_mute = false;
   bool seq_mute = false;
   bool drum_mute = false;
-  /* [P5] Equal-power pan −1..+1 (appended — requires SETTINGS_VERSION bump) */
+  /* Equal-power pan −1..+1 */
   float harp_pan = 0.f;
   float seq_pan = 0.f;
   float drum_pan = 0.f;
@@ -371,15 +319,13 @@ struct MixSettings {
  * ═══════════════════════════════════════════════════════════════════════════ */
 /* ── Song sequencer programs ─────────────────────────────────────────────── */
 struct SongSettings {
-  SongSlot slots[16];        /* all 16 song programs            */
-  bool modeActive   = false; /* song vs pattern mode            */
-  uint8_t activeSlot = 0;    /* 0-15                            */
-  uint8_t _pad[2]   = {0,0}; /* explicit zero — never garbage   */
+  SongSlot slots[16]; /* all 16 song programs          */
+  bool modeActive;    /* song vs pattern mode          */
+  uint8_t activeSlot; /* 0-15                          */
+  uint8_t _pad[2];
 };
 
-/* Standard CRC-32 (0xEDB88320 reflected, init/final 0xFFFFFFFF).  Proven
- * bit-by-bit form — [SET-OPT1 ROM-CRC reverted to keep the save path bulletproof
- * after the SAVING-hang regression]. */
+/* Standard CRC-32 (0xEDB88320 reflected, init/final 0xFFFFFFFF). */
 static inline uint32_t crc32_buf(const uint8_t* p, size_t n) {
   uint32_t crc = 0xFFFFFFFFu;
   for (size_t i = 0; i < n; ++i) {
@@ -388,19 +334,6 @@ static inline uint32_t crc32_buf(const uint8_t* p, size_t n) {
       crc = (crc >> 1) ^ (0xEDB88320u & -(uint32_t)(crc & 1u));
   }
   return crc ^ 0xFFFFFFFFu;
-}
-
-/* [NVS-HEAP] Staging buffer for an NVS blob save/load.  These are large
- * (MotionBlob ~17 KB, UserPatBlob ~14.6 KB, PatternsBlob ~8 KB) and short-lived.
- * Internal DRAM is scarce at runtime (audio/FX/RAM-wavetables), so prefer PSRAM
- * for these staging copies (no DMA — only memcpy + CRC + nvs_*_blob).  Fall back
- * to internal only when PSRAM is unavailable. */
-static inline void* nvsBlobAlloc(size_t n) {
-  /* PSRAM first — internal DRAM is tight during audio; a save staging blob
-   * only needs memcpy + CRC (no DMA), so SPIRAM is safe and much more reliable. */
-  void* p = heap_caps_malloc(n, MALLOC_CAP_SPIRAM);
-  if (!p) p = heap_caps_malloc(n, MALLOC_CAP_INTERNAL);
-  return p;
 }
 
 struct AllSettings {
@@ -415,9 +348,9 @@ struct AllSettings {
   DBeamSettings dbeam;
   LaserSettings laser;
   MixSettings mix;
-  SongSettings song; /* [v5.3.1] song programs + mode */
+  SongSettings song; /* 16 song programs + song/pattern mode flag */
 
-  /* [SET-BUG2] In-place CRC — no ~1.5 KB stack copy on the NVS worker task. */
+  /* In-place CRC — no stack copy of the full AllSettings blob on NvsWorker. */
   uint32_t calculate_crc() const {
     AllSettings* mut = const_cast<AllSettings*>(this);
     const uint32_t saved = mut->crc32;
@@ -460,7 +393,9 @@ static inline float clamp01(float v) {
 static inline float clampf(float v, float lo, float hi) {
   return std::min(hi, std::max(lo, v));
 }
-/* clamp8() was removed — it was never called anywhere in the codebase. */
+static inline uint8_t clamp8(int v, int lo, int hi) {
+  return (uint8_t)std::min(hi, std::max(lo, v));
+}
 
 
 
@@ -468,10 +403,8 @@ static inline float clampf(float v, float lo, float hi) {
 /* ═══════════════════════════════════════════════════════════════════════════
  * DIRECTION A: g_settings → atomics → livePatch
  *
- * [S8] Calls syncLivePatchFromAtomics() at the end (patches.h) — eliminates
- *      the previous 50-line inline v14 derivation duplication.
- *      Also calls loadHarpFx/SeqFx/DrumFx to actually restore FX chain
- *      preset state on boot (previously only the index was stored).
+ * Ends with syncLivePatchFromAtomics() (patches.h) and loadHarpFx/SeqFx/DrumFx
+ * so FX chain presets match the saved slot indices (not just the indices).
  * ═══════════════════════════════════════════════════════════════════════════ */
 static inline void settings_sync_to_ssot() {
 
@@ -529,7 +462,7 @@ static inline void settings_sync_to_ssot() {
                   std::memory_order_relaxed);
   seqTranspose.store(std::min<int32_t>(12, std::max<int32_t>(-12, (int32_t)g_settings.seqr.transpose)),
                      std::memory_order_relaxed);
-  /* [WS1-FIX] harpPitchMult is the BEND control: ±1 octave → [0.5, 2.0].
+  /* harpPitchMult is the BEND control: ±1 octave → [0.5, 2.0].
    * MASTER_PITCH_MIN/MAX (0.25–4.0) is the global master-tune range — using it
    * here let corrupt NVS values in 0.25–0.49 or 2.01–4.0 bake in without error,
    * making the BEND knob appear broken after a factory-reset NVS migration. */
@@ -546,7 +479,7 @@ static inline void settings_sync_to_ssot() {
                                       (uint32_t)g_settings.seqr.beam_gate_ms);
   beamStuckReleaseMs = std::min<uint32_t>(BEAM_STUCK_RELEASE_MAX,
                                           (uint32_t)g_settings.seqr.beam_stuck_ms);
-  /* [RESUME] Restore the working image so a save→reboot powers up in place. */
+  /* Restore working image (dashboard, SEQ page, last pattern readouts). */
   activeDashboard.store(g_settings.seqr.dashboard ? DashboardMode::SEQUENCER
                                                   : DashboardMode::HARP,
                         std::memory_order_relaxed);
@@ -591,7 +524,7 @@ static inline void settings_sync_to_ssot() {
   masterAuxRevSize.store(clampf(g_settings.fx.aux_rev_size, 0.f, 0.95f), std::memory_order_relaxed);
   masterAuxRevDamp.store(clamp01(g_settings.fx.aux_rev_damp), std::memory_order_relaxed);
 
-  /* FX slot indices — store atomics then apply actual chain presets [S8] */
+  /* FX slot indices → atomics, then load the matching FX chain presets */
   masterFxIndex.store(g_settings.fx.master_fx_idx, std::memory_order_relaxed);
   harpFxIndex.store(g_settings.fx.harp_fx_idx_a, std::memory_order_relaxed);
   harpFxIndexB.store(g_settings.fx.harp_fx_idx_b, std::memory_order_relaxed);
@@ -599,10 +532,9 @@ static inline void settings_sync_to_ssot() {
   seqFxIndexB.store(g_settings.fx.seq_fx_idx_b, std::memory_order_relaxed);
   drumFxIndexA.store(g_settings.fx.drum_fx_idx_a, std::memory_order_relaxed);
   drumFxIndexB.store(g_settings.fx.drum_fx_idx_b, std::memory_order_relaxed);
-  /* Actually load the FX presets so chain state matches saved indices [S8] */
+  /* Load FX chain presets so runtime state matches saved slot indices */
   fx.loadMasterFx(g_settings.fx.master_fx_idx);
-  /* [P2] Boot with FX bank active; Dynamics indices stored but applied only
-   * when user selects via CMD_*_FX_IDX_B or encoder/App.                    */
+  /* A-slot chains active at boot; B-slot indices stored and applied on demand. */
   loadHarpFx(g_settings.fx.harp_fx_idx_a);
   loadSeqFx(g_settings.fx.seq_fx_idx_a);
   loadDrumFx(g_settings.fx.drum_fx_idx_a);
@@ -633,8 +565,7 @@ static inline void settings_sync_to_ssot() {
   laserShowMode.store(g_settings.laser.show_mode, std::memory_order_relaxed);
   midiHueControl.store(g_settings.laser.midi_hue_control, std::memory_order_relaxed);
   laserBaseHue.store(clamp01(g_settings.laser.base_hue), std::memory_order_relaxed);
-  /* [LASER-SHOW v2] HUE ADSR times are stored in SECONDS — clamp to per-stage
-   * full-scale (ATK 0..2, DEC 0..3, REL 0..4); SUS stays a 0..1 fraction. */
+  /* HUE ADSR times stored in seconds — clamp to per-stage full-scale. */
   hueAttack.store(clampf(g_settings.laser.hue_attack,  0.005f, HUE_ATK_MAX_S), std::memory_order_relaxed);
   hueDecay.store(clampf(g_settings.laser.hue_decay,    0.005f, HUE_DEC_MAX_S), std::memory_order_relaxed);
   hueSustain.store(clamp01(g_settings.laser.hue_sustain), std::memory_order_relaxed);
@@ -651,12 +582,12 @@ static inline void settings_sync_to_ssot() {
     scaleG[s]              = g_settings.laser.scale_g[s];
     scaleB[s]              = g_settings.laser.scale_b[s];
   }
-  /* [EDGE-PERSCALE] Independent per-string edge compensation for every scale. */
+  /* Per-scale edge compensation (percent per string). */
   for (int s = 0; s < NUM_SCALES; ++s)
     for (int i = 0; i < 8; ++i)
       edgeComp[s][i] = (uint8_t)std::min<uint8_t>(EDGE_COMP_PCT_MAX,
                        std::max<uint8_t>(EDGE_COMP_PCT_MIN, g_settings.laser.edge_comp[s][i]));
-  /* [FOG] Fog-reject module config. */
+  /* Fog-reject enable + margin (mV). */
   fogRejectEnabled.store(g_settings.laser.fog_reject != 0, std::memory_order_relaxed);
   fogRejectMargin .store((int)std::min<uint16_t>((uint16_t)FOG_MARGIN_MAX, g_settings.laser.fog_margin),
                          std::memory_order_relaxed);
@@ -672,10 +603,7 @@ static inline void settings_sync_to_ssot() {
   mixSeqPan.store(clampf(g_settings.mix.seq_pan, -1.f, 1.f), std::memory_order_relaxed);
   mixDrumsPan.store(clampf(g_settings.mix.drum_pan, -1.f, 1.f), std::memory_order_relaxed);
 
-  /* ── Rebuild livePatch arrays from the atomics just set [S8] ─────────── */
-  /* syncLivePatchFromAtomics() (patches.h) is the single canonical
-   * atomics → livePatch translation.  No duplication needed here.          */
-  /* ── Song mode [v5.3.1] ─────────────────────────────────────────────────── */
+  /* Song programs + mode flag */
   memcpy(hwSongData, g_settings.song.slots, sizeof(hwSongData));
   songModeActive.store(g_settings.song.modeActive, std::memory_order_relaxed);
   activeSongSlot.store(g_settings.song.activeSlot & 15u, std::memory_order_relaxed);
@@ -748,7 +676,7 @@ static inline void settings_sync_from_ssot() {
   g_settings.seqr.oct_seq = (int8_t)octaveShift[1].load(std::memory_order_relaxed);
   g_settings.seqr.beam_gate_ms = (uint16_t)std::min<uint32_t>(BEAM_GATE_HOLD_MAX, beamGateHoldMs);
   g_settings.seqr.beam_stuck_ms = (uint16_t)std::min<uint32_t>(BEAM_STUCK_RELEASE_MAX, beamStuckReleaseMs);
-  /* [RESUME] Working-image snapshot (dashboard / view page / last pattern). */
+  /* Working-image snapshot (dashboard / view page / last pattern). */
   g_settings.seqr.dashboard =
       (uint8_t)(activeDashboard.load(std::memory_order_relaxed) == DashboardMode::SEQUENCER ? 1u : 0u);
   g_settings.seqr.ui_page        = (uint8_t)(seqUI_page.load(std::memory_order_relaxed) & 1);
@@ -834,16 +762,16 @@ static inline void settings_sync_from_ssot() {
     g_settings.laser.scale_g[s]         = scaleG[s];
     g_settings.laser.scale_b[s]         = scaleB[s];
   }
-  /* [EDGE-PERSCALE] Independent per-string edge compensation for every scale. */
+  /* Per-scale edge compensation (percent per string). */
   for (int s = 0; s < NUM_SCALES; ++s)
     for (int i = 0; i < 8; ++i)
       g_settings.laser.edge_comp[s][i] = edgeComp[s][i];
-  /* [FOG] Fog-reject module config. */
+  /* Fog-reject enable + margin (mV). */
   g_settings.laser.fog_reject = fogRejectEnabled.load(std::memory_order_relaxed) ? 1 : 0;
   g_settings.laser.fog_margin = (uint16_t)fogRejectMargin.load(std::memory_order_relaxed);
 
   /* ── Mix ─────────────────────────────────────────────────────────────── */
-  /* [DBEAM-VOL] When the D-BEAM VOLUME pedal is active the live bus level may be
+  /* When D-BEAM VOLUME pedal is active the live bus level may be expression-driven;
    * a transient dip; persist the rest baseline so a save never bakes in a
    * hand-over-sensor attenuation. */
   const bool dbVolPedal = (currentDbeamRoute.load(std::memory_order_relaxed) == DbeamRoute::VOLUME);
@@ -859,7 +787,7 @@ static inline void settings_sync_from_ssot() {
   g_settings.mix.seq_pan = mixSeqPan.load(std::memory_order_relaxed);
   g_settings.mix.drum_pan = mixDrumsPan.load(std::memory_order_relaxed);
 
-  /* ── Song mode [v5.3.1] ─────────────────────────────────────────────────── */
+  /* ── Song programs + mode flag ─────────────────────────────────────────── */
   memcpy(g_settings.song.slots, hwSongData, sizeof(hwSongData));
   g_settings.song.modeActive = songModeActive.load(std::memory_order_relaxed);
   g_settings.song.activeSlot = activeSongSlot.load(std::memory_order_relaxed);
@@ -891,8 +819,8 @@ static constexpr uint16_t PATTERNS_VERSION    = 0x0003; /* v3: + per-pattern tra
 static constexpr uint16_t PATTERNS_VERSION_V2 = 0x0002; /* v2: 64 steps/row (uint64)  */
 static constexpr uint16_t PATTERNS_VERSION_V1 = 0x0001; /* v1: 16 steps/row (uint16)  */
 static constexpr uint16_t BANKS_VERSION    = 0x0001;
-static constexpr uint16_t USRNAMES_VERSION = 0x0001;  /* [USER-SLOTS] sparse name blob */
-static constexpr uint16_t MOTION_VERSION   = 0x0002; /* v2: 64 steps/lane (was 16 in v1) */
+static constexpr uint16_t USRNAMES_VERSION = 0x0001;
+static constexpr uint16_t MOTION_VERSION   = 0x0001;
 static constexpr uint16_t MAX_BANK_OVR     = 64;  /* max customised slots / bank */
 static constexpr uint16_t MAX_MOTION_LANES = 128; /* max persisted P-lock lanes  */
 
@@ -916,7 +844,7 @@ struct PatternsBlob {
   uint16_t _pad;
   uint32_t crc32;                 /* zeroed while hashing */
   uint64_t data[16][4][16];       /* mirrors hwSeqData layout exactly    */
-  int8_t   transpose[16][4];      /* [PER-PATTERN-TRANSPOSE] −12..+12 per slot */
+  int8_t   transpose[16][4];      /* per-pattern melody transpose −12..+12 */
 };
 
 struct BankOverride {
@@ -934,9 +862,7 @@ struct BanksBlob {
   BankOverride seq[MAX_BANK_OVR];
 };
 
-/* [USER-SLOTS] Sparse user-slot NAME store.  Only renamed slots are persisted
- * (generic "USER NN" is generated at runtime → costs nothing).  Mirrors the
- * bank delta approach so the footprint stays tiny.  Names are App-editable. */
+/* Sparse user-slot name store (only renamed slots persisted). */
 struct NameOverride {
   uint16_t slot;                  /* user slot index 0..NUM_USER_SLOTS-1 */
   char     name[16];              /* 15 chars + NUL                      */
@@ -951,9 +877,7 @@ struct UserNamesBlob {
   NameOverride seq[NUM_USER_SLOTS];
 };
 
-/* [USER-PAT-SLOTS] Sparse user-pattern library.  Only slots with flags bit0 set
- * are persisted; empty slots cost nothing.  Each entry is a full melody+drum
- * snapshot (grid rows + companion sounds + transpose).                        */
+/* Sparse user-pattern library (flags bit0 = slot populated). */
 static constexpr uint16_t USRPAT_VERSION       = 0x0001;
 static constexpr uint16_t USRPATNAMES_VERSION = 0x0001;
 static constexpr uint16_t MAX_USER_PAT_OVR   = 64;
@@ -986,14 +910,16 @@ struct UserPatNamesBlob {
 
 /* SPARSE P-lock motion matrix.  The App is the primary motion recorder;
  * persisting it lets the groovebox replay recorded automation in standalone
- * mode after a power cycle.  Each lane holds MOTION_STEPS_PER_LANE (64) steps,
- * matching the seq grid depth.  Sparse NVS stores allocated lanes only.        */
+ * mode after a power cycle.  A full hwMotionData dump is ~8.7 KB which is too
+ * large alongside the other blobs in the stock 20 KB NVS partition, so only
+ * ALLOCATED lanes (targetCmd != 255) are stored, up to MAX_MOTION_LANES.  Most
+ * lanes are empty in practice, so real-world size is a few KB.                 */
 struct MotionLaneOverride {
   uint8_t  bank;      /* 0–15 */
   uint8_t  chain;     /* 0–3  */
   uint8_t  lane;      /* 0–3  */
   uint8_t  targetCmd; /* automation target command (!=255) */
-  uint16_t steps[MOTION_STEPS_PER_LANE]; /* per-step values (0xFFFF = empty) */
+  uint16_t steps[16]; /* per-step values (0xFFFF = no automation on that step) */
 };
 
 struct MotionBlob {
@@ -1003,17 +929,16 @@ struct MotionBlob {
   MotionLaneOverride lanes[MAX_MOTION_LANES];
 };
 
-
 /* ── patterns ────────────────────────────────────────────────────────────── */
 static inline esp_err_t patterns_save_h(nvs_handle_t h) {
-  PatternsBlob* b = (PatternsBlob*)nvsBlobAlloc(sizeof(PatternsBlob));
+  PatternsBlob* b = (PatternsBlob*)heap_caps_malloc(sizeof(PatternsBlob), MALLOC_CAP_INTERNAL);
   if (!b) return ESP_ERR_NO_MEM;
   b->version = PATTERNS_VERSION;
   b->_pad    = 0;
   b->crc32   = 0;
 
-  /* [SAVE-FIX] Row-by-row snapshot under short per-row patchMux windows instead
-   * of a single 8+ KB critical section.  Each window covers exactly one row:
+  /* Row-by-row snapshot under short per-row patchMux windows instead of a single
+   * 8+ KB critical section.  Each window covers exactly one row:
    * 16 × uint64_t steps (128 bytes) + 1 × int8_t transpose = ~129 bytes → the
    * lock is held for ~1–2 µs, which is below the interrupt watchdog threshold
    * even on the slowest PSRAM configuration.
@@ -1042,7 +967,7 @@ static inline esp_err_t patterns_load_h(nvs_handle_t h) {
   esp_err_t err = nvs_get_blob(h, "patterns", nullptr, &sz);
   if (err != ESP_OK || sz == 0) return err;
 
-  void* buf = nvsBlobAlloc(sz);
+  void* buf = heap_caps_malloc(sz, MALLOC_CAP_INTERNAL);
   if (!buf) return ESP_ERR_NO_MEM;
   err = nvs_get_blob(h, "patterns", buf, &sz);
   if (err != ESP_OK) { heap_caps_free(buf); return err; }
@@ -1062,10 +987,7 @@ static inline esp_err_t patterns_load_h(nvs_handle_t h) {
       }
     }
   } else if (sz == sizeof(PatternsBlobV2)) {
-    /* [PER-PATTERN-TRANSPOSE] Migrate v2 → v3: grid as-is.  Seed EVERY pattern's
-     * transpose with the legacy GLOBAL value (settings_sync_to_ssot ran first, so
-     * seqTranspose holds it) → behaviour is preserved across the update; the user
-     * can then diverge per pattern. */
+    /* v2 → v3: keep grid; seed per-pattern transpose from global default. */
     PatternsBlobV2* b = (PatternsBlobV2*)buf;
     if (b->version == PATTERNS_VERSION_V2) {
       const uint32_t stored = b->crc32;
@@ -1082,7 +1004,7 @@ static inline esp_err_t patterns_load_h(nvs_handle_t h) {
       }
     }
   } else if (sz == sizeof(PatternsBlobV1)) {
-    /* [GRID-64] Migrate v1 (16-bit rows) → v2 (64-bit rows, upper pages zero). */
+    /* v1 → v2: expand 16-bit rows to 64-bit (upper pages zero). */
     PatternsBlobV1* v1 = (PatternsBlobV1*)buf;
     if (v1->version == PATTERNS_VERSION_V1) {
       const uint32_t stored = v1->crc32;
@@ -1095,7 +1017,7 @@ static inline esp_err_t patterns_load_h(nvs_handle_t h) {
             for (int r = 0; r < 16; ++r)
               hwSeqData[bk][ch][r] = (uint64_t)v1->data[bk][ch][r];
         for (auto& bk : seqPatternTranspose)
-          for (auto& cell : bk) cell = glob;   /* [PER-PATTERN-TRANSPOSE] seed */
+          for (auto& cell : bk) cell = glob;
         portEXIT_CRITICAL(&patchMux);
       } else {
         err = ESP_ERR_INVALID_CRC;
@@ -1108,17 +1030,13 @@ static inline esp_err_t patterns_load_h(nvs_handle_t h) {
 
 /* ── sparse banks ─────────────────────────────────────────────────────────── */
 static inline esp_err_t banks_save_h(nvs_handle_t h) {
-  BanksBlob* b = (BanksBlob*)nvsBlobAlloc(sizeof(BanksBlob));
+  BanksBlob* b = (BanksBlob*)heap_caps_malloc(sizeof(BanksBlob), MALLOC_CAP_INTERNAL);
   if (!b) return ESP_ERR_NO_MEM;
   memset(b, 0, sizeof(BanksBlob));
   b->version = BANKS_VERSION;
 
-  /* [SET-OPT2 REVERTED] The single-snapshot variant allocated two extra ~8 KB
-   * MALLOC_CAP_INTERNAL buffers + a 16 KB memcpy inside the spinlock during the
-   * save.  That transient spike could fail/stall mid-session, hanging the save
-   * (SAVING splash stuck, nothing committed).  Back to the proven per-row copy:
-   * tiny stack temps, short per-row critical sections — safe in the save window
-   * (audio muted, Core 1 parked).  256 short locks are cheap here. */
+  /* Per-row copy into the blob: short critical sections, safe during save window
+   * (audio muted, Core 1 parked).  Avoids large stack/allocation spikes. */
   uint16_t hc = 0, sc = 0;
   uint16_t fac[PARAMS_PER_PRESET];
   uint16_t htmp[PARAMS_PER_PRESET], stmp[PARAMS_PER_PRESET];
@@ -1138,30 +1056,21 @@ static inline esp_err_t banks_save_h(nvs_handle_t h) {
   }
   b->harpCount = hc;
   b->seqCount  = sc;
-  /* [NVS-TRIM] harp[] stays at its fixed offset (full MAX_BANK_OVR span, unused
-   * slots zeroed); trim only the trailing unused part of seq[].  seq[] is the
-   * last member, so writing up to seq[sc] keeps every entry at its normal offset
-   * — no layout change, struct cast on load stays valid. */
-  const size_t used = offsetof(BanksBlob, seq) + (size_t)sc * sizeof(BankOverride);
-  b->crc32     = crc32_buf((const uint8_t*)b, used); /* crc field is 0 here */
-  esp_err_t err = nvs_set_blob(h, "banks", b, used);
+  b->crc32     = crc32_buf((const uint8_t*)b, sizeof(BanksBlob)); /* crc field is 0 here */
+  esp_err_t err = nvs_set_blob(h, "banks", b, sizeof(BanksBlob));
   heap_caps_free(b);
   return err;
 }
 
 static inline esp_err_t banks_load_h(nvs_handle_t h) {
   size_t sz = sizeof(BanksBlob);
-  BanksBlob* b = (BanksBlob*)nvsBlobAlloc(sz);
+  BanksBlob* b = (BanksBlob*)heap_caps_malloc(sz, MALLOC_CAP_INTERNAL);
   if (!b) return ESP_ERR_NO_MEM;
-  memset(b, 0, sizeof(BanksBlob));
   esp_err_t err = nvs_get_blob(h, "banks", b, &sz);
-  const size_t expect = (err == ESP_OK && b->seqCount <= MAX_BANK_OVR)
-      ? offsetof(BanksBlob, seq) + (size_t)b->seqCount * sizeof(BankOverride) : 0u;
-  if (err == ESP_OK && b->version == BANKS_VERSION &&
-      b->harpCount <= MAX_BANK_OVR && b->seqCount <= MAX_BANK_OVR && sz == expect) {
+  if (err == ESP_OK && sz == sizeof(BanksBlob) && b->version == BANKS_VERSION) {
     const uint32_t stored = b->crc32;
     b->crc32 = 0;
-    if (crc32_buf((const uint8_t*)b, sz) == stored) {
+    if (crc32_buf((const uint8_t*)b, sizeof(BanksBlob)) == stored) {
       const size_t   rowBytes = PARAMS_PER_PRESET * sizeof(uint16_t);
       const uint16_t hc  = std::min<uint16_t>(b->harpCount, MAX_BANK_OVR);
       const uint16_t scn = std::min<uint16_t>(b->seqCount,  MAX_BANK_OVR);
@@ -1191,7 +1100,7 @@ static inline esp_err_t banks_load_h(nvs_handle_t h) {
 
 /* ── user-slot names (sparse: renamed slots only) ─────────────────────────── */
 static inline esp_err_t usrnames_save_h(nvs_handle_t h) {
-  UserNamesBlob* b = (UserNamesBlob*)nvsBlobAlloc(sizeof(UserNamesBlob));
+  UserNamesBlob* b = (UserNamesBlob*)heap_caps_malloc(sizeof(UserNamesBlob), MALLOC_CAP_INTERNAL);
   if (!b) return ESP_ERR_NO_MEM;
   memset(b, 0, sizeof(UserNamesBlob));
   b->version = USRNAMES_VERSION;
@@ -1204,27 +1113,21 @@ static inline esp_err_t usrnames_save_h(nvs_handle_t h) {
   }
   b->harpCount = hc;
   b->seqCount  = sc;
-  /* [NVS-TRIM] harp[] full at fixed offset; trim trailing unused seq[]. */
-  const size_t used = offsetof(UserNamesBlob, seq) + (size_t)sc * sizeof(NameOverride);
-  b->crc32     = crc32_buf((const uint8_t*)b, used);
-  esp_err_t err = nvs_set_blob(h, "usrnames", b, used);
+  b->crc32     = crc32_buf((const uint8_t*)b, sizeof(UserNamesBlob));
+  esp_err_t err = nvs_set_blob(h, "usrnames", b, sizeof(UserNamesBlob));
   heap_caps_free(b);
   return err;
 }
 
 static inline esp_err_t usrnames_load_h(nvs_handle_t h) {
   size_t sz = sizeof(UserNamesBlob);
-  UserNamesBlob* b = (UserNamesBlob*)nvsBlobAlloc(sz);
+  UserNamesBlob* b = (UserNamesBlob*)heap_caps_malloc(sz, MALLOC_CAP_INTERNAL);
   if (!b) return ESP_ERR_NO_MEM;
-  memset(b, 0, sizeof(UserNamesBlob));
   esp_err_t err = nvs_get_blob(h, "usrnames", b, &sz);
-  const size_t expect = (err == ESP_OK && b->seqCount <= NUM_USER_SLOTS)
-      ? offsetof(UserNamesBlob, seq) + (size_t)b->seqCount * sizeof(NameOverride) : 0u;
-  if (err == ESP_OK && b->version == USRNAMES_VERSION &&
-      b->harpCount <= NUM_USER_SLOTS && b->seqCount <= NUM_USER_SLOTS && sz == expect) {
+  if (err == ESP_OK && sz == sizeof(UserNamesBlob) && b->version == USRNAMES_VERSION) {
     const uint32_t stored = b->crc32;
     b->crc32 = 0;
-    if (crc32_buf((const uint8_t*)b, sz) == stored) {
+    if (crc32_buf((const uint8_t*)b, sizeof(UserNamesBlob)) == stored) {
       const uint16_t hc  = std::min<uint16_t>(b->harpCount, NUM_USER_SLOTS);
       const uint16_t scn = std::min<uint16_t>(b->seqCount,  NUM_USER_SLOTS);
       for (uint16_t k = 0; k < hc; ++k) {
@@ -1252,7 +1155,7 @@ static inline void reset_clear_user_pats() {
 }
 
 static inline esp_err_t usrpat_save_h(nvs_handle_t h) {
-  UserPatBlob* b = (UserPatBlob*)nvsBlobAlloc(sizeof(UserPatBlob));
+  UserPatBlob* b = (UserPatBlob*)heap_caps_malloc(sizeof(UserPatBlob), MALLOC_CAP_INTERNAL);
   if (!b) return ESP_ERR_NO_MEM;
   memset(b, 0, sizeof(UserPatBlob));
   b->version = USRPAT_VERSION;
@@ -1270,27 +1173,21 @@ static inline esp_err_t usrpat_save_h(nvs_handle_t h) {
     ++n;
   }
   b->count = n;
-  /* [NVS-TRIM] header + n used entries only (not the full 64-slot array). */
-  const size_t used = offsetof(UserPatBlob, entries) + (size_t)n * sizeof(UserPatOverride);
-  b->crc32 = crc32_buf((const uint8_t*)b, used);
-  esp_err_t err = nvs_set_blob(h, "usrpat", b, used);
+  b->crc32 = crc32_buf((const uint8_t*)b, sizeof(UserPatBlob));
+  esp_err_t err = nvs_set_blob(h, "usrpat", b, sizeof(UserPatBlob));
   heap_caps_free(b);
   return err;
 }
 
 static inline esp_err_t usrpat_load_h(nvs_handle_t h) {
   size_t sz = sizeof(UserPatBlob);
-  UserPatBlob* b = (UserPatBlob*)nvsBlobAlloc(sz);
+  UserPatBlob* b = (UserPatBlob*)heap_caps_malloc(sz, MALLOC_CAP_INTERNAL);
   if (!b) return ESP_ERR_NO_MEM;
-  memset(b, 0, sizeof(UserPatBlob));
   esp_err_t err = nvs_get_blob(h, "usrpat", b, &sz);
-  const size_t expect = (err == ESP_OK)
-      ? offsetof(UserPatBlob, entries) + (size_t)b->count * sizeof(UserPatOverride) : 0u;
-  if (err == ESP_OK && b->version == USRPAT_VERSION &&
-      b->count <= MAX_USER_PAT_OVR && sz == expect) {
+  if (err == ESP_OK && sz == sizeof(UserPatBlob) && b->version == USRPAT_VERSION) {
     const uint32_t stored = b->crc32;
     b->crc32 = 0;
-    if (crc32_buf((const uint8_t*)b, sz) == stored) {
+    if (crc32_buf((const uint8_t*)b, sizeof(UserPatBlob)) == stored) {
       memset(g_userPat, 0, sizeof(g_userPat));
       const uint16_t n = std::min<uint16_t>(b->count, MAX_USER_PAT_OVR);
       for (uint16_t k = 0; k < n; ++k) {
@@ -1313,7 +1210,7 @@ static inline esp_err_t usrpat_load_h(nvs_handle_t h) {
 }
 
 static inline esp_err_t usrpatnames_save_h(nvs_handle_t h) {
-  UserPatNamesBlob* b = (UserPatNamesBlob*)nvsBlobAlloc(sizeof(UserPatNamesBlob));
+  UserPatNamesBlob* b = (UserPatNamesBlob*)heap_caps_malloc(sizeof(UserPatNamesBlob), MALLOC_CAP_INTERNAL);
   if (!b) return ESP_ERR_NO_MEM;
   memset(b, 0, sizeof(UserPatNamesBlob));
   b->version = USRPATNAMES_VERSION;
@@ -1325,27 +1222,21 @@ static inline esp_err_t usrpatnames_save_h(nvs_handle_t h) {
     ++n;
   }
   b->count = n;
-  /* [NVS-TRIM] header + n used names only. */
-  const size_t used = offsetof(UserPatNamesBlob, names) + (size_t)n * sizeof(NameOverride);
-  b->crc32 = crc32_buf((const uint8_t*)b, used);
-  esp_err_t err = nvs_set_blob(h, "usrpatnames", b, used);
+  b->crc32 = crc32_buf((const uint8_t*)b, sizeof(UserPatNamesBlob));
+  esp_err_t err = nvs_set_blob(h, "usrpatnames", b, sizeof(UserPatNamesBlob));
   heap_caps_free(b);
   return err;
 }
 
 static inline esp_err_t usrpatnames_load_h(nvs_handle_t h) {
   size_t sz = sizeof(UserPatNamesBlob);
-  UserPatNamesBlob* b = (UserPatNamesBlob*)nvsBlobAlloc(sz);
+  UserPatNamesBlob* b = (UserPatNamesBlob*)heap_caps_malloc(sz, MALLOC_CAP_INTERNAL);
   if (!b) return ESP_ERR_NO_MEM;
-  memset(b, 0, sizeof(UserPatNamesBlob));
   esp_err_t err = nvs_get_blob(h, "usrpatnames", b, &sz);
-  const size_t expect = (err == ESP_OK)
-      ? offsetof(UserPatNamesBlob, names) + (size_t)b->count * sizeof(NameOverride) : 0u;
-  if (err == ESP_OK && b->version == USRPATNAMES_VERSION &&
-      b->count <= MAX_USER_PAT_OVR && sz == expect) {
+  if (err == ESP_OK && sz == sizeof(UserPatNamesBlob) && b->version == USRPATNAMES_VERSION) {
     const uint32_t stored = b->crc32;
     b->crc32 = 0;
-    if (crc32_buf((const uint8_t*)b, sz) == stored) {
+    if (crc32_buf((const uint8_t*)b, sizeof(UserPatNamesBlob)) == stored) {
       const uint16_t n = std::min<uint16_t>(b->count, MAX_USER_PAT_OVR);
       for (uint16_t k = 0; k < n; ++k) {
         const uint16_t s = b->names[k].slot;
@@ -1364,7 +1255,7 @@ static inline esp_err_t usrpatnames_load_h(nvs_handle_t h) {
 
 /* ── motion (sparse: allocated lanes only) ────────────────────────────────── */
 static inline esp_err_t motion_save_h(nvs_handle_t h) {
-  MotionBlob* b = (MotionBlob*)nvsBlobAlloc(sizeof(MotionBlob));
+  MotionBlob* b = (MotionBlob*)heap_caps_malloc(sizeof(MotionBlob), MALLOC_CAP_INTERNAL);
   if (!b) return ESP_ERR_NO_MEM;
   memset(b, 0, sizeof(MotionBlob));
   b->version = MOTION_VERSION;
@@ -1377,7 +1268,7 @@ static inline esp_err_t motion_save_h(nvs_handle_t h) {
         bool used;
         portENTER_CRITICAL(&motionMux);
         used = (hwMotionData[bank][chain][lane].targetCmd != 255u);
-        if (used) tmp = hwMotionData[bank][chain][lane]; /* lane copy under lock */
+        if (used) tmp = hwMotionData[bank][chain][lane]; /* 34-byte copy under lock */
         portEXIT_CRITICAL(&motionMux);
         if (used) {
           b->lanes[n].bank      = (uint8_t)bank;
@@ -1391,29 +1282,21 @@ static inline esp_err_t motion_save_h(nvs_handle_t h) {
     }
   }
   b->count = n;
-  /* [NVS-TRIM] Write only header + the n used lanes (not the full 128-lane
-   * fixed array).  Empty motion → ~8 bytes instead of ~17 KB, so a FULL save
-   * fits even a 20 KB nvs partition.  CRC covers exactly the bytes written. */
-  const size_t used = offsetof(MotionBlob, lanes) + (size_t)n * sizeof(MotionLaneOverride);
-  b->crc32 = crc32_buf((const uint8_t*)b, used); /* crc field is 0 */
-  esp_err_t err = nvs_set_blob(h, "motion", b, used);
+  b->crc32 = crc32_buf((const uint8_t*)b, sizeof(MotionBlob)); /* crc field is 0 */
+  esp_err_t err = nvs_set_blob(h, "motion", b, sizeof(MotionBlob));
   heap_caps_free(b);
   return err;
 }
 
 static inline esp_err_t motion_load_h(nvs_handle_t h) {
   size_t sz = sizeof(MotionBlob);
-  MotionBlob* b = (MotionBlob*)nvsBlobAlloc(sz);
+  MotionBlob* b = (MotionBlob*)heap_caps_malloc(sz, MALLOC_CAP_INTERNAL);
   if (!b) return ESP_ERR_NO_MEM;
-  memset(b, 0, sizeof(MotionBlob));
   esp_err_t err = nvs_get_blob(h, "motion", b, &sz);
-  const size_t expect = (err == ESP_OK)
-      ? offsetof(MotionBlob, lanes) + (size_t)b->count * sizeof(MotionLaneOverride) : 0u;
-  if (err == ESP_OK && b->version == MOTION_VERSION &&
-      b->count <= MAX_MOTION_LANES && sz == expect) {
+  if (err == ESP_OK && sz == sizeof(MotionBlob) && b->version == MOTION_VERSION) {
     const uint32_t stored = b->crc32;
     b->crc32 = 0;
-    if (crc32_buf((const uint8_t*)b, sz) == stored) {
+    if (crc32_buf((const uint8_t*)b, sizeof(MotionBlob)) == stored) {
       /* Base is already cleared to sentinels by persisted_extras_load(); just
        * overlay the saved lanes.                                               */
       const uint16_t cnt = std::min<uint16_t>(b->count, MAX_MOTION_LANES);
@@ -1450,18 +1333,18 @@ static inline void persisted_extras_load() {
    * no longer needs a separate initMotionMatrix() pass that would clobber it.  */
   clearMotionMatrix();
   nvs_handle_t h;
-  if (nvs_open(NVS_NAMESPACE, NVS_READONLY, &h) != ESP_OK) return;
+  if (nvs_open_octopus( NVS_READONLY, &h) != ESP_OK) return;
   banks_load_h(h);
-  usrnames_load_h(h);   /* [USER-SLOTS] overlay renamed user-slot names */
-  usrpat_load_h(h);     /* [USER-PAT-SLOTS] overlay saved user patterns */
+  usrnames_load_h(h);
+  usrpat_load_h(h);
   usrpatnames_load_h(h);
   patterns_load_h(h);
   motion_load_h(h);
   nvs_close(h);
 
-  /* [PER-PATTERN-TRANSPOSE] Adopt the active pattern's stored transpose into the
-   * live seqTranspose atomic (overrides the legacy global from SequencerSettings,
-   * which is now just a default).  No echo — runs at boot before any App link. */
+  /* Adopt the active pattern's stored transpose into the live seqTranspose atomic
+   * (overrides the legacy global from SequencerSettings, which is now just a default).
+   * No echo — runs at boot before any App link. */
   {
     const uint8_t bank  = seqActiveBank.load(std::memory_order_relaxed)  & 15u;
     const uint8_t chain = seqActiveChain.load(std::memory_order_relaxed) & 3u;
@@ -1471,7 +1354,7 @@ static inline void persisted_extras_load() {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
- * SCOPED RESET / SAVE  [S11]
+ * SCOPED RESET / SAVE
  *
  * ResetScope is defined here (before settings_save_scoped) so translation units
  * that include interface.h's forward decl still get the full enum before use.
@@ -1481,7 +1364,7 @@ static inline void persisted_extras_load() {
  *   MOTION          P-lock motion cleared (everything else kept)
  *   SETTINGS        settings → factory (banks/patterns/motion kept)
  *
- * Subsystem → blob/scope map (audited for SAVE/LOAD/RESET 1:1 consistency):
+ * Subsystem → blob/scope map (SAVE/LOAD/RESET 1:1 consistency):
  *   • SEQ step grids + per-pattern transpose  → "patterns" blob  → BANKS_PATTERNS/FULL
  *   • SEQ MATRIX P-locks (motion automation)   → "motion"   blob  → MOTION/FULL
  *   • Sound banks (userBank/seqBank deltas)    → "banks"    blob  → BANKS_PATTERNS/FULL
@@ -1524,16 +1407,16 @@ inline void applyResetScope(ResetScope scope) {
   switch (scope) {
     case ResetScope::FULL:
       seedFactoryBanks();
-      memset(g_userSlotName, 0, sizeof(g_userSlotName)); /* [USER-SLOTS] names follow banks */
-      reset_clear_user_pats();                           /* [USER-PAT-SLOTS] */
+      memset(g_userSlotName, 0, sizeof(g_userSlotName)); /* names follow banks */
+      reset_clear_user_pats();
       reset_clear_patterns();
       clearMotionMatrix();
       reset_settings_to_factory();
       break;
     case ResetScope::BANKS_PATTERNS:
       seedFactoryBanks();
-      memset(g_userSlotName, 0, sizeof(g_userSlotName)); /* [USER-SLOTS] names follow banks */
-      reset_clear_user_pats();                           /* [USER-PAT-SLOTS] */
+      memset(g_userSlotName, 0, sizeof(g_userSlotName)); /* names follow banks */
+      reset_clear_user_pats();
       reset_clear_patterns();
       break;
     case ResetScope::MOTION:
@@ -1565,15 +1448,7 @@ struct SettingsPersistCtx {
 
 static void settings_persist_task_fn(void* arg) {
   auto* ctx = static_cast<SettingsPersistCtx*>(arg);
-  /* Subscribe to the Task-WDT so the esp_task_wdt_reset() calls inside
-   * settings_save_scoped() are valid on THIS task.  NvsWorker already
-   * subscribes; without this the blocking / first-boot-seed path floods
-   * "task_wdt: esp_task_wdt_reset(): task not found" on every blob write
-   * (the WDT is then NOT actually fed during the multi-second seed, risking a
-   * real watchdog trip on the idle task while flash is busy). */
-  const bool wdtAdded = (esp_task_wdt_add(NULL) == ESP_OK);
   ctx->ok = settings_save_scoped(ctx->scope);
-  if (wdtAdded) esp_task_wdt_delete(NULL);
   xSemaphoreGive(ctx->done);
   vTaskDelete(nullptr);
 }
@@ -1597,8 +1472,10 @@ static inline bool settings_persist_blocking(ResetScope scope, uint32_t timeoutM
 static inline bool settings_save_scoped(ResetScope scope) {
 
   nvs_handle_t h;
-  const esp_err_t openErr = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &h);
-  if (openErr != ESP_OK) return false;
+  const esp_err_t openErr = nvs_open_octopus( NVS_READWRITE, &h);
+  if (openErr != ESP_OK) {
+    return false;
+  }
 
   esp_err_t err = ESP_OK;
   switch (scope) {
@@ -1641,6 +1518,7 @@ static inline bool settings_save_scoped(ResetScope scope) {
   }
 
   if (err == ESP_OK) err = nvs_commit(h);
+
   nvs_close(h);
 
   const bool ok = (err == ESP_OK);
@@ -1649,7 +1527,7 @@ static inline bool settings_save_scoped(ResetScope scope) {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
- * [USER-SLOTS] Save / load the live patch to a user sound slot (128..191).
+ * Save / load the live patch to a user sound slot (128..191).
  *
  * saveLiveToUserSlot — snapshot the engine's LIVE patch (the sound you hear)
  *   into its user slot, then persist the banks + names blob (RAM-live at once,
@@ -1669,15 +1547,7 @@ static inline bool saveLiveToUserSlot(uint8_t engine, uint8_t uidx) {
   if (engine == 0) harpPatchIndex.store(slot, std::memory_order_relaxed);
   else             seqPatchIndex .store(slot, std::memory_order_relaxed);
   displayDirty.store(true, std::memory_order_relaxed);
-  /* [FIX-L2] Use async NvsWorker instead of settings_persist_blocking().
-   * The old blocking call froze the MIDI RX task (8 KB stack) for up to 20 s
-   * while the NVS write completed.  The copy to userBank[] above is already
-   * under patchMux and live in RAM; persistence happens async without a reboot
-   * (requestBanksOnlySave clears g_restartAfterSave).  Return true immediately
-   * so the caller echoes CMD_USR_SOUND_SAVE to the App — the sound is audible
-   * right away regardless of whether the NVS write is still pending.          */
-  requestBanksOnlySave();
-  return true;
+  return settings_persist_blocking(ResetScope::BANKS_PATTERNS);
 }
 
 static inline void loadUserSlotToLive(uint8_t engine, uint8_t uidx) {
@@ -1685,8 +1555,10 @@ static inline void loadUserSlotToLive(uint8_t engine, uint8_t uidx) {
   const int slot = USER_SLOT_BASE + uidx;
   if (engine == 0) recallHarpPatch(slot, ParamSource::NVS);
   else             recallSeqPatch (slot, ParamSource::NVS);
-  if (isAppConnected())
+  if (isAppConnected()) {
+    sendFullStateSync();
     txSysex(CMD_USR_SOUND_LOAD, (uint16_t)(((uint16_t)(engine & 1u) << 13) | uidx));
+  }
 }
 
 static inline bool settings_save_on_worker_stack() {
@@ -1702,48 +1574,35 @@ static inline bool settings_save() {
 
 static inline bool settings_load() {
   nvs_handle_t h;
-  esp_err_t err = nvs_open(NVS_NAMESPACE, NVS_READONLY, &h);
+  esp_err_t err = nvs_open_octopus( NVS_READONLY, &h);
   if (err == ESP_ERR_NVS_NOT_FOUND) {
     /* First boot — seed and persist factory defaults.
      * CRITICAL ORDER: settings_save() pulls atomics→blob (settings_sync_from_ssot),
      * so the factory g_settings MUST be pushed to the atomics FIRST.  Otherwise the
      * save captures whatever the globals.h static-init placeholders happen to be and
-     * the tuned AllSettings defaults never reach NVS.  [FACTORY-ORDER]            */
+     * the tuned AllSettings defaults never reach NVS. */
     g_settings = AllSettings{};
     initDrumParameters();
     initHueEnvelopes();
     initStringDuty();
     settings_sync_to_ssot();   /* factory g_settings → atomics → livePatch */
-    /* [SAVE-FIX4] Never call settings_save_scoped from setup()/MIDI stacks (~8 KB);
-     * route through the 16 KB NvsBlk worker (same as factory reset + runtime save). */
-    const bool seeded = settings_persist_blocking(ResetScope::FULL);
-    Serial.printf("[NVS] first-boot factory seed %s\n", seeded ? "OK" : "FAILED");
+    /* Route first-boot persist through NvsWorker (16 KB stack), not inline here. */
+    if (!settings_persist_blocking(ResetScope::FULL)) { /* first-boot persist failed */ }
     return true;
   }
   if (err != ESP_OK) return false;
-
-  /* [FIX-STACK] sizeof(AllSettings) ≈ 1840 bytes — allocating it on the
-   * Arduino task stack (8 KB total) left only ~4 KB headroom when combined
-   * with nvs_get_blob's own stack usage, making stack overflow possible on
-   * deep call chains.  Heap-allocate instead; freed before any sync path. */
-  uint8_t* blob = (uint8_t*)nvsBlobAlloc(sizeof(AllSettings));
-  if (!blob) { nvs_close(h); return false; }
-  size_t sz = sizeof(AllSettings);
+  uint8_t blob[sizeof(AllSettings)];
+  size_t sz = sizeof(blob);
   err = nvs_get_blob(h, "settings", blob, &sz);
   nvs_close(h);
-  if (err != ESP_OK) { heap_caps_free(blob); return false; }
+  if (err != ESP_OK) return false;
 
-  bool valid = false;
   if (sz == sizeof(AllSettings)) {
     memcpy(&g_settings, blob, sz);
-    valid = g_settings.verify();
+    if (g_settings.verify()) return true;
   }
-  heap_caps_free(blob);
-  if (valid) return true;
 
-  /* Corrupt or unknown/older version — reset and reseed [S1].  (v6.0 dropped the
-   * D-BEAM cut/mod CC# fields, so the old byte-offset migration was retired —
-   * pre-v6.0 blobs cleanly fall back to factory defaults.)                       */
+  /* Corrupt or unknown SETTINGS_VERSION — reseed factory defaults. */
   {
     g_settings = AllSettings{};
     initDrumParameters();
@@ -1755,9 +1614,8 @@ static inline bool settings_load() {
   }
 }
 
-/* [C5] init_nvs_flash() removed — it was never called.  The Arduino-ESP32
- * core runs nvs_flash_init() (with erase-on-corruption recovery) before
- * setup(), and the boot path uses loadSettings() → settings_load() directly. */
+/* init_nvs_flash() is not used — the Arduino-ESP32 core initializes NVS before
+ * setup(); boot uses loadSettings() → settings_load() directly. */
 
 /* ═══════════════════════════════════════════════════════════════════════════
  * PUBLIC API
@@ -1765,39 +1623,19 @@ static inline bool settings_load() {
 
 /** Load from NVS and push to SSOT.  Returns true if stored data was valid. */
 static inline bool loadSettings() {
-  /* [DIAG] Print the ACTUAL nvs partition capacity in the BOOT log, where it is
-   * easy to capture.  total_entries reveals the real partition size regardless
-   * of the IDE Partition Scheme menu or partitions.csv:
-   *   ~630   → 20 KB nvs (stock/FATFS scheme) — TOO SMALL, FULL save (~50 KB)
-   *            cannot fit → every SAVE/RESET returns FAILED.
-   *   ~8000  → 256 KB nvs (bundled partitions.csv) — correct.
-   * The ~50 KB of blobs need ≈1600 entries, so anything under ~2000 total will
-   * fail a FULL save no matter how correct the code is.                       */
-  {
-    nvs_stats_t st;
-    const esp_err_t se = nvs_get_stats(NULL, &st);
-    if (se == ESP_OK)
-      Serial.printf("[NVS] partition: total=%u used=%u free=%u  -> %s\n",
-                    (unsigned)st.total_entries, (unsigned)st.used_entries,
-                    (unsigned)st.free_entries,
-                    st.total_entries < 2000u
-                        ? "TOO SMALL for FULL save (need ~1600) — fix partition!"
-                        : "OK for full session save");
-    else
-      Serial.printf("[NVS] nvs_get_stats err=%d (%s)\n", (int)se, esp_err_to_name(se));
-  }
-
   seedFactoryBanks();          /* RAM userBank/seqBank ← PROGMEM SOUND_BANK */
   const bool ok = settings_load();
-  /* [SET-OPT3] settings_load() already syncs on first-boot / corrupt paths;
-   * only sync here after a successful load of a valid stored blob. */
+  /* settings_load() already syncs on first-boot / corrupt paths; sync here only
+   * after a successful load of a valid stored blob. */
   if (ok) settings_sync_to_ssot();
   persisted_extras_load();     /* patterns + sparse bank overrides on top    */
   return ok;
 }
 
-/* resetToFactoryDefaults() removed — was a dead wrapper that only called
- * setupToFactoryDefaults(). Call setupToFactoryDefaults() directly.         */
+/** Reset all atomics to factory values.  Does NOT write to NVS.            */
+static inline void resetToFactoryDefaults() {
+  setupToFactoryDefaults();
+}
 
 /** Blocking full-session save on the 16 KB NvsBlk worker. Prefer requestScopedSave()
  *  at runtime (NvsWorker handshake); use this only when a synchronous commit is required. */
@@ -1806,7 +1644,7 @@ static inline bool saveSettingsSafe() {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
- * SCOPED LOAD  [LOAD-MENU]
+ * SCOPED LOAD
  *
  * RAM-only reload of the selected scope from NVS — the 1:1 inverse of SAVE.
  * Unlike SAVE/RESET this writes NO flash, so it does NOT glitch the laser
@@ -1819,29 +1657,20 @@ static inline bool saveSettingsSafe() {
  * Returns true if the requested blob(s) were present and valid; on failure RAM
  * for that scope is left as-is (best-effort, non-destructive).                 */
 static inline bool settings_load_scoped(ResetScope scope) {
-  /* [FIX-L1] Silence voices before atomics change.  Any scope may update
-   * seqActiveBank/BPM/sounds mid-playback; without allNotesOff() voices from
-   * the old bank linger with partially-reset parameters → audible glitch.     */
-  allNotesOff();
-
   switch (scope) {
     case ResetScope::FULL:
       return loadSettings();                  /* seed banks → settings → ssot → extras */
 
     case ResetScope::SETTINGS: {
       nvs_handle_t h;
-      if (nvs_open(NVS_NAMESPACE, NVS_READONLY, &h) != ESP_OK) return false;
-      /* [FIX-STACK] Same heap-alloc fix as settings_load: avoid two AllSettings
-       * objects (~3680 bytes) on the nvs_load_task stack simultaneously.       */
-      uint8_t* blob = (uint8_t*)nvsBlobAlloc(sizeof(AllSettings));
-      if (!blob) { nvs_close(h); return false; }
-      size_t sz = sizeof(AllSettings);
+      if (nvs_open_octopus( NVS_READONLY, &h) != ESP_OK) return false;
+      uint8_t blob[sizeof(AllSettings)];
+      size_t  sz  = sizeof(blob);
       esp_err_t e = nvs_get_blob(h, "settings", blob, &sz);
       nvs_close(h);
-      if (e != ESP_OK || sz != sizeof(AllSettings)) { heap_caps_free(blob); return false; }
+      if (e != ESP_OK || sz != sizeof(AllSettings)) return false;
       AllSettings tmp;
       memcpy(&tmp, blob, sz);
-      heap_caps_free(blob);
       if (!tmp.verify()) return false;
       g_settings = tmp;
       settings_sync_to_ssot();                /* → atomics → syncLivePatchFromAtomics */
@@ -1850,19 +1679,19 @@ static inline bool settings_load_scoped(ResetScope scope) {
 
     case ResetScope::BANKS_PATTERNS: {
       seedFactoryBanks();                      /* clean factory base for sparse overlay */
-      memset(g_userSlotName, 0, sizeof(g_userSlotName)); /* [USER-SLOTS] re-overlay below */
-      reset_clear_user_pats();                 /* [USER-PAT-SLOTS] re-overlay below */
+      memset(g_userSlotName, 0, sizeof(g_userSlotName)); /* re-overlay below */
+      reset_clear_user_pats();
       nvs_handle_t h;
-      if (nvs_open(NVS_NAMESPACE, NVS_READONLY, &h) != ESP_OK) return false;
+      if (nvs_open_octopus( NVS_READONLY, &h) != ESP_OK) return false;
       const esp_err_t be = banks_load_h(h);
-      usrnames_load_h(h);                      /* [USER-SLOTS] names travel with banks */
-      usrpat_load_h(h);                        /* [USER-PAT-SLOTS] */
+      usrnames_load_h(h);                      /* names travel with banks */
+      usrpat_load_h(h);
       usrpatnames_load_h(h);
       const esp_err_t pe = patterns_load_h(h);
       nvs_close(h);
       syncLivePatchFromAtomics();              /* keep livePatch[] aligned with banks  */
-      /* [PER-PATTERN-TRANSPOSE] Adopt the active pattern's stored transpose into
-       * the live atomic, exactly as persisted_extras_load() does at boot.        */
+      /* Adopt the active pattern's stored transpose into the live atomic,
+       * exactly as persisted_extras_load() does at boot. */
       {
         const uint8_t bank  = seqActiveBank .load(std::memory_order_relaxed) & 15u;
         const uint8_t chain = seqActiveChain.load(std::memory_order_relaxed) & 3u;
@@ -1875,7 +1704,7 @@ static inline bool settings_load_scoped(ResetScope scope) {
     case ResetScope::MOTION: {
       clearMotionMatrix();
       nvs_handle_t h;
-      if (nvs_open(NVS_NAMESPACE, NVS_READONLY, &h) != ESP_OK) return false;
+      if (nvs_open_octopus( NVS_READONLY, &h) != ESP_OK) return false;
       const esp_err_t me = motion_load_h(h);
       nvs_close(h);
       return (me == ESP_OK);

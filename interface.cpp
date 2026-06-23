@@ -1,69 +1,26 @@
 /* ═════════════════════════════════════════════════════════════════════════════
- * Octopus PRO XL v6.0.00 — Laser Harp Groovebox
+ * Octopus PRO XL v6.1.00 — Laser Harp Groovebox
  * © 2026 DIODAC ELECTRONICS / iSystem. All Rights Reserved.
  *
  * PROPRIETARY AND CONFIDENTIAL. Unauthorized copying, distribution, modification,
  * or use of this software or firmware, in whole or in part, is strictly prohibited
  * without prior written permission from DIODAC ELECTRONICS.
  * ═════════════════════════════════════════════════════════════════════════════
- * interface.cpp — v6.0.00  HARDWARE CONTROL SURFACE
+ * interface.cpp — v6.1.00  HARDWARE CONTROL SURFACE
  *
- * Changes vs v5.1.01:
- *
- *  [C1] mutateSynth REMOVED.  Was a local lambda that wrote to livePatch and
- *       atomics directly, bypassing the canonical applyHarpParam/applySeqParam
- *       path from patches.h.  All synth parameter edits now go through
- *       applyHarpParam(pIdx, v14) or applySeqParam(pIdx, v14), which write
- *       livePatch + atomic + userBank atomically in one critical section.
- *       Encoder delta is applied in v14 space using encodeHarpParam(pIdx).
- *
- *  [C2] case 5 SEQ SETUP uses applySeqBank / applySeqChain / applySeqLength /
- *       applySeqTranspose from patches.h — echo gap closed.
- *
- *  [C3] case 4 MIDI I/O — pitch-bend range/enable + wire MIDI channels.
- *       D-BEAM Route moved to D-BEAM menu (case 1, l2=6); PB echoes CMD 178/179.
- *
- *  [C4] case 7 "SEQ SETTINGS" (dead, 2-item duplicate of MIDI routing)
- *       replaced with "AUX FX" (14 items) covering:
- *         aux delay time/feedback, aux reverb size/damp (all 4 bus params)
- *         harp/seq insert dly+rev sends, harp/seq/drum FX-A/FX-B slots.
- *       This closes the masterAuxDlyFb and masterAuxRevDamp menu gaps.
- *
- *  [C5] case 9 DRUM KIT — 41 items (5 params × 8 drums + kit selector).
- *       Uses applyDrumParam() for tune/decay/vol/noise and applyDrumWave()
- *       for wave index — all canonical paths with echo.
- *
- *  [C6] case 2 MASTER: l2=18/19/20 = harp/seq/drum mute toggles.
- *       Uses applyMute(cmd, !current) from patches.h — echo included.
- *
- *  [C7] case 2 l2=5 (Master FX preset): masterFxIndex.store() was missing.
- *       Fixed — atomic now updated alongside fx.loadMasterFx() call.
- *
- *  [C8] Encoder read is PURE LINEAR 1:1 (no acceleration) via
- *       EncoderPoll.getDelta() — matches the known-good v28.9 build exactly.
- *
- *  [C9b] uiSyncPending deferred-recall mechanism RESTORED (smooth v28.9 feel).
- *       HARP dashboard IDLE-mode patch browse only bumps harpPatchIndex per
- *       detent (one relaxed store, OLED name tracks instantly); the heavy
- *       recallHarpPatch() (livePatch memcpy + atomic fan-out under patchMux)
- *       runs once, ~160 ms after the encoder rests.  This removes per-detent
- *       patchMux contention and the forced full-screen redraw stream that made
- *       fast scrolling stutter while buttons (single events) stayed instant.
- *
- *  [C10] #include "wires.h" removed — checkWireAuthority() comes from
- *        patches.h which absorbed wires.h.
- *
- * Retained fixes from v5.1.01: encodeMasterPitch/decodeMasterPitch range,
- * symmetric pitch-bend [FIX-B], static preset index [FIX-C],
- * display.begin() order [FIX-V], no spurious outer patchMux [FIX-X].
+ * Encoder + OC/SCALE buttons @ 200 Hz (control_surface_task, Core 0).
+ *   • initHardwareInterface() — GPIO, encoder ISR on Core 1, boot factory-reset hold
+ *   • updateHardwareInterface() — gestures, menus, App-connected transport surface
+ *   • updateHardwareParameter() — encoder edits → patches.h apply* paths
+ * Menu tree L1 0–15 (HARP SETUP … SONG).  All parameter writes funnel through
+ * patches.h; display via displayDirty + renderUIState (display.cpp).
  * ═════════════════════════════════════════════════════════════════════════════ */
 #include "interface.h"
 #include <cmath>
-#include "groovebox.h"       /* seq_start/stop/toggle, seq_toggle_recording,
-                             *     setSequencerBpm, seqUI_*, loadFactory*Pattern */
-#include "display.h"         /* display obj, handleTelemetryPageEncoder  */
-#include "dbeam.h"           /* applyDbeamRouteHW                       */
-#include "fog.h"             /* [FOG] fogRejectEnabled / fogRejectMargin */
+#include "groovebox.h"       /* seq transport, grid UI, factory patterns */
+#include "display.h"
+#include "dbeam.h"
+#include "fog.h"
 #include "laser.h"
 #include "harp.h"            /* harpSetPlayMode (HARP OC-cycle play mode) */
 #include "effect.h"          /* fx, loadHarpFx, loadSeqFx, loadDrumFx   */
@@ -79,8 +36,7 @@
                                 applyDbeamRoute, applyDbeamTarget,
                                 checkWireAuthority, encodeHarpParam, encodeSeqParam,
                                 norm_to_v14, recallHarpPatch              */
-#include "midi.h"            /* sendFullStateSync, txSysex                */
-/* #include "wires.h" — removed [C10]: absorbed into patches.h           */
+/* wire authority + apply* paths live in patches.h */
 
 /* ── Object instantiations ─────────────────────────────────────────────────── */
 ButtonPoll      btnEnc;
@@ -92,11 +48,11 @@ InterfaceStats  interface_stats  = {};
 DisplayI2CStats display_stats    = {};
 
 /* ═══════════════════════════════════════════════════════════════════════════
- * SECTION 1 — PITCH ENCODE / DECODE  (range fix from v5.1.01 preserved)
+ * SECTION 1 — PITCH ENCODE / DECODE (semitone-linear master pitch)
  * ═══════════════════════════════════════════════════════════════════════════ */
 uint16_t encodeMasterPitch(float pitch) {
   pitch = std::min(MASTER_PITCH_MAX, std::max(MASTER_PITCH_MIN, pitch));
-  /* [PD-2] Linear in semitones ±24 (±2 oct); unity (1.0×) at v14 = 8192. */
+  /* Linear in semitones ±24 (±2 oct); unity (1.0×) at v14 = 8192. */
   const float semis = 12.0f * log2f(pitch);
   const float t     = (semis / 48.0f) + 0.5f;
   return (uint16_t)(std::min(1.0f, std::max(0.0f, t)) * 16383.0f + 0.5f);
@@ -139,7 +95,9 @@ void init_fast_gpio() {
 /* ═══════════════════════════════════════════════════════════════════════════
  * SECTION 3 — HARDWARE INIT
  * ═══════════════════════════════════════════════════════════════════════════ */
-void initBootButtons() {
+void initHardwareInterface() {
+  init_fast_gpio();
+
   btnEnc  .init(PIN_ENC_BTN);
   btnOC   .init(PIN_BTN_OC);
   btnScale.init(PIN_BTN_SCALE);
@@ -148,50 +106,19 @@ void initBootButtons() {
    * too easily/fast.  Encoder button stays at the default snappy debounce. */
   btnOC   .debounceMs = DEBOUNCE_SLOW_MS;
   btnScale.debounceMs = DEBOUNCE_SLOW_MS;
-}
 
-/* OC + SCALE held (active LOW) for 1.5 s within a 10 s window → FULL factory reset.
- * Call as early as possible after initBootButtons() + OLED init so the user can
- * hold during the "INITIALIZING…" splash (not only during late encoder setup). */
-void pollBootFactoryReset() {
-  auto bothHeld = []() {
-    return !fastRead(PIN_BTN_OC) && !fastRead(PIN_BTN_SCALE);
-  };
-  uint32_t heldMs = 0u;
-  bool     armed  = false; /* set once either button is seen pressed */
-  for (uint32_t elapsed = 0u; elapsed < 10000u; elapsed += 10u) {
-    if (bothHeld()) {
-      armed = true;
-      heldMs += 10u;
-      if (hasOLED && heldMs >= 400u && (heldMs % 400u) == 0u) {
-        if (xSemaphoreTake(i2cMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
-          display.clearDisplay();
-          display.setTextSize(1);
-          display.setTextColor(SH110X_WHITE);
-          display.setCursor(4, 24);
-          display.print(F("FACTORY RESET"));
-          display.setCursor(4, 36);
-          display.print(F("HOLD OC+SCALE..."));
-          display.display();
-          xSemaphoreGive(i2cMutex);
-        }
-      }
-      if (heldMs >= 1500u) {
-        handleFactoryReset();
-        break; /* esp_restart() on success; on failure fall through */
-      }
-    } else {
-      heldMs = 0u;
-      if (!armed && elapsed >= 400u)
-        return; /* no combo attempt — don't block boot */
+  delay(100);
+
+  /* Factory-reset hold detection: both OC + SCALE held for 150 ms at boot */
+  {
+    bool combo = true;
+    for (int i = 0; i < 30; ++i) {
+      if (fastRead(PIN_BTN_OC) || fastRead(PIN_BTN_SCALE)) { combo = false; break; }
+      delay(5);
     }
-    delay(10);
+    if (combo) handleFactoryReset();
   }
-}
 
-void initHardwareInterface() {
-  init_fast_gpio();
-  initBootButtons();
   /* Encoder — ESP32Encoder PCNT peripheral (library ≥ 0.12, ESP32 Arduino 3.x).
    *
    * vs encoder_example.txt (interrupt demo):
@@ -243,10 +170,9 @@ static inline uint16_t maxV14ForParam(int pIdx) {
   return 16383;
 }
 
-/* mutateHarp — read current v14, apply delta, call applyHarpParam [C1]
- * [WS4] Hardware ALWAYS applies (live performance must work with the App open).
- * Wire echo is gated so the App is not spammed when it is the active editor.
- * LFO route echoes on cmd 11 (SynthParam index), not legacy 86 — matches App. */
+/* mutateHarp — apply delta via applyHarpParam. Hardware always applies locally
+ * (live performance with App open); wire echo gated by checkWireAuthority.
+ * LFO route echoes on cmd 11 (SynthParam index), not legacy 86. */
 static inline void mutateHarp(int pIdx, int16_t delta) {
   const uint8_t cmd = (uint8_t)(CMD_H_WAVE + pIdx);
 
@@ -266,7 +192,7 @@ static inline void mutateHarp(int pIdx, int16_t delta) {
     txSysex(cmd, v14);
 }
 
-/* mutateSeq — same for seq synth [C1] */
+/* mutateSeq — same pattern for seq synth. */
 static inline void mutateSeq(int pIdx, int16_t delta) {
   const uint8_t cmd = (uint8_t)(CMD_S_WAVE + pIdx);
 
@@ -286,18 +212,12 @@ static inline void mutateSeq(int pIdx, int16_t delta) {
     txSysex(cmd, v14);
 }
 
-/* hwKnobEchoCapture — menu encoder echo + P-lock capture (Fix 1 hardware path). */
-static inline void hwKnobEchoCapture(uint8_t cmd, uint16_t v14) {
-  txSysex(cmd, v14);
-  captureMotionParam(cmd, v14);
-}
-
 /* ═══════════════════════════════════════════════════════════════════════════
  * SECTION 5 — updateHardwareParameter
  *
  * Dispatches encoder delta to the correct SSOT parameter path.
  * l1 = menu category (0–15), l2 = item within category, delta = turn amount
- * (already velocity-scaled by EncoderPoll.getDelta).
+ * (1:1 detent steps from EncoderPoll.getDelta).
  * ═══════════════════════════════════════════════════════════════════════════ */
 void updateHardwareParameter(uint8_t l1, uint8_t l2, int16_t delta) {
   if (l1 >= (uint8_t)kL1Count || (int)l2 >= l2CountFor((int)l1)) return;
@@ -308,42 +228,34 @@ void updateHardwareParameter(uint8_t l1, uint8_t l2, int16_t delta) {
 
   /* ── 0: HARP SETUP — beam + calibration ─────────────────────────────── */
   case 0:
-    /* [FIX-ATOM-LOCK] l2=10/11/12 are std::atomic<> stores that don't need patchMux.
-     * Split: non-atomic hw fields (0-8) under patchMux; atomic params (10-12) outside.
-     * Case 7 (margin) still exits patchMux early to call computeHardwareDACThreshold
-     * outside the lock (that function acquires patchMux itself).               */
-    if (l2 >= 10) {
-      /* Atomics — no spinlock required */
-      switch (l2) {
-      case 10: fogRejectEnabled.store(delta > 0 ? true : (delta < 0 ? false
-                    : !fogRejectEnabled.load(std::memory_order_relaxed)),
-                    std::memory_order_relaxed); break;
-      case 11: fogRejectMargin.store(constrain(
-                    fogRejectMargin.load(std::memory_order_relaxed) + delta * 25,
-                    FOG_MARGIN_MIN, FOG_MARGIN_MAX), std::memory_order_relaxed); break;
-      case 12: laserScreensaver.store(delta > 0 ? true : (delta < 0 ? false
-                    : !laserScreensaver.load(std::memory_order_relaxed)),
-                    std::memory_order_relaxed); break;
-      }
-      break;
-    }
     portENTER_CRITICAL(&patchMux);
     switch (l2) {
     case 0: beamGateHoldMs = (uint32_t)constrain(
                 (int32_t)beamGateHoldMs + delta * 25, 0, (int32_t)BEAM_GATE_HOLD_MAX); break;
-    case 1: scaleWhiteLevel[scale]     = (uint8_t)constrain((int)scaleWhiteLevel[scale]     + delta*4, 0, 255); break;
-    case 2: scaleTouchConfirm[scale]   = (uint8_t)constrain((int)scaleTouchConfirm[scale]   + delta,   CONFIRM_MIN, CONFIRM_MAX); break;
-    case 3: scaleReleaseConfirm[scale] = (uint8_t)constrain((int)scaleReleaseConfirm[scale] + delta,   CONFIRM_MIN, CONFIRM_MAX); break;
+    case 1: scaleWhiteLevel[scale]      = (uint8_t)constrain((int)scaleWhiteLevel[scale]     + delta*4, 0, 255); break;
+    case 2: scaleTouchConfirm[scale]    = (uint8_t)constrain((int)scaleTouchConfirm[scale]   + delta,   CONFIRM_MIN, CONFIRM_MAX); break;
+    case 3: scaleReleaseConfirm[scale]  = (uint8_t)constrain((int)scaleReleaseConfirm[scale] + delta,   CONFIRM_MIN, CONFIRM_MAX); break;
     case 4: scaleR[scale] = (uint8_t)constrain((int)scaleR[scale] + delta*5, 0, 255); break;
     case 5: scaleG[scale] = (uint8_t)constrain((int)scaleG[scale] + delta*5, 0, 255); break;
     case 6: scaleB[scale] = (uint8_t)constrain((int)scaleB[scale] + delta*5, 0, 255); break;
+    /* Anti-stuck fail-safe timeout (ms, 0 = disabled). Global, not per-scale. */
+    case 8: beamStuckReleaseMs = (uint32_t)constrain(
+                (int32_t)beamStuckReleaseMs + delta * 25, 0, (int32_t)BEAM_STUCK_RELEASE_MAX); break;
     case 7: scaleMargin[scale] = (uint16_t)constrain((int)scaleMargin[scale] + delta*10, 0, 2000);
             portEXIT_CRITICAL(&patchMux);
             for (int i = 0; i < MAX_STRINGS; ++i) computeHardwareDACThreshold(i, 0.f);
             return;
-    /* [STUCK-FIX] Anti-stuck fail-safe timeout (ms, 0 = disabled). Global, not per-scale. */
-    case 8: beamStuckReleaseMs = (uint32_t)constrain(
-                (int32_t)beamStuckReleaseMs + delta * 25, 0, (int32_t)BEAM_STUCK_RELEASE_MAX); break;
+    /* Fog-reject enable + differential margin (global atomics). */
+    case 10: fogRejectEnabled.store(delta > 0 ? true : (delta < 0 ? false
+                  : !fogRejectEnabled.load(std::memory_order_relaxed)),
+                  std::memory_order_relaxed); break;
+    case 11: fogRejectMargin.store(constrain(
+                  fogRejectMargin.load(std::memory_order_relaxed) + delta * 25,
+                  FOG_MARGIN_MIN, FOG_MARGIN_MAX), std::memory_order_relaxed); break;
+    /* Closed-harp idle screensaver (HARP SETUP item, not LASER SHOW). */
+    case 12: laserScreensaver.store(delta > 0 ? true : (delta < 0 ? false
+                  : !laserScreensaver.load(std::memory_order_relaxed)),
+                  std::memory_order_relaxed); break;
     }
     portEXIT_CRITICAL(&patchMux);
     break;
@@ -351,11 +263,7 @@ void updateHardwareParameter(uint8_t l1, uint8_t l2, int16_t delta) {
   /* ── 1: D-BEAM ───────────────────────────────────────────────────────── */
   case 1:
     switch (l2) {
-    /* [WS4-FIX] Apply locally ALWAYS (live performance), then gate ONLY the wire
-     * echo so a connected App can't fight the hardware.  Previously these did
-     * `if (!checkWireAuthority(...)) return;` BEFORE the apply, so Offset/Range
-     * silently refused to move whenever the App heartbeat was active — unlike
-     * every other parameter (and contrary to the WS4 "apply then gate" rule). */
+    /* Apply locally always; gate wire echo when App owns the parameter. */
     case 0: dbeamHWCfg.offsetAdc = constrain(dbeamHWCfg.offsetAdc + delta*5, 0, 4095);
             if (checkWireAuthority(CMD_DB_OFFSET, true))
               txSysex(CMD_DB_OFFSET, (uint16_t)dbeamHWCfg.offsetAdc);
@@ -377,7 +285,7 @@ void updateHardwareParameter(uint8_t l1, uint8_t l2, int16_t delta) {
     case 5: { float v = dbeamExprRelease.load(std::memory_order_relaxed) + (float)delta*0.001f;
               v = std::min(DBEAM_EXPR_RELEASE_MAX, std::max(DBEAM_EXPR_RELEASE_MIN, v));
               dbeamExprRelease.store(v, std::memory_order_relaxed); break; }
-    /* [DBEAM] Route (moved here from MIDI) + Target synth selector. */
+    /* D-BEAM route + target synth selector. */
     case 6: { uint8_t m = (uint8_t)wrapIndex((int)currentDbeamRoute.load(), (int)delta, 4);
               applyDbeamRoute(m); break; }
     case 7: { uint8_t t = (uint8_t)wrapIndex((int)currentDbeamTarget.load(), (int)delta, 2);
@@ -389,60 +297,58 @@ void updateHardwareParameter(uint8_t l1, uint8_t l2, int16_t delta) {
   /* ── 2: MASTER — vols, pitch, EQ, inserts, mutes ────────────────────── */
   case 2:
     switch (l2) {
-    /* [IDM-OPT3] every safe_atomic_store now returns the clamped value (nv);
-     * txSysex uses it directly instead of reloading the atomic. */
     case 0:  { const float nv = safe_atomic_store(masterVol,   masterVol.load(),   (float)delta*0.01f, 0.f,1.f);
-               applyMasterParam(CMD_M_VOL, (uint16_t)(nv*16383.f), Origin::HW); break; }
+               txSysex(CMD_M_VOL,  (uint16_t)(nv*16383.f)); break; }
     case 1:  { const float nv = safe_atomic_store(mixHarpVol,  mixHarpVol.load(),  (float)delta*0.01f, 0.f,1.f);
-               applyMasterParam(CMD_H_VOL, (uint16_t)(nv*16383.f), Origin::HW); break; }
+               txSysex(CMD_H_VOL,  (uint16_t)(nv*16383.f)); break; }
     case 2:  { const float nv = safe_atomic_store(mixSeqVol,   mixSeqVol.load(),   (float)delta*0.01f, 0.f,1.f);
-               applyMasterParam(CMD_S_VOL, (uint16_t)(nv*16383.f), Origin::HW); break; }
+               txSysex(CMD_S_VOL,  (uint16_t)(nv*16383.f)); break; }
     case 3:  { const float nv = safe_atomic_store(mixDrumsVol, mixDrumsVol.load(), (float)delta*0.01f, 0.f,1.f);
-               applyMasterParam(CMD_D_VOL, (uint16_t)(nv*16383.f), Origin::HW); break; }
+               txSysex(CMD_D_VOL,  (uint16_t)(nv*16383.f)); break; }
     case 4:  { const float nv = safe_atomic_store(masterPitch, masterPitch.load(),
                                (float)delta*0.05f, MASTER_PITCH_MIN, MASTER_PITCH_MAX);
-               applyMasterParam(CMD_PITCH, encodeMasterPitch(nv), Origin::HW); break; }
+               txSysex(CMD_PITCH, encodeMasterPitch(nv)); break; }
     case 5:  { int v = wrapIndex((int)masterFxIndex.load(), (int)delta, 16);
                masterFxIndex.store(v, std::memory_order_relaxed);
-               fx.loadMasterFx(v); hwKnobEchoCapture(CMD_M_FX_IDX, (uint16_t)v);
+               fx.loadMasterFx(v); txSysex(CMD_M_FX_IDX, (uint16_t)v);
                txMasterFxParams(); break; }
     case 6:  { const float nv = safe_atomic_store(drumRevSend, drumRevSend.load(), (float)delta*0.01f, 0.f,1.f);
-               applyMasterParam(CMD_D_REV, (uint16_t)(nv*16383.f), Origin::HW); break; }
+               txSysex(CMD_D_REV,  (uint16_t)(nv*16383.f)); break; }
     case 7:  { const float nv = safe_atomic_store(drumDlySend, drumDlySend.load(), (float)delta*0.01f, 0.f,1.f);
-               applyMasterParam(CMD_D_DLY, (uint16_t)(nv*16383.f), Origin::HW); break; }
+               txSysex(CMD_D_DLY,  (uint16_t)(nv*16383.f)); break; }
     case 8:  { const float nv = safe_atomic_store(tbDrive, tbDrive.load(), (float)delta*0.01f, 0.f,1.f);
-               applyMasterParam(CMD_TB_DRV, (uint16_t)(nv*16383.f), Origin::HW); break; }
+               txSysex(CMD_TB_DRV,  (uint16_t)(nv*16383.f)); break; }
     case 9:  { const float nv = safe_atomic_store(tbTone,  tbTone.load(),  (float)delta*0.01f, 0.f,1.f);
-               applyMasterParam(CMD_TB_TONE, (uint16_t)(nv*16383.f), Origin::HW); break; }
+               txSysex(CMD_TB_TONE, (uint16_t)(nv*16383.f)); break; }
     case 10: { const float nv = safe_atomic_store(tbMix,   tbMix.load(),   (float)delta*0.01f, 0.f,1.f);
-               applyMasterParam(CMD_TB_MIX, (uint16_t)(nv*16383.f), Origin::HW); break; }
+               txSysex(CMD_TB_MIX,  (uint16_t)(nv*16383.f)); break; }
     case 11: { const float nv = safe_atomic_store(djFreq,  djFreq.load(),  (float)delta*0.01f, 0.f,1.f);
-               applyMasterParam(CMD_DJ_FQ, (uint16_t)(nv*16383.f), Origin::HW); break; }
+               txSysex(CMD_DJ_FQ,   (uint16_t)(nv*16383.f)); break; }
     case 12: { const float nv = safe_atomic_store(djRes,   djRes.load(),   (float)delta*0.01f, 0.f,1.f);
-               applyMasterParam(CMD_DJ_RES, (uint16_t)(nv*16383.f), Origin::HW); break; }
+               txSysex(CMD_DJ_RES,  (uint16_t)(nv*16383.f)); break; }
     case 13: { const float nv = safe_atomic_store(djMix,   djMix.load(),   (float)delta*0.01f, 0.f,1.f);
-               applyMasterParam(CMD_DJ_MIX, (uint16_t)(nv*16383.f), Origin::HW); break; }
+               txSysex(CMD_DJ_MIX,  (uint16_t)(nv*16383.f)); break; }
     case 14: { const float nv = safe_atomic_store(masterEqLow,  masterEqLow.load(),  (float)delta*0.5f, -12.f,12.f);
-               applyMasterParam(CMD_EQ_L, (uint16_t)(((nv+12.f)/24.f)*16383.f), Origin::HW); break; }
+               txSysex(CMD_EQ_L, (uint16_t)(((nv+12.f)/24.f)*16383.f)); break; }
     case 15: { const float nv = safe_atomic_store(masterEqHigh, masterEqHigh.load(), (float)delta*0.5f, -12.f,12.f);
-               applyMasterParam(CMD_EQ_H, (uint16_t)(((nv+12.f)/24.f)*16383.f), Origin::HW); break; }
+               txSysex(CMD_EQ_H, (uint16_t)(((nv+12.f)/24.f)*16383.f)); break; }
     case 16: { int i = wrapIndex((int)drumFxIndexA.load(), (int)delta, 16);
                drumFxIndexA.store(i, std::memory_order_relaxed);
-               loadDrumFx(i); hwKnobEchoCapture(CMD_D_FX_IDX, (uint16_t)i);
+               loadDrumFx(i); txSysex(CMD_D_FX_IDX, (uint16_t)i);
                echoDrumInsertParams(); break; }
     case 17: { int i = wrapIndex((int)drumFxIndexB.load(), (int)delta, 16);
                drumFxIndexB.store(i, std::memory_order_relaxed);
-               loadDrumFxB(i); hwKnobEchoCapture(CMD_D_FX_IDX_B, (uint16_t)i); break; }
-    /* [C6] Mute toggles: encoder turn or single click applies toggle */
+               loadDrumFxB(i); txSysex(CMD_D_FX_IDX_B, (uint16_t)i); break; }
+    /* Mute toggles: encoder turn applies toggle. */
     case 18: applyMute(CMD_H_MUTE, !mixHarpMute .load(std::memory_order_relaxed)); break;
     case 19: applyMute(CMD_S_MUTE, !mixSeqMute  .load(std::memory_order_relaxed)); break;
     case 20: applyMute(CMD_D_MUTE, !mixDrumsMute.load(std::memory_order_relaxed)); break;
     case 21: { const float nv = safe_atomic_store(mixHarpPan, mixHarpPan.load(), (float)delta * 0.02f, -1.f, 1.f);
-               applyMasterParam(CMD_H_PAN, (uint16_t)((nv + 1.f) * 0.5f * 16383.f), Origin::HW); break; }
+               txSysex(CMD_H_PAN, (uint16_t)((nv + 1.f) * 0.5f * 16383.f)); break; }
     case 22: { const float nv = safe_atomic_store(mixSeqPan, mixSeqPan.load(), (float)delta * 0.02f, -1.f, 1.f);
-               applyMasterParam(CMD_S_PAN, (uint16_t)((nv + 1.f) * 0.5f * 16383.f), Origin::HW); break; }
+               txSysex(CMD_S_PAN, (uint16_t)((nv + 1.f) * 0.5f * 16383.f)); break; }
     case 23: { const float nv = safe_atomic_store(mixDrumsPan, mixDrumsPan.load(), (float)delta * 0.02f, -1.f, 1.f);
-               applyMasterParam(CMD_D_PAN, (uint16_t)((nv + 1.f) * 0.5f * 16383.f), Origin::HW); break; }
+               txSysex(CMD_D_PAN, (uint16_t)((nv + 1.f) * 0.5f * 16383.f)); break; }
     }
     break;
 
@@ -456,32 +362,31 @@ void updateHardwareParameter(uint8_t l1, uint8_t l2, int16_t delta) {
       mutateHarp((int)l2, delta); break;
     case 14: { int i = wrapIndex((int)harpFxIndex.load(),  (int)delta, 16);
                harpFxIndex.store(i, std::memory_order_relaxed);
-               loadHarpFx(i);  hwKnobEchoCapture(CMD_H_FX_IDX, (uint16_t)i);
+               loadHarpFx(i);  txSysex(CMD_H_FX_IDX,   (uint16_t)i);
                txInsertFxSends(0u); break; }
     case 15: { int i = wrapIndex((int)harpFxIndexB.load(), (int)delta, 16);
                harpFxIndexB.store(i, std::memory_order_relaxed);
-               loadHarpFxB(i); hwKnobEchoCapture(CMD_H_FX_IDX_B, (uint16_t)i); break; }
+               loadHarpFxB(i); txSysex(CMD_H_FX_IDX_B, (uint16_t)i); break; }
     case 16: { portENTER_CRITICAL(&patchMux);
                float v = std::min(1.f, std::max(0.f, fx.harpInsert.dly_send + delta*0.02f));
                fx.harpInsert.dly_send = v;
                portEXIT_CRITICAL(&patchMux);
-               applyFxSend(CMD_H_DLY_MIX, (uint16_t)(v*16383.f), Origin::HW); break; }
+               if (checkWireAuthority(CMD_H_DLY_MIX, true))
+                 txSysex(CMD_H_DLY_MIX, (uint16_t)(v*16383.f)); break; }
     case 17: { portENTER_CRITICAL(&patchMux);
                float v = std::min(1.f, std::max(0.f, fx.harpInsert.rev_send + delta*0.02f));
                fx.harpInsert.rev_send = v;
                portEXIT_CRITICAL(&patchMux);
-               applyFxSend(CMD_H_REV_MIX, (uint16_t)(v*16383.f), Origin::HW); break; }
-    case 18: { /* [WS5b] sound-bank preset recall (same 128-name bank as the
-               * HARP dashboard browse).  Immediate recall — menu pace is slow
-               * enough that the deferred-commit path is unnecessary here.      */
+               if (checkWireAuthority(CMD_H_REV_MIX, true))
+                 txSysex(CMD_H_REV_MIX, (uint16_t)(v*16383.f)); break; }
+    case 18: { /* Factory preset recall (128-name bank). */
                const int cur = std::min(harpPatchIndex.load() & (NUM_PATCHES - 1),
                                         NUM_NAMED_PRESETS - 1);
                const int nx  = wrapIndex(cur, (int)delta, NUM_NAMED_PRESETS);
-               recallHarpPatch(nx, ParamSource::UI); /* emits patch blob to App */
-               txSysex(CMD_H_PATCH, (uint16_t)nx);   /* echo index → App dropdown */
+               recallHarpPatch(nx, ParamSource::UI);
+               txSysex(CMD_H_PATCH, (uint16_t)nx);
                break; }
-    /* [USER-SLOTS] 19 Save Slot — turn picks target slot (commit on ENC press);
-     *              20 Load Slot — turn picks AND recalls the slot immediately.   */
+    /* 19 Save Slot — turn picks slot (commit on ENC); 20 Load Slot recalls on turn. */
     case 19: { uint8_t c = (uint8_t)wrapIndex((int)userSlotCursor[0].load(std::memory_order_relaxed),
                               (int)delta, NUM_USER_SLOTS);
                userSlotCursor[0].store(c, std::memory_order_relaxed);
@@ -510,15 +415,10 @@ void updateHardwareParameter(uint8_t l1, uint8_t l2, int16_t delta) {
               pbMapping.upSemi.store(v, std::memory_order_relaxed);
               pbMapping.downSemi.store(v, std::memory_order_relaxed);
               if (isAppConnected()) txSysex(CMD_PB_RANGE, (uint16_t)v); break; }
-    case 1: { /* [FIX-PB-FALL] break was inside the if block — if delta==0 execution
-               * fell through to case 2 and silently corrupted wireHarpMidiChannel.
-               * Break is now unconditional, outside the if body. */
-              if (delta != 0) {
-                const bool en = !pbMapping.enabled.load(std::memory_order_relaxed);
-                pbMapping.enabled.store(en, std::memory_order_relaxed);
-                if (isAppConnected()) txSysex(CMD_PB_ENABLE, en ? 16383u : 0u);
-              }
-              break; }
+    case 1: if (delta != 0) {
+              const bool en = !pbMapping.enabled.load(std::memory_order_relaxed);
+              pbMapping.enabled.store(en, std::memory_order_relaxed);
+              if (isAppConnected()) txSysex(CMD_PB_ENABLE, en ? 16383u : 0u); break; }
     case 2: { uint8_t v = (uint8_t)(wrapIndex((int)wireHarpMidiChannel.load()-1,(int)delta,16)+1);
               wireHarpMidiChannel.store(v, std::memory_order_release);
               txSysex(CMD_WIRE_HARP_CH, (uint16_t)v); break; }
@@ -531,61 +431,52 @@ void updateHardwareParameter(uint8_t l1, uint8_t l2, int16_t delta) {
     }
     break;
 
-  /* ── 5: SEQ SETUP — bank, chain, length, transpose, load presets ──────── */
-  /* [C2] All changes use applySeq* from patches.h — echo gap closed.        */
+  /* ── 5: SEQ SETUP ──────────────────────────────────────────────────────── */
   case 5:
     switch (l2) {
-    /* [V5.3-CONS] Bank = A-D (0-3); item 1 = synth/drum view PAGE (chain pinned 0) */
     case 0: applySeqBank   ((uint8_t)wrapIndex((int)seqActiveBank.load(), (int)delta, 4)); break;
     case 1: seqUI_page.store(wrapIndex((int)seqUI_page.load(), (int)delta, 2),
                             std::memory_order_relaxed);
             displayDirty.store(true, std::memory_order_relaxed); break;
-    /* [TRANSPOSE-FIX] Clamp the SIGNED target to ±12 BEFORE handing it to
-     * applySeqTranspose (which expects v14 = transpose+12).  The old
-     * (uint16_t)(cur+delta+12) cast turned a sub-zero step at −12 into a huge
-     * value that clamped to +12 — a boundary wrap. */
+    /* Clamp signed transpose to ±12 before applySeqTranspose (v14 = t + 12). */
     case 2: { const int t = std::min(12, std::max(-12, (int)seqTranspose.load() + (int)delta));
               applySeqTranspose((uint16_t)(t + 12)); break; }
     case 3: applySeqLength   ((uint16_t)((int)seqLength.load() + delta));    break;
-    /* [SEQ-LOAD-FIX] Read the live preset index (single source of truth) instead
-     * of a private static — keeps the readout honest and scrolling continuous
-     * even after an App-driven load. loadFactory* stores the new index itself. */
+    /* Load Synth/Drum use g_last*Preset (live index, not a stale static). */
     case 4: { const int cur  = (int)g_lastSynthPreset.load(std::memory_order_relaxed);
               const int next = wrapIndex(cur, (int)delta, NUM_SYNTH_PATS);
               loadFactorySynthPattern(seqActiveBank.load() & 15u, SEQ_UI_CHAIN, next); break; }
     case 5: { const int cur  = (int)g_lastDrumPreset.load(std::memory_order_relaxed);
               const int next = wrapIndex(cur, (int)delta, NUM_DRUM_PATS);
               loadFactoryDrumPattern(seqActiveBank.load() & 15u, SEQ_UI_CHAIN, next); break; }
-    case 6: break;  /* [SEQ-CLEAR] action item — handled on ENC click (opens confirm) */
-    case 7: break;  /* [SOFT-RESET] action item */
-    case 8: { uint8_t c = (uint8_t)wrapIndex((int)userPatCursor.load(std::memory_order_relaxed),
+    case 6: break;  /* Clear — handled on ENC click (confirm dialog) */
+    case 7: { uint8_t c = (uint8_t)wrapIndex((int)userPatCursor.load(std::memory_order_relaxed),
                               (int)delta, NUM_USER_PAT_SLOTS);
               userPatCursor.store(c, std::memory_order_relaxed);
               displayDirty.store(true, std::memory_order_relaxed); break; }
-    /* [USER-PAT-SLOTS] 9 Load Pat — turn picks AND recalls immediately (mirror Load Slot). */
-    case 9: { uint8_t c = (uint8_t)wrapIndex((int)userPatCursor.load(std::memory_order_relaxed),
+    /* Load Pat — turn picks slot and recalls immediately. */
+    case 8: { uint8_t c = (uint8_t)wrapIndex((int)userPatCursor.load(std::memory_order_relaxed),
                               (int)delta, NUM_USER_PAT_SLOTS);
               userPatCursor.store(c, std::memory_order_relaxed);
               loadUserPatternToActive(c); break; }
-    case 10: { const bool en = delta > 0 ? true : (delta < 0 ? false : !seqArpEnabled.load());
+    case 9: { const bool en = delta > 0 ? true : (delta < 0 ? false : !seqArpEnabled.load());
                applySeqArpEnable(en ? 16383u : 0u); break; }
-    case 11: { const int p = wrapIndex((int)seqArpPattern.load(), (int)delta, 8);
+    case 10: { const int p = wrapIndex((int)seqArpPattern.load(), (int)delta, 8);
                applySeqArpPattern((uint16_t)p); break; }
-    case 12: { const int r = wrapIndex((int)seqArpRate.load(), (int)delta, 8);
+    case 11: { const int r = wrapIndex((int)seqArpRate.load(), (int)delta, 8);
                applySeqArpRate((uint16_t)r); break; }
-    case 13: { const int g = wrapIndex((int)seqArpGate.load(), (int)delta, 8);
+    case 12: { const int g = wrapIndex((int)seqArpGate.load(), (int)delta, 8);
                applySeqArpGate((uint16_t)g); break; }
     }
     break;
 
-  /* ── 6: SEQ MATRIX — grid navigation is intercepted in updateHardwareInterface
-   * before reaching here (l1==6 handler returns early when mstate != MENU_L1).
-   * This case is unreachable in normal operation; kept as a safe no-op. */
+  /* ── 6: SEQ MATRIX — grid navigation (handled in updateHardwareInterface) */
   case 6:
+    if      (delta > 0) seqUI_moveRight();
+    else if (delta < 0) seqUI_moveLeft();
     break;
 
-  /* ── 7: AUX FX — [C4] replaces dead SEQ SETTINGS ─────────────────────── */
-  /* Bus params use applyAuxParam (patches.h) for proper echo.               */
+  /* ── 7: AUX FX ───────────────────────────────────────────────────────── */
   case 7:
     switch (l2) {
     /* Aux delay bus — applyAuxParam keeps hardware + App in sync */
@@ -602,41 +493,41 @@ void updateHardwareParameter(uint8_t l1, uint8_t l2, int16_t delta) {
     case 4: { portENTER_CRITICAL(&patchMux);
                float v = std::min(1.f, std::max(0.f, fx.harpInsert.dly_send + delta*0.02f));
                fx.harpInsert.dly_send = v; portEXIT_CRITICAL(&patchMux);
-               applyFxSend(CMD_H_DLY_MIX, (uint16_t)(v*16383.f), Origin::HW); break; }
+               txSysex(CMD_H_DLY_MIX, (uint16_t)(v*16383.f)); break; }
     case 5: { portENTER_CRITICAL(&patchMux);
                float v = std::min(1.f, std::max(0.f, fx.harpInsert.rev_send + delta*0.02f));
                fx.harpInsert.rev_send = v; portEXIT_CRITICAL(&patchMux);
-               applyFxSend(CMD_H_REV_MIX, (uint16_t)(v*16383.f), Origin::HW); break; }
+               txSysex(CMD_H_REV_MIX, (uint16_t)(v*16383.f)); break; }
     case 6: { portENTER_CRITICAL(&patchMux);
                float v = std::min(1.f, std::max(0.f, fx.seqInsert.dly_send + delta*0.02f));
                fx.seqInsert.dly_send = v; portEXIT_CRITICAL(&patchMux);
-               applyFxSend(CMD_S_DLY_MIX, (uint16_t)(v*16383.f), Origin::HW); break; }
+               txSysex(CMD_S_DLY_MIX, (uint16_t)(v*16383.f)); break; }
     case 7: { portENTER_CRITICAL(&patchMux);
                float v = std::min(1.f, std::max(0.f, fx.seqInsert.rev_send + delta*0.02f));
                fx.seqInsert.rev_send = v; portEXIT_CRITICAL(&patchMux);
-               applyFxSend(CMD_S_REV_MIX, (uint16_t)(v*16383.f), Origin::HW); break; }
+               txSysex(CMD_S_REV_MIX, (uint16_t)(v*16383.f)); break; }
     /* FX slot indices */
     case 8:  { int i = wrapIndex((int)harpFxIndex.load(),  (int)delta,16);
                harpFxIndex.store(i, std::memory_order_relaxed);
-               loadHarpFx(i);  hwKnobEchoCapture(CMD_H_FX_IDX, (uint16_t)i);
+               loadHarpFx(i);  txSysex(CMD_H_FX_IDX,   (uint16_t)i);
                txInsertFxSends(0u); break; }
     case 9:  { int i = wrapIndex((int)harpFxIndexB.load(), (int)delta,16);
                harpFxIndexB.store(i, std::memory_order_relaxed);
-               loadHarpFxB(i); hwKnobEchoCapture(CMD_H_FX_IDX_B, (uint16_t)i); break; }
+               loadHarpFxB(i); txSysex(CMD_H_FX_IDX_B, (uint16_t)i); break; }
     case 10: { int i = wrapIndex((int)seqFxIndex.load(),   (int)delta,16);
                seqFxIndex.store(i, std::memory_order_relaxed);
-               loadSeqFx(i);   hwKnobEchoCapture(CMD_S_FX_IDX, (uint16_t)i);
+               loadSeqFx(i);   txSysex(CMD_S_FX_IDX,   (uint16_t)i);
                txInsertFxSends(1u); break; }
     case 11: { int i = wrapIndex((int)seqFxIndexB.load(),  (int)delta,16);
                seqFxIndexB.store(i, std::memory_order_relaxed);
-               loadSeqFxB(i);  hwKnobEchoCapture(CMD_S_FX_IDX_B, (uint16_t)i); break; }
+               loadSeqFxB(i);  txSysex(CMD_S_FX_IDX_B, (uint16_t)i); break; }
     case 12: { int i = wrapIndex((int)drumFxIndexA.load(), (int)delta,16);
                drumFxIndexA.store(i, std::memory_order_relaxed);
-               loadDrumFx(i); hwKnobEchoCapture(CMD_D_FX_IDX, (uint16_t)i);
+               loadDrumFx(i); txSysex(CMD_D_FX_IDX, (uint16_t)i);
                echoDrumInsertParams(); break; }
     case 13: { int i = wrapIndex((int)drumFxIndexB.load(), (int)delta,16);
                drumFxIndexB.store(i, std::memory_order_relaxed);
-               loadDrumFxB(i); hwKnobEchoCapture(CMD_D_FX_IDX_B, (uint16_t)i); break; }
+               loadDrumFxB(i); txSysex(CMD_D_FX_IDX_B, (uint16_t)i); break; }
     }
     break;
 
@@ -649,29 +540,27 @@ void updateHardwareParameter(uint8_t l1, uint8_t l2, int16_t delta) {
       mutateSeq((int)l2, delta); break;
     case 14: { int i = wrapIndex((int)seqFxIndex.load(),  (int)delta,16);
                seqFxIndex.store(i, std::memory_order_relaxed);
-               loadSeqFx(i);  hwKnobEchoCapture(CMD_S_FX_IDX, (uint16_t)i);
+               loadSeqFx(i);  txSysex(CMD_S_FX_IDX,   (uint16_t)i);
                txInsertFxSends(1u); break; }
     case 15: { int i = wrapIndex((int)seqFxIndexB.load(), (int)delta,16);
                seqFxIndexB.store(i, std::memory_order_relaxed);
-               loadSeqFxB(i); hwKnobEchoCapture(CMD_S_FX_IDX_B, (uint16_t)i); break; }
+               loadSeqFxB(i); txSysex(CMD_S_FX_IDX_B, (uint16_t)i); break; }
     case 16: { portENTER_CRITICAL(&patchMux);
                float v = std::min(1.f, std::max(0.f, fx.seqInsert.dly_send + delta*0.02f));
                fx.seqInsert.dly_send = v; portEXIT_CRITICAL(&patchMux);
-               applyFxSend(CMD_S_DLY_MIX, (uint16_t)(v*16383.f), Origin::HW); break; }
+               txSysex(CMD_S_DLY_MIX, (uint16_t)(v*16383.f)); break; }
     case 17: { portENTER_CRITICAL(&patchMux);
                float v = std::min(1.f, std::max(0.f, fx.seqInsert.rev_send + delta*0.02f));
                fx.seqInsert.rev_send = v; portEXIT_CRITICAL(&patchMux);
-               applyFxSend(CMD_S_REV_MIX, (uint16_t)(v*16383.f), Origin::HW); break; }
-    case 18: { /* [WS5b] SEQ MELODY sound-bank preset recall — the path the seq
-               * engine was missing on hardware.  Browses the 128-name bank and
-               * recalls from seqBank[] (recallSeqPatch emits the seq patch blob). */
+               txSysex(CMD_S_REV_MIX, (uint16_t)(v*16383.f)); break; }
+    case 18: { /* Seq melody factory preset recall (128-name bank). */
                const int cur = std::min(seqPatchIndex.load() & (NUM_PATCHES - 1),
                                         NUM_NAMED_PRESETS - 1);
                const int nx  = wrapIndex(cur, (int)delta, NUM_NAMED_PRESETS);
                recallSeqPatch(nx, ParamSource::UI);
                txSysex(CMD_S_PATCH, (uint16_t)nx);   /* echo index → App dropdown */
                break; }
-    /* [USER-SLOTS] mirror of HARP SYNTH 19/20 for the seq engine (engine 1). */
+    /* User slots — mirror of HARP SYNTH 19/20 (engine 1). */
     case 19: { uint8_t c = (uint8_t)wrapIndex((int)userSlotCursor[1].load(std::memory_order_relaxed),
                               (int)delta, NUM_USER_SLOTS);
                userSlotCursor[1].store(c, std::memory_order_relaxed);
@@ -727,10 +616,8 @@ void updateHardwareParameter(uint8_t l1, uint8_t l2, int16_t delta) {
   }
 
   /* ── 10: LASER SHOW ──────────────────────────────────────────────────────
-   * [LASER-SHOW v2] Show Mode and MIDI→Hue are INDEPENDENT toggles (match the
-   * App's two buttons).  HUE ADSR times scale to SECONDS (ATK 0..2, DEC 0..3,
-   * REL 0..4) and the SysEx echo normalises back to 0..16383.  Screensaver moved
-   * to HARP SETUP (it is a closed-harp idle behaviour, not a show control).     */
+   * Show Mode and MIDI→Hue are independent toggles. Hue ADSR in seconds.
+   * Screensaver lives in HARP SETUP (closed-harp idle, not projector show). */
   case 10:
     switch (l2) {
     case 0: { bool v = delta>0?true:(delta<0?false:!laserShowMode.load());
@@ -773,33 +660,25 @@ BtnEvent pollEncoderButton(uint32_t now, int32_t delta) {
  * SECTION 7 — MAIN CONTROL LOOP (200 Hz)
  * ═══════════════════════════════════════════════════════════════════════════ */
 
-/* [CONFIRM] Run the action a confirm dialog was raised for (YES path).  Central
- * dispatch so the modal stays generic and reusable (RESET / SAVE can add cases). */
+/* confirmDispatch — run confirmed action (YES path). */
 static void confirmDispatch(ConfirmAction a, uint8_t arg) {
   switch (a) {
     case ConfirmAction::SEQ_CLEAR:  seqClearActiveAndResetSounds();              break;
     case ConfirmAction::SAVE:       handleScopedSave ((ResetScope)(arg & 3u));   break;
     case ConfirmAction::RESET:      handleScopedReset((ResetScope)(arg & 3u));   break;
     case ConfirmAction::LOAD:       handleScopedLoad ((ResetScope)(arg & 3u));   break;
-    case ConfirmAction::SOFT_RESET:
-      seqSoftResetWorkingImage();
-      oledPersistSucceeded();
-      break;
-    case ConfirmAction::USR_SOUND_SAVE:                                          /* [USER-SLOTS] */
+    case ConfirmAction::USR_SOUND_SAVE:
       if (saveLiveToUserSlot((uint8_t)((arg >> 6) & 1u), (uint8_t)(arg & 63u)) && isAppConnected())
         txSysex(CMD_USR_SOUND_SAVE, (uint16_t)(arg & 0x3FFFu));
       break;
-    case ConfirmAction::USR_PAT_SAVE:                                            /* [USER-PAT-SLOTS] */
+    case ConfirmAction::USR_PAT_SAVE:
       saveActivePatternToUserSlot((uint8_t)(arg & 63u));                         break;
     case ConfirmAction::NONE:
     default: break;
   }
 }
 
-/* [SAVE-MENU] Open the scoped SAVE menu (L1=14).  Long-press never persists
- * directly any more — it always lands here so the user picks a scope and the
- * YES/NO confirm guards the actual write.  Clears any editor/scope overlay so
- * the menu is the front-most surface. */
+/* Open scoped SAVE menu (L1=14). ENC long-press routes here (not direct persist). */
 static inline void openSaveMenu() {
   currentScopeView.store(TelemetryView::OFF, std::memory_order_relaxed);
   edgeEditOpen.store(false, std::memory_order_relaxed);
@@ -815,50 +694,26 @@ void updateHardwareInterface() {
   btnOC   .update(now);
   btnScale.update(now);
 
-  /* [SAVE-FIX3] Freeze the control surface while a session save is in flight.
-   * ControlPoll (Core 0) was still toggling grid steps / mutating userBank via
-   * patchMux while NvsWorker (Core 1) snapshotted patterns/banks → corruption
-   * or TWDT panic.  Keep debounce state fresh; skip all gesture handling. */
+  /* Freeze control surface while save is in flight (avoid patchMux vs NvsWorker race). */
   static uint32_t s_saveStuckSince = 0u;
   if (saveInProgress()) {
     if (s_saveStuckSince == 0u) s_saveStuckSince = now;
-    else {
-      /* FULL scoped reset can write ~37 KB — allow longer than a normal save.
-       * [SAVE-FIX16] 25 s was too aggressive for FULL saves on a loaded session;
-       * premature saveForceUnlock() sent NACK while NvsWorker was still committing. */
-      const uint32_t limitMs = g_resetInProgress.load(std::memory_order_relaxed)
-                                   ? 90000u : 75000u;
-      if ((uint32_t)(now - s_saveStuckSince) > limitMs) {
-        const bool wasReset =
-            g_resetAckPending.load(std::memory_order_acquire);
-        const bool wasSave = g_saveRequest.load(std::memory_order_acquire) ||
-                             g_saveArmed.load(std::memory_order_acquire);
-        saveForceUnlock();
-        if (wasReset)
-          txSysexPersistReply(CMD_SCOPED_RESET, 0u);
-        else if (wasSave)
-          txSysexPersistReply(CMD_SESSION_SAVE, 0u);
-        oledPersistFailed();
-        oledPersistRestore();
-        s_saveStuckSince = 0u;
-        Serial.println(F("[NVS] WARN: save handshake timeout — unlocked"));
-      }
+    else if ((uint32_t)(now - s_saveStuckSince) > 25000u) {
+      saveForceUnlock();
+      s_saveStuckSince = 0u;
+      g_saveFailFlashMs.store(now + 1500u, std::memory_order_relaxed);
+      displayDirty.store(true, std::memory_order_relaxed);
+      Serial.println(F("[NVS] WARN: save handshake timeout — unlocked"));
     }
     return;
   }
   s_saveStuckSince = 0u;
 
-  /* ── Encoder read — PURE LINEAR 1:1 (no acceleration), matches the
-   *    known-good v28.9 build's getDelta math exactly [C8] ──────────────── */
+  /* Encoder read — pure linear 1:1 (no acceleration). */
   const int16_t delta = encPoll.getDelta(encoder.getCount(), now);
   if (delta != 0) lastEncoderTurnMs.store(now, std::memory_order_relaxed);
 
-  /* ── [C9b] Deferred HARP recall commit ──────────────────────────────────
-   * While the encoder is being turned we only update harpPatchIndex (cheap).
-   * Once it has rested ~160 ms we run the one heavy recallHarpPatch() that
-   * does the livePatch memcpy + atomic fan-out under patchMux.  Doing this
-   * exactly once per "scroll gesture" instead of once per detent is what
-   * keeps fast browsing smooth and lock-free.                               */
+  /* Deferred harp preset recall — commit ~160 ms after encoder stops (dashboard browse). */
   if (uiSyncPending.load(std::memory_order_relaxed) &&
       (uint32_t)(now - lastEncoderTurnMs.load(std::memory_order_relaxed)) > 160u) {
     uiSyncPending.store(false, std::memory_order_relaxed);
@@ -874,24 +729,7 @@ void updateHardwareInterface() {
   const int       l1       = currentMenuL1.load(std::memory_order_relaxed);
   const MenuState mstate   = menuState.load(std::memory_order_relaxed);
 
-  /* ── [v6.0] APP-CONNECTED control surface ───────────────────────────────────
-   * While the App is connected the OLED shows the static "APP CONNECTED" splash
-   * and the App is master for all PARAMETER editing.  The physical surface is
-   * locked to a fixed TRANSPORT role (the hardware ALWAYS owns transport), so
-   * the buttons can never fall dead and the App can't fight over shared state:
-   *   SCALE single   → play / stop        (seq_toggle echoes CMD_TRANSPORT)
-   *   OC single      → record-arm toggle  (seq_toggle_recording → ring echo 3/4)
-   *   ENC turn       → BPM                 (setSequencerBpm echoes CMD_BPM)
-   *   ENC long-press → save settings (NVS)
-   * Menu navigation + parameter editing are suppressed (early return).  Gated on
-   * isAppConnected() — the SAME predicate that draws the splash — so the control
-   * mode and the screen are always in lock-step.                                */
-  /* ── [CONFIRM] YES/NO modal — owns ALL input while open ─────────────────────
-   * Placed before the App-connected transport branch so the modal still receives
-   * encoder/click input (and renders over the splash) when the App is connected.
-   *   ENC turn  → move selection (right = YES, left = NO)
-   *   ENC click → commit (runs confirmDispatch on YES); closes either way
-   *   ENC double→ cancel.  Defaults to NO so a stray click can't wipe.          */
+  /* YES/NO modal — owns all input while open (before App-connected branch). */
   if (confirmOpen.load(std::memory_order_relaxed)) {
     if      (delta > 0) { confirmSel.store(1, std::memory_order_relaxed); displayDirty.store(true); }
     else if (delta < 0) { confirmSel.store(0, std::memory_order_relaxed); displayDirty.store(true); }
@@ -911,10 +749,10 @@ void updateHardwareInterface() {
     return;
   }
 
+  /* App-connected: transport-only (SCALE play/stop, OC record, ENC BPM). */
   if (isAppConnected()) {
     bool dirty = false;
-    if (ev == BtnEvent::LONG)                 /* ENC long → protected FULL save (App owns scope UI) */
-      openConfirm(ConfirmAction::SAVE, (uint8_t)ResetScope::FULL);
+    /* ENC long intentionally ignored — App owns SAVE/LOAD/RESET while connected. */
     if (delta != 0) {                           /* ENC turn  → BPM */
       setSequencerBpm((int32_t)constrain(seqBpm.load() + delta, 40, 240));
       dirty = true;
@@ -923,31 +761,23 @@ void updateHardwareInterface() {
       seq_toggle();                             /* echoes CMD_TRANSPORT itself */
       dirty = true;
     }
-    if (evOC == BtnEvent::SINGLE)               /* OC short  → record toggle */
-      seq_toggle_recording();
+    if (evOC == BtnEvent::SINGLE) {             /* OC short  → record-arm (same as SEQ dashboard) */
+      const bool rec = !seqRecording.load(std::memory_order_relaxed);
+      seqRecording.store(rec, std::memory_order_relaxed);
+      txSysex(CMD_TRANSPORT, rec ? 3u : 4u);
+      dirty = true;
+    }
     if (dirty) displayDirty.store(true, std::memory_order_relaxed);
     return;
   }
 
-  /* ── [EDGE] Edge-comp 8-bar editor (full-screen, telemetry-style) ───────────
-   * Entered from HARP SETUP → "Edge Comp".  Owns ALL input while open:
-   *   SCALE single → select next string (0→7, wraps)
-   *   OC single    → select next scale (0→15, wraps) AND apply it live so margin,
-   *                  RGB, touch, and edge-comp rows all match the scale under edit
-   *   ENC turn     → set selected string's edge-comp % (EDGE_COMP_PCT_MIN..MAX)
-   *   ENC single   → reset selected string to its factory value
-   *   ENC double   → exit (no save)   ENC long → save + exit
-   * edgeComp[] is shared with Core 1 (computeHardwareDACThreshold) → writes are
-   * done under patchMux; thresholds recompute OUTSIDE the lock (compute fn takes
-   * patchMux itself, same as the Margin case).                                */
+  /* Edge-comp full-screen editor (HARP SETUP → Edge Comp). */
   if (edgeEditOpen.load(std::memory_order_relaxed)) {
     int  sel       = edgeEditSel.load(std::memory_order_relaxed) & 7;
     int  escale    = edgeEditScale.load(std::memory_order_relaxed) & (NUM_SCALES - 1);
     bool dirty     = false;
     bool recompute = false;
-    /* [EDGE-NAV] Edit whichever set the REVIEWED scale uses (rainbow has its own).
-     * OC scrolls scales AND selects them live (harpScaleIndex) so per-scale margin,
-     * RGB, touch, and edge-comp values all apply while tuning. */
+    /* OC scrolls scales and selects live (harpScaleIndex) for margin/RGB/edge rows. */
     uint8_t* const       edge    = edgeCompFor(escale);
     const uint8_t* const factory = edgeFactoryFor(escale);
 
@@ -966,7 +796,7 @@ void updateHardwareInterface() {
       edgeEditSel.store(sel, std::memory_order_relaxed);
       dirty = true;
     }
-    if (evOC == BtnEvent::SINGLE) {                /* [EDGE-NAV] next scale, wrap + live select */
+    if (evOC == BtnEvent::SINGLE) {                /* next scale, wrap + live select */
       escale = (escale + 1) & (NUM_SCALES - 1);
       edgeEditScale.store(escale, std::memory_order_relaxed);
       harpScaleIndex.store(escale, std::memory_order_relaxed);
@@ -1118,15 +948,7 @@ void updateHardwareInterface() {
         if (activeDashboard.load() == DashboardMode::SEQUENCER)
           setSequencerBpm((int32_t)constrain(seqBpm.load() + delta, 40, 240));
         else {
-          /* HARP dashboard: browse patches — [C9b] DEFERRED recall (restores the
-           * smooth v28.9 feel).  Per-detent we only bump harpPatchIndex (lock-free,
-           * one relaxed store) so the OLED name tracks instantly; the expensive
-           * livePatch memcpy + atomic fan-out under patchMux is deferred until the
-           * encoder rests (see the uiSyncPending commit block at the top of this
-           * function).  This keeps fast scrolling free of patchMux contention and
-           * stops the display from being forced into a full redraw every detent.
-           * Cap to NUM_NAMED_PRESETS so hardware browsing matches the App dropdown
-           * (slots 128-255 are unnamed expansion fillers).                         */
+          /* HARP dashboard: browse presets (deferred recall via uiSyncPending). */
           const int cur  = std::min(harpPatchIndex.load() & (NUM_PATCHES - 1),
                                     NUM_NAMED_PRESETS - 1);
           const int next = wrapIndex(cur, (int)delta, NUM_NAMED_PRESETS);
@@ -1136,8 +958,7 @@ void updateHardwareInterface() {
         }
         break;
       case MenuState::MENU_L1: {
-        /* [I7] step through the regrouped *display* order, not the raw id:
-         * id → slot, advance the slot, slot → id. */
+        /* L1 menu uses regrouped display order (kL1Order / kCatToSlot). */
         const int slot = l1SlotForCat(currentMenuL1.load());
         currentMenuL1.store(l1CatForSlot(wrapIndex(slot, (int)delta, kL1Count)));
         break; }
@@ -1169,13 +990,8 @@ void updateHardwareInterface() {
         menuState.store(MenuState::MENU_L1);
         break;
       case MenuState::MENU_L1:
-        if (currentMenuL1.load() == 11) {
-          currentScopeView.store(TelemetryView::RAW_AC);
-          menuState.store(MenuState::IDLE);
-        } else {
-          currentMenuL2.store(0);
-          menuState.store(MenuState::MENU_L2);
-        }
+        currentMenuL2.store(0);
+        menuState.store(MenuState::MENU_L2);
         break;
       case MenuState::MENU_L2: {
         /* Inline toggle items that need no L3 value entry */
@@ -1201,30 +1017,27 @@ void updateHardwareInterface() {
             case 20: applyMute(CMD_D_MUTE, !mixDrumsMute.load()); break;
           }
         } else if (cl1 == 0 && cl2 == 9) {
-          /* [EDGE] HARP SETUP → Edge Comp opens the full-screen 8-bar editor
-           * instead of a numeric L3 value screen. */
+          /* Edge Comp → full-screen 8-bar editor. */
           edgeEditSel.store(0, std::memory_order_relaxed);
           edgeEditScale.store(harpScaleIndex.load(std::memory_order_relaxed) & (NUM_SCALES - 1),
-                              std::memory_order_relaxed); /* [EDGE-NAV] start on live scale */
+                              std::memory_order_relaxed);
           edgeEditOpen.store(true, std::memory_order_relaxed);
         } else if (cl1 == 5 && cl2 == 6) {
-          /* [SEQ-CLEAR] Clear is destructive → raise the YES/NO confirm modal. */
           openConfirm(ConfirmAction::SEQ_CLEAR);
         } else if (cl1 == 5 && cl2 == 7) {
-          /* [SOFT-RESET] CLEAR extended (sounds + nav → initial) → YES/NO gate. */
-          openConfirm(ConfirmAction::SOFT_RESET);
-        } else if (cl1 == 5 && cl2 == 8) {
-          /* [USER-PAT-SLOTS] Save Pat → YES/NO confirm (overwrite slot + NVS). */
           const uint8_t idx = userPatCursor.load(std::memory_order_relaxed) & 63u;
           openConfirm(ConfirmAction::USR_PAT_SAVE, idx);
+        } else if (cl1 == 11) {
+          const int span = l2CountFor(11);
+          const int pick = (span > 0) ? (cl2 % span) : 0;
+          currentScopeView.store((TelemetryView)(pick + 1));
+          menuState.store(MenuState::IDLE);
         } else {
           menuState.store(MenuState::MENU_L3);
         }
         break; }
       case MenuState::MENU_L3: {
-        /* [USER-SLOTS] Save Slot (HARP/SEQ SYNTH idx 19) commits on ENC press →
-         * YES/NO confirm (overwrites a slot + writes NVS).  Everything else just
-         * steps back to the L2 list. */
+        /* Save Slot (idx 19) → YES/NO confirm; other L3 items step back to L2. */
         const int cl1 = currentMenuL1.load(), cl2 = currentMenuL2.load();
         if ((cl1 == 3 || cl1 == 8) && cl2 == 19) {
           const uint8_t eng = (cl1 == 8) ? 1u : 0u;
@@ -1252,8 +1065,7 @@ void updateHardwareInterface() {
         menuState.store(MenuState::MENU_L1); break;
       case MenuState::MENU_L3:
         menuState.store(MenuState::MENU_L2); break;
-      /* [NAV] Double-click now backs all the way out: L3→L2→L1→IDLE, so the user
-       * can reach the dashboard without a long-press (which also saves). */
+      /* Double-click backs out: L3→L2→L1→IDLE. */
       case MenuState::MENU_L1:
         menuState.store(MenuState::IDLE); break;
       }
@@ -1271,10 +1083,10 @@ void updateHardwareInterface() {
   }
   /* Short: SEQ = record toggle; HARP = cycle play mode */
   if (evOC == BtnEvent::SINGLE) {
+    displayDirty.store(true);
     if (activeDashboard.load() == DashboardMode::SEQUENCER)
-      seq_toggle_recording();                   /* echo + displayDirty via groovebox API */
+      seqRecording.store(!seqRecording.load());
     else {
-      displayDirty.store(true);
       int pm = (int)currentPlayMode.load() + 1;
       if (pm > 2) pm = 0;
       harpSetPlayMode((PlayMode)pm);              /* flush notes + dirty display */
@@ -1287,8 +1099,7 @@ void updateHardwareInterface() {
   if (evScale == BtnEvent::SINGLE) {
     displayDirty.store(true);
     if (activeDashboard.load() == DashboardMode::SEQUENCER) {
-      /* [v6.0] Hardware ALWAYS owns transport — seq_toggle() echoes CMD_TRANSPORT
-       * itself, so the App's (read-only) transport buttons follow.            */
+      /* Hardware owns transport — seq_toggle echoes CMD_TRANSPORT. */
       seq_toggle();
     } else {
       panicRequested.store(true, std::memory_order_relaxed);
@@ -1296,8 +1107,7 @@ void updateHardwareInterface() {
       harpScaleIndex.store(next);
       txSysex(CMD_H_SCALE, (uint16_t)next);
       for (int i = 0; i < MAX_STRINGS; ++i) computeHardwareDACThreshold(i, 0.f);
-      /* [STUCK-FIX] Clear the laser's physical-hold detection state so a beam
-       * held across the scale change can't carry over as a stuck string. */
+      /* Clear laser hold state on scale change (avoid stuck string). */
       g_beamClearReq.store(true, std::memory_order_release);
     }
   }
@@ -1314,10 +1124,7 @@ void updateHardwareInterface() {
  * on a failed take was triggering xTaskPriorityDisinherit / Guru Meditation). */
 static void oledStatusLines(const char* line1, const char* line2) {
   if (!hasOLED) return;
-  /* [SAVE-FIX5] Never touch the I2C bus while a flash write is armed: the cache
-   * is off and the other core is IPC-stalled, so a Wire transaction here can
-   * release the driver's internal mutex from the wrong context (assert
-   * xTaskPriorityDisinherit).  Status text can wait for the ~tens of ms write. */
+  /* Skip I2C while NVS flash is armed (cache off / IPC stall). */
   if (g_saveArmed.load(std::memory_order_acquire)) return;
   if (xSemaphoreTake(i2cMutex, pdMS_TO_TICKS(200)) != pdTRUE) return;
   display.clearDisplay();
@@ -1333,62 +1140,6 @@ static void oledStatusLines(const char* line1, const char* line2) {
   xSemaphoreGive(i2cMutex);
 }
 
-/* Hold a status screen briefly, then hand the OLED back to display_refresh_task
- * (APP CONNECTED splash when the App link is live).  oledStatusLines writes
- * directly to the framebuffer and bypasses renderUIState — without this restore
- * step "RESET FAILED" / "SAVE BUSY" would stick forever.                     */
-static void oledStatusHold(const char* line1, const char* line2,
-                           uint32_t holdMs = 2000u) {
-  /* Set the hold flag BEFORE drawing so display_refresh_task cannot slip in
-   * between oledStatusLines() and the store and overwrite the message. */
-  g_oledStatusHoldMs.store(millis() + holdMs, std::memory_order_relaxed);
-  oledStatusLines(line1, line2);
-}
-
-static void oledStatusRestoreNow() {
-  g_oledStatusHoldMs.store(0u, std::memory_order_relaxed);
-  menuState.store(MenuState::IDLE, std::memory_order_relaxed);
-  displayDirty.store(true, std::memory_order_relaxed);
-}
-
-void oledPersistRestore() {
-  oledStatusRestoreNow();
-}
-
-/* Non-blocking working state — WAIT… toast driven by g_saveRequest / g_resetInProgress. */
-void oledPersistWorking() {
-  displayDirty.store(true, std::memory_order_relaxed);
-}
-
-void oledPersistSucceeded() {
-  g_oledStatusHoldMs.store(0u, std::memory_order_relaxed);
-  g_saveFailFlashMs.store(0u, std::memory_order_relaxed);
-  g_saveFlashMs.store(millis() + 1200u, std::memory_order_relaxed);
-  displayDirty.store(true, std::memory_order_relaxed);
-}
-
-void oledPersistFailed() {
-  g_oledStatusHoldMs.store(0u, std::memory_order_relaxed);
-  g_resetInProgress.store(false, std::memory_order_release);
-  g_saveFailFlashMs.store(millis() + 1500u, std::memory_order_relaxed);
-  displayDirty.store(true, std::memory_order_relaxed);
-}
-
-bool scopedLoadExecute(ResetScope scope) {
-  const bool ok = settings_load_scoped(scope);
-  if (ok)
-    for (int i = 0; i < MAX_STRINGS; ++i)
-      computeHardwareDACThreshold(i, 0.f);
-  return ok;
-}
-
-/* applyResetScope() already ran — reload the matching NVS scope back into RAM. */
-static void rollbackResetRam(ResetScope scope) {
-  (void)settings_load_scoped(scope);
-  for (int i = 0; i < MAX_STRINGS; ++i)
-    computeHardwareDACThreshold(i, 0.f);
-}
-
 static ResetScope s_resetPersistScope = ResetScope::FULL;
 
 /* Runtime scoped reset: persist via NvsWorker (laser park + 16 KB stack) then
@@ -1396,30 +1147,22 @@ static ResetScope s_resetPersistScope = ResetScope::FULL;
 static void reset_persist_task(void*) {
   while (saveInProgress()) vTaskDelay(pdMS_TO_TICKS(10));
 
-  /* Wipe RAM here (not in handleScopedReset) so a task-create failure cannot
-   * leave the device in a half-reset state with no NVS commit. */
-  applyResetScope(s_resetPersistScope);
-
   if (g_saveDoneSem) xSemaphoreTake(g_saveDoneSem, 0);
 
   g_persistScope.store((uint8_t)s_resetPersistScope, std::memory_order_release);
-  g_resetAckPending.store(true, std::memory_order_release);
+  g_persistAckCmd.store(169, std::memory_order_relaxed);
   g_restartAfterSave.store(true, std::memory_order_release);
   g_saveRequest.store(true, std::memory_order_release);
-  displayDirty.store(true, std::memory_order_relaxed);
 
   const bool got =
       g_saveDoneSem &&
-      (xSemaphoreTake(g_saveDoneSem, pdMS_TO_TICKS(8000)) == pdTRUE);
+      (xSemaphoreTake(g_saveDoneSem, pdMS_TO_TICKS(20000)) == pdTRUE);
 
   if (!got || !g_saveLastOk.load(std::memory_order_acquire)) {
     g_restartAfterSave.store(false, std::memory_order_release);
-    g_resetAckPending.store(false, std::memory_order_release);
-    rollbackResetRam(s_resetPersistScope);
-    txSysexPersistReply(CMD_SCOPED_RESET, 0u);
-    g_resetInProgress.store(false, std::memory_order_release);
-    oledPersistFailed();
-    oledPersistRestore();
+    if (isAppConnected()) txSysex(CMD_SCOPED_RESET, 0u);
+    oledStatusLines("RESET FAILED", nullptr);
+    delay(2000);
   }
   /* On success NvsWorker calls esp_restart() — this task never returns. */
   vTaskDelete(nullptr);
@@ -1428,43 +1171,25 @@ static void reset_persist_task(void*) {
 /* handleScopedReset — apply RAM wipe, persist, restart.
  * Boot OC+SCALE combo: blocking 16 KB save task (NvsWorker not running yet). */
 void handleScopedReset(ResetScope scope) {
-  /* [SAVE-WEDGE-FIX] Heal stale persist flags BEFORE the guards below — a wedged
-   * g_saveArmed/g_resetInProgress (crash mid-write) otherwise made every RESET hit
-   * the saveInProgress() / g_resetInProgress guard and NACK forever ("always
-   * FAILED!"), exactly like the SAVE path. */
   recoverWedgedPersistFlags();
-  if (g_resetInProgress.exchange(true, std::memory_order_acq_rel)) {
-    oledPersistFailed();
-    txSysexPersistReply(CMD_SCOPED_RESET, 0u);
-    oledPersistRestore();
-    return;
+  const char* line1 = "RESET";
+  switch (scope) {
+    case ResetScope::FULL:           line1 = "FULL RESET";    break;
+    case ResetScope::BANKS_PATTERNS: line1 = "BANKS+PATTERNS"; break;
+    case ResetScope::MOTION:         line1 = "MOTION CLEAR";  break;
+    case ResetScope::SETTINGS:       line1 = "SETTINGS RESET"; break;
   }
-  if (saveInProgress()) {
-    g_resetInProgress.store(false, std::memory_order_release);
-    oledPersistFailed();
-    txSysexPersistReply(CMD_SCOPED_RESET, 0u);
-    oledPersistRestore();
-    return;
-  }
+  oledStatusLines(line1, "PLEASE WAIT...");
 
-  oledPersistWorking();
-  /* [FIX-M3] Silence voices and stop the sequencer before wiping RAM. */
-  allNotesOff();
-  seq_stop();
+  applyResetScope(scope);
 
   if (!g_systemReady.load(std::memory_order_acquire)) {
-    applyResetScope(scope);
     if (!settings_persist_blocking(scope)) {
-      g_resetInProgress.store(false, std::memory_order_release);
-      rollbackResetRam(scope);
-      oledPersistFailed();
-      txSysexPersistReply(CMD_SCOPED_RESET, 0u);
-      oledPersistRestore();
+      oledStatusLines("RESET FAILED", nullptr);
+      delay(2000);
       return;
     }
-    oledPersistSucceeded();
-    vTaskDelay(pdMS_TO_TICKS(400));
-    txSysexPersistReply(CMD_SCOPED_RESET, 16383u);
+    delay(300);
     esp_restart();
     return;
   }
@@ -1472,52 +1197,43 @@ void handleScopedReset(ResetScope scope) {
   s_resetPersistScope = scope;
   if (xTaskCreatePinnedToCore(reset_persist_task, "RstSave", 8192, nullptr, 5,
                               nullptr, 1) != pdPASS) {
-    g_resetInProgress.store(false, std::memory_order_release);
-    oledPersistFailed();
-    txSysexPersistReply(CMD_SCOPED_RESET, 0u);
-    oledPersistRestore();
+    oledStatusLines("RESET FAILED", nullptr);
+    delay(2000);
   }
 }
 
-/* handleScopedSave — menu / App scoped save (no restart). */
+/* handleScopedSave — menu / App scoped save (persist + reboot). */
 void handleScopedSave(ResetScope scope) {
-  oledPersistWorking();
-  if (!requestScopedSave((uint8_t)scope)) {
-    oledPersistFailed();
-    txSysexPersistReply(CMD_SESSION_SAVE, 0u);
-    oledPersistRestore();
-    return;
-  }
+  requestScopedSave((uint8_t)scope);
 }
 
 /* handleScopedLoad — menu / App scoped reload from NVS.  RAM-only (no flash
- * write) so there is NO reboot: the loaded state goes live immediately.         */
+ * write) so there is NO reboot: the loaded state goes live immediately.  Only
+ * reachable from the hardware menu while the App is disconnected (App drives its
+ * own LOAD popup), so no SysEx state-echo is needed here.                       */
 void handleScopedLoad(ResetScope scope) {
-  if (saveInProgress() || g_resetInProgress.load(std::memory_order_acquire) ||
-      g_loadInProgress.load(std::memory_order_acquire)) {
-    oledPersistFailed();
-    txSysexPersistReply(CMD_SESSION_LOAD, 0u);
-    oledPersistRestore();
-    return;
+  const char* line1 = "LOAD";
+  switch (scope) {
+    case ResetScope::FULL:           line1 = "FULL LOAD";     break;
+    case ResetScope::BANKS_PATTERNS: line1 = "BANKS+PATTERNS"; break;
+    case ResetScope::MOTION:         line1 = "MOTION LOAD";   break;
+    case ResetScope::SETTINGS:       line1 = "SETTINGS LOAD"; break;
   }
+  oledStatusLines(line1, "PLEASE WAIT...");
 
-  oledPersistWorking();
-  g_loadInProgress.store(true, std::memory_order_release);
+  const bool ok = settings_load_scoped(scope);
 
-  const bool ok = scopedLoadExecute(scope);
-  g_loadInProgress.store(false, std::memory_order_release);
+  /* Re-apply the bits hardware can't pick up from atomics on its own. */
+  for (int i = 0; i < MAX_STRINGS; ++i) computeHardwareDACThreshold(i, 0.f);
 
-  if (ok) {
-    oledPersistSucceeded();
+  if (ok && isAppConnected()) {
     sendFullStateSync();
     echoSongState();
-    txSysexPersistReply(CMD_SESSION_LOAD, 16383u);
-  } else {
-    oledPersistFailed();
-    txSysexPersistReply(CMD_SESSION_LOAD, 0u);
+    txSysex(CMD_SESSION_LOAD, 16383u);
   }
-  vTaskDelay(pdMS_TO_TICKS(800));
-  oledPersistRestore();
+
+  oledStatusLines(ok ? "LOAD OK" : "NOTHING SAVED", nullptr);
+  delay(900);
   menuState.store(MenuState::IDLE, std::memory_order_relaxed);
   displayDirty.store(true, std::memory_order_relaxed);
 }
@@ -1548,18 +1264,17 @@ void updateTaskStackStats() {
   s.dramFree  = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
   s.psramFree = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
 
-  /* [FIX-MINFREE] Include midi in the scan array — it was isolated outside the
-   * loop for no reason, making the logic inconsistent and easy to miss. */
   uint16_t minF = 0xFFFFu;
-  const uint16_t vals[] = { s.audio, s.midi, s.dbeam, s.seq, s.control,
+  const uint16_t vals[] = { s.audio, s.dbeam, s.seq, s.control,
                             s.display, s.laser, s.nvs };
   for (uint16_t v : vals)
     if (v > 0u && v < minF) minF = v;
+  if (s.midi > 0u && s.midi < minF) minF = s.midi;
   s.minFree = (minF == 0xFFFFu) ? 0u : minF;
 
   g_stackStats = s;
 
-  if (currentScopeView.load(std::memory_order_relaxed) == TelemetryView::STACK_STATS)
+  if (currentScopeView.load(std::memory_order_relaxed) != TelemetryView::OFF)
     displayDirty.store(true, std::memory_order_relaxed);
 }
 

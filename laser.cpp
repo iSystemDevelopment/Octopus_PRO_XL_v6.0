@@ -1,18 +1,17 @@
 /* ═════════════════════════════════════════════════════════════════════════════
- * Octopus PRO XL v6.0.00 — Laser Harp Groovebox
+ * Octopus PRO XL v6.1.00 — Laser Harp Groovebox
  * © 2026 DIODAC ELECTRONICS / iSystem. All Rights Reserved.
  *
  * PROPRIETARY AND CONFIDENTIAL. Unauthorized copying, distribution, modification,
  * or use of this software or firmware, in whole or in part, is strictly prohibited
  * without prior written permission from DIODAC ELECTRONICS.
  * ═════════════════════════════════════════════════════════════════════════════
- * laser.cpp — v6.0.00  LASER KERNEL IMPLEMENTATIONS
+ * laser.cpp — v6.1.00  GALVO SWEEP + BEAM TRIGGER (Core 1, prio 24)
  *
- *  setupMCPWM      — IDF v5 MCPWM init at 9 652.5 Hz (MFB target 9 656 Hz) [L1]
- *  initLaserSPI    — SPI bus configured ONCE for hot-path use [L4]
- *  initLaser       — combined peripheral init
- *  tickAnimation   — populate opening / fan-in closing [L6]
- *  laser_sweep_task — Core 1 timing machine (moved from .ino) [L6]
+ * laser_sweep_task: MCPWM galvo timing, LT1016 digital trigger latch, per-string
+ * note on/off → harp.cpp, fog reject gate, D-BEAM expression read, hue/laser show.
+ * Phase timing: Core-1-local esp_rom_delay_us busy-waits + LASER_BREATHE_MS yield.
+ * NVS save: parks dark while NvsWorker writes flash.
  * ═════════════════════════════════════════════════════════════════════════════ */
 #include "laser.h"
 #include "harp.h"    /* [HARP-SPLIT] harpNoteOn/Off, harpReleaseVoice, hue, vibrato */
@@ -376,9 +375,11 @@ void IRAM_ATTR tickAnimation() {
  *   DWELLING → poll BEAM_DWELL_US, sample beam, advance galvo (dark)
  *
  * Key timing properties:
- *   • [CORE1-RECLAIM] Hot path sleeps on a one-shot phase timer (task notify),
- *     so Core-1 IDLE/OledRender run during each phase instead of busy-polling
- *   • Phases <60 µs spin via esp_rom_delay_us (timer arm overhead not worth it)
+ *   • Phase waits use Core-1-local esp_rom_delay_us busy-waits (precise µs
+ *     timing; esp_timer on Core 0 is starved by AudioSynth under load).
+ *   • LASER_BREATHE_MS periodic vTaskDelay hands Core 1 to MidiUsbRx /
+ *     SeqSysexOut / NvsWorker without chopping lit beams.
+ *   • Phases <60 µs may spin via esp_rom_delay_us (timer arm overhead not worth it)
  *   • All microsecond delays use esp_rom_delay_us (IRAM, not flash)
  *   • BEAM_DWELL_US = 10 × PWM period = 1036 µs (integer cycles [L1])
  * ─────────────────────────────────────────────────────────────────────────────*/
@@ -434,8 +435,8 @@ void IRAM_ATTR laser_sweep_task(void* pvParameters) {
   for (;;) {
 
     esp_task_wdt_reset();
-    /* [CORE1-RECLAIM] No breathe-yield here — the phase-deadline sleep at the
-     * bottom of the loop yields Core 1 every phase (IDLE1 fed, OledRender served).
+    /* [CORE1-RECLAIM] No breathe-yield here — the phase-deadline wait at the
+     * bottom of the loop yields Core 1 every phase (IDLE1 + data tasks fed).
      * Keeping the old wall-clock vTaskDelay(1) would re-add the per-frame beam
      * "swing" it was fighting, so it's gone.                                    */
 
@@ -765,16 +766,7 @@ void IRAM_ATTR laser_sweep_task(void* pvParameters) {
           }
           galvoMoveDark(targetPos, getHardwareDACThreshold(ci), false); /* non-blocking */
 
-          /* ── Telemetry scope write ───────────────────────────────────────
-           * [TELEMETRY-FIX] Each view's raw value lives on a different scale
-           * (mV / SNR ratio / DAC counts), so a single fixed divisor left most
-           * scopes nearly flat at the bottom.  We AUTO-RANGE: track a slowly-
-           * decaying peak and normalise to it, so the trace fills the display
-           * whatever the units.  `floorScale` is the minimum full-scale per view
-           * — it stops idle sensor noise from being amplified to fill the screen.
-           * NOTE: CAL_BASELINE no longer feeds this ring — it renders as 8 live
-           * per-string bars (display.cpp/drawDacThresholdBars) which read
-           * getHardwareDACThreshold() directly, so it is skipped here too. */
+          /* Telemetry scope — auto-range per view (see display.cpp drawTelemetryOscilloscope). */
           const TelemetryView view = currentScopeView.load(std::memory_order_relaxed);
           if (view != TelemetryView::OFF && view != TelemetryView::DC_LEVEL &&
               view != TelemetryView::STACK_STATS && view != TelemetryView::CAL_BASELINE) {
@@ -782,30 +774,21 @@ void IRAM_ATTR laser_sweep_task(void* pvParameters) {
             float floorScale = 1.0f;
             switch (view) {
               case TelemetryView::RAW_AC:
-                /* AC RMS above the noise floor: idle ≈ 0 (rests on the centre
-                 * line), gestures swing wide.  Read the locked snapshot, not the
-                 * Core-0-owned g_kalman_ac (cross-core race per [FIX-C]). */
                 portENTER_CRITICAL(&patchMux);
                 sampleVal = g_last_good_data[ci].acAmplitude - NOISE_FLOOR_MV;
                 portEXIT_CRITICAL(&patchMux);
                 if (sampleVal < 0.0f) sampleVal = 0.0f;
-                floorScale = 120.0f;          /* ≥120 mV swing before it fills   */
+                floorScale = NOISE_FLOOR_MV + 10.0f; /* mV above subtracted floor → full scale */
                 break;
               case TelemetryView::CC_OUT_14BIT:
-                /* Fixed full-scale = 14-bit ceiling (0..16383 = 0..100 % expression).
-                 * floorScale=16383 means fs = max(scopePeak, 16383) never drops below
-                 * 16383, so the auto-range is effectively bypassed: screen-top = 100 %
-                 * expression, screen-bottom = 0 %, stable regardless of peak seen.
-                 * The old floorScale=2000 let scopePeak track the hand's closest
-                 * approach, saturating the display at that distance — ceiling at half. */
                 sampleVal  = (float)dbeamAmplitude.load(std::memory_order_relaxed);
-                floorScale = 16383.0f;
+                floorScale = 16383.0f;        /* fixed 14-bit expression scale */
                 break;
               case TelemetryView::SIGNAL_SNR:
                 portENTER_CRITICAL(&patchMux);
                 sampleVal = g_last_good_data[ci].health.snr;
                 portEXIT_CRITICAL(&patchMux);
-                floorScale = 1.5f;            /* SNR ratio ~0–5                  */
+                floorScale = 1.5f;            /* SNR ratio (typical 0..5) */
                 break;
               default: break;
             }
