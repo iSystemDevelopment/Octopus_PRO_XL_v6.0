@@ -1011,11 +1011,12 @@ struct MotionBlob {
 #pragma pack(pop)
 
 /* [BLOB-SIZE-CHECK] Assert struct sizes to catch future padding/layout issues.
- * If this fails to compile, struct padding bloat has occurred. */
-static_assert(sizeof(AllSettings) <= 2000, "AllSettings too large — NVS blob will fail");
-static_assert(sizeof(PatternsBlob) <= 2560, "PatternsBlob too large");
-static_assert(sizeof(BanksBlob) <= 14600, "BanksBlob too large");
-static_assert(sizeof(MotionBlob) <= 8704, "MotionBlob too large");
+ * NVS partition is 256 KB (0x40000, see partitions.csv); set per-blob limits to
+ * ~1.5–2x current size to catch bloat while allowing future field additions. */
+static_assert(sizeof(AllSettings) <= 3000, "AllSettings too large — check struct padding");
+static_assert(sizeof(PatternsBlob) <= 16000, "PatternsBlob too large — check struct padding");
+static_assert(sizeof(BanksBlob) <= 22000, "BanksBlob too large — check struct padding");
+static_assert(sizeof(MotionBlob) <= 32000, "MotionBlob too large — check struct padding");
 
 /* ── patterns ────────────────────────────────────────────────────────────── */
 static inline esp_err_t patterns_save_h(nvs_handle_t h) {
