@@ -6,7 +6,7 @@
 |-------|-------|
 | Document type | End-user & integrator reference |
 | Firmware | `6.1.00` · NVS namespace `octopus` · `SETTINGS_VERSION 0x0615` (struct layout) |
-| Companion app | [octopus.isystem.app](https://octopus.isystem.app) (Web MIDI / SysEx) |
+| Companion app | [octopus.isystem.app](https://octopus.isystem.app) (Web MIDI / SysEx · **v6.2.00** MIDI Controller mode) |
 | Hardware UI | SH1106 OLED · rotary encoder · SCALE · OC |
 
 This manual describes the Octopus PRO XL from initial setup through complete operation of the hardware menu system, companion application, signal routing, and musical tools (sequencer topology, arpeggiator layouts, D-BEAM response curves, and effects character). Menu labels and category order match the on-device OLED display exactly (`display.h`).
@@ -768,6 +768,141 @@ Header **PLAY / STOP / REC** and **BPM** field are **read-only reflectors**. Har
 
 SAVE · LOAD · RESET · SLOTS · CPY/PST · RND-H/RND-D · CLR · mutes · DBEAM · MIDI routing · MON · HELP
 
+### 9.4 Universal MIDI Controller mode *(OctopusApp v6.2.00 — shipped)*
+
+When **no Octopus PRO XL** is connected, OctopusApp operates as a **universal MIDI controller** in the browser — **no firmware update** required. Open **[octopus.isystem.app](https://octopus.isystem.app)** in **Google Chrome** (or Microsoft Edge) over **HTTPS**.
+
+| | Octopus linked | MIDI Controller |
+|--|----------------|-----------------|
+| **Trigger** | ★ Octopus USB port + SysEx echo | Any other MIDI output, or no Octopus echo |
+| **Badge** | Octopus ON | MIDI OUT |
+| **Tabs** | INSTRUMENTS · MIXER · SEQUENCER | INSTRUMENTS · SEQUENCER only |
+| **Outbound** | Octopus SysEx (195 commands) | MIDI note on/off, CC, Program Change |
+| **Transport** | Hardware SCALE / OC / encoder | App play · stop · BPM |
+| **Persistence** | Device NVS (SAVE/LOAD) | Browser `localStorage` + EXP/IMP JSON |
+
+**INSTRUMENTS (MIDI mode)** — seq synth panel (channel, program change, 8 CC knobs, activity canvas) and drum machine panel (per-row GM notes, scope canvas). No laser, D-BEAM, or studio mixer.
+
+**SEQUENCER (MIDI mode)** — same 64-step grid (banks A–D, pages P1–P4). The App runs its own BPM clock, playhead, and fires MIDI notes each step (melody rows 1–8 scale-aware; drum rows 9–16 GM-style).
+
+Octopus-only actions (SAVE, LOAD, RESET, SLOTS, CPU telemetry) are hidden in MIDI mode.
+
+#### 9.4.1 What you need
+
+| Item | Notes |
+|------|-------|
+| **Browser** | Google Chrome or Microsoft Edge (Web MIDI is not available in Safari or Firefox) |
+| **HTTPS** | Use [octopus.isystem.app](https://octopus.isystem.app) or `localhost` — not a plain `file://` link |
+| **MIDI destination** | USB MIDI interface, hardware synth, or a **virtual MIDI cable** into your DAW (see below) |
+| **Octopus hardware** | **Not required** for MIDI Controller mode |
+
+#### 9.4.2 Quick start (any platform)
+
+1. Open **Chrome** → [octopus.isystem.app](https://octopus.isystem.app).
+2. When Chrome asks **“Allow MIDI devices?”** → click **Allow** (required once per site).
+3. In the header **MIDI** dropdown, pick your output port (anything **without** ★ = MIDI Controller mode).
+4. Confirm the badge shows **MIDI OUT** (cyan).
+5. **INSTRUMENTS** tab → set melody channel (default Ch 1), drum channel (default Ch 10), Program Change if needed, CC knobs.
+6. **SEQUENCER** tab → click cells to enter notes (rows 1–8 melody, 9–16 drums). Use banks **A–D** and pages **P1–P4** for up to 64 steps.
+7. Set **BPM** in the header (editable in MIDI mode), press **▶ Play**. External gear receives notes; optional **CLK** sends MIDI clock (24 PPQN).
+8. Press **■ Stop** — all notes off. Patterns auto-save in the browser; use **EXP** / **IMP** in the routing bar to back up JSON.
+
+#### 9.4.3 macOS + Google Chrome
+
+**A — App only (no DAW)**
+
+1. Connect a USB MIDI interface or class-compliant synth via USB.
+2. Open **Chrome** → [octopus.isystem.app](https://octopus.isystem.app) → **Allow** MIDI.
+3. Select the device in the App **MIDI** dropdown (e.g. `USB MIDI Interface`, `Minilogue`, `Digitakt`).
+4. On the synth: set **MIDI channel** to match the App (melody Ch 1, drums Ch 10 by default).
+5. Program the grid and press **Play**.
+
+**B — Route OctopusApp into a DAW (Logic, Ableton, Reaper, etc.)**
+
+Chrome cannot talk to a DAW directly; you need a **virtual MIDI bus** on the Mac:
+
+1. Open **Audio MIDI Setup** (Applications → Utilities, or Spotlight).
+2. **Window → Show MIDI Studio** → double-click **IAC Driver** → tick **Device is online** (creates **IAC Bus 1**).
+3. In **OctopusApp**: MIDI dropdown → select **IAC Driver Bus 1** (or your interface’s MIDI out).
+4. In your **DAW**:
+   - Create a **software instrument** track (or external MIDI track).
+   - Set track **MIDI input** = **IAC Driver Bus 1** (same bus as step 3).
+   - Arm the track for recording if you want to capture MIDI.
+5. In OctopusApp: **INSTRUMENTS** → melody **Ch 1** (or match your plugin’s channel). **SEQUENCER** → program pattern → **Play**.
+6. Optional: enable **CLK** in the App routing bar; in the DAW enable **MIDI clock sync** from that same input if you want the DAW to follow the App tempo.
+
+**Tips (Mac)**
+
+- If no ports appear: unplug/replug USB, refresh the page, check **System Settings → Privacy & Security** did not block Chrome.
+- One **★ Octopus** tab is enough for hardware mode; MIDI mode works with any port and does not need SysEx.
+- Use **EXP** before clearing browser data — `localStorage` holds your patterns.
+
+#### 9.4.4 Windows + Google Chrome
+
+**A — App only (hardware synth / interface)**
+
+1. Install the driver for your USB MIDI interface if Windows does not see it (Device Manager → Sound, video and game controllers).
+2. Open **Chrome** → [octopus.isystem.app](https://octopus.isystem.app) → **Allow** MIDI.
+3. Select the port in the App dropdown (e.g. `loopMIDI Port`, `UM-ONE`, `Focusrite MIDI`).
+4. Match channels on the receiving device; program grid → **Play**.
+
+**B — Route OctopusApp into a DAW (Ableton, FL Studio, Cubase, Reaper, etc.)**
+
+Windows has no built-in virtual MIDI cable. Install a free loopback driver:
+
+1. Install **[loopMIDI](https://www.tobias-erichsen.de/software/loopmidi.html)** (or similar).
+2. Run loopMIDI → **+** to add a port (e.g. `OctopusApp Out`).
+3. In **Chrome / OctopusApp**: MIDI dropdown → select **OctopusApp Out**.
+4. In your **DAW**:
+   - Preferences → **MIDI** → enable **OctopusApp Out** as an **input** (track-arming may also need “All inputs” or that port enabled per track).
+   - Add an instrument track; set **MIDI From** = **OctopusApp Out**, channel = melody channel (usually 1).
+   - For drums: second track on drum channel (usually 10), or a multi-timbral plugin.
+5. Program pattern in OctopusApp → **Play** → MIDI flows into the DAW plugin.
+
+**Tips (Windows)**
+
+- Run Chrome and the DAW as the same user; some drivers are not visible across sessions.
+- If the port list is empty after install, restart Chrome and loopMIDI.
+- Windows may show duplicate names — pick the **Output** side the App lists (Web MIDI outputs only).
+
+#### 9.4.5 Using OctopusApp as a MIDI controller in your DAW
+
+OctopusApp is a **browser tab**, not a VST/AU plugin. You do **not** “open” it inside the DAW — you **route MIDI from Chrome into the DAW**:
+
+```text
+┌─────────────────┐     USB / virtual MIDI      ┌──────────────────┐
+│  Google Chrome  │  note · CC · PC · clock     │  DAW or hardware │
+│  octopus.isystem│ ──────────────────────────► │  synth / drums   │
+│  .app (MIDI OUT)│                             │                  │
+└─────────────────┘                             └──────────────────┘
+```
+
+| Step | Action |
+|------|--------|
+| 1 | Virtual cable: **IAC Driver** (Mac) or **loopMIDI** (Windows) — or a physical MIDI interface |
+| 2 | OctopusApp header → MIDI port = that cable’s **output** |
+| 3 | DAW track → MIDI **input** = same cable |
+| 4 | Match **channels** (App INSTRUMENTS / routing bar vs plugin MIDI channel) |
+| 5 | Press **Play** in OctopusApp (transport is App-owned in MIDI mode) |
+| 6 | Optional **CLK** → DAW external sync / drum machines that follow MIDI clock |
+
+**Recording a performance:** arm a MIDI track in the DAW, press **Record** in the DAW, then **Play** in OctopusApp — note data is captured as standard MIDI.
+
+**Multiple destinations:** Web MIDI sends to **one** selected port. To feed several devices, use a DAW mixer or a MIDI patch utility — not multiple OctopusApp tabs.
+
+Further reference: [docs/midi_controller_mode.md](./docs/midi_controller_mode.md) · [octopus-info.isystem.app → MIDI Mode](https://octopus-info.isystem.app#midi-mode) · in-app **Help → MIDI CONTROLLER**.
+
+---
+
+### 9.5 OctopusApp version note
+
+| Component | Version |
+|-----------|---------|
+| Firmware (hardware) | **6.1.00** |
+| OctopusApp (browser) | **6.2.00** (includes MIDI Controller mode) |
+
+Octopus **linked** mode behaviour matches firmware **6.1.00**. MIDI Controller mode is browser-only and does not change flash on the device.
+
 ---
 
 ## 10. Recommended workflows
@@ -790,6 +925,15 @@ SAVE · LOAD · RESET · SLOTS · CPY/PST · RND-H/RND-D · CLR · mutes · DBEA
 2. **Save Slot** → select index → confirm.
 3. Name slot in App **SLOTS** modal for recall clarity.
 
+### 10.4 MIDI Controller mode (no Octopus hardware)
+
+1. **Chrome** → [octopus.isystem.app](https://octopus.isystem.app) → allow MIDI.
+2. **Mac:** enable **IAC Driver** in Audio MIDI Setup · **Windows:** install **loopMIDI** if routing into a DAW.
+3. App MIDI dropdown → virtual bus or USB interface; badge **MIDI OUT**.
+4. **INSTRUMENTS** → channels, PC, CC · **SEQUENCER** → pattern · **▶ Play**.
+5. DAW: instrument track MIDI input = same bus as App output; match MIDI channels.
+6. **EXP** JSON backup before clearing browser data. Full guide: [§9.4](#94-universal-midi-controller-mode-octopusapp-v6200--shipped).
+
 ---
 
 ## 11. Diagnostics & troubleshooting
@@ -799,7 +943,12 @@ SAVE · LOAD · RESET · SLOTS · CPY/PST · RND-H/RND-D · CLR · mutes · DBEA
 | No harp audio | Verify gate open (OC long); check H.Vol, Harp Mute |
 | Erratic triggering | Enable Fog Reject; adjust Margin / Edge Comp |
 | App parameters inactive | Expected in APP CONNECTED mode for non-transport controls — use App UI |
-| BPM uneditable in App | By design — adjust on hardware encoder |
+| BPM uneditable in App | By design in Octopus mode — adjust on hardware encoder. In **MIDI OUT** mode BPM is editable in the header |
+| No MIDI reaching DAW | Mac: enable IAC Driver · Windows: loopMIDI · App port = DAW MIDI input · match channels |
+| Chrome shows no MIDI ports | Click Allow on MIDI prompt · refresh · replug USB · Windows: check interface driver |
+| Wrong notes / silent synth | Match melody/drum **channels** in INSTRUMENTS · check plugin MIDI channel · press Stop (all notes off) |
+| Lost MIDI pattern after refresh | Patterns live in browser `localStorage` — use **EXP** before clearing site data |
+| Badge stuck Octopus OFF | Normal without hardware · pick any non-★ port for MIDI OUT |
 | Lost pattern after power | Perform SAVE → Full Save |
 | Stuck notes | Short SCALE on HARP dashboard (panic) |
 | Factory restore | Boot with OC+SCALE held, or RESET → Full Reset (instant reboot, wipe on next boot) |
@@ -837,6 +986,8 @@ Authoritative list: **`code_info.h` §9**. Targets for the next upgrade:
 |---------|------|-------|
 | 1.0 | 2026-06-20 | Initial v6.0 manual — architecture diagrams, arp/FX/D-BEAM reference |
 | 1.1 | 2026-06-23 | v6.1.00 — deferred boot reset (FULL/BANKS+PATS), auto-connect App, 7-view TELEMETRY |
+| 1.2 | 2026-06-23 | Planned §9.4 — OctopusApp universal MIDI Controller mode (v6.2) |
+| 1.3 | 2026-06-23 | §9.4 shipped — MIDI Controller beginner guides (Mac/Windows/DAW); OctopusApp v6.2.00 |
 
 ---
 

@@ -6,13 +6,14 @@
 
 | | |
 |---|---|
-| **Version** | **6.1.00** (current — compile + field-test before flashing to production) |
+| **Firmware** | **6.1.00** (field baseline — flash via USB) |
+| **OctopusApp** | **6.2.00** (Web MIDI + MIDI Controller mode — deploy `OctopusApp.html`) |
 | **Platform** | ESP32-S3 (dual-core, FreeRTOS, ESP-IDF 5) |
 | **Author** | DIODAC ELECTRONICS / [iSystem](https://isystem.app) |
 | **Launch App** | **[octopus.isystem.app](https://octopus.isystem.app)** |
 | **Product site** | **[octopus-info.isystem.app](https://octopus-info.isystem.app)** |
 | **Source code** | **[GitHub](https://github.com/iSystemDevelopment/Octopus_PRO_XL_v6.0)** |
-| **Documentation** | [User Manual](./user_manual.md) · [Changelog](./CHANGELOG.md) · [Architecture](./code_info.h) |
+| **Documentation** | [User Manual](./user_manual.md) · [Changelog](./CHANGELOG.md) · [Architecture](./code_info.h) · [MIDI Controller Mode](./docs/midi_controller_mode.md) |
 
 ---
 
@@ -58,6 +59,17 @@ NVS flash uses namespace **`octopus`** (`SETTINGS_VERSION 0x0615` for struct lay
 
 See [User Manual §3.4 — App-connected mode](./user_manual.md#34-app-connected-mode).
 
+### Universal MIDI Controller mode *(OctopusApp v6.2.00 — shipped)*
+
+With **no Octopus hardware** connected, OctopusApp runs as a **standalone MIDI controller**: pick any USB MIDI interface from the port dropdown, compose on the 64-step grid, and send **standard MIDI** (notes, Control Change, Program Change) to external synths, drum machines, or a DAW. The App owns transport and tempo in this mode; laser, D-BEAM, NVS SAVE/LOAD, and SysEx sync stay **Octopus-only**.
+
+| Mode | Badge | Tabs | Transport |
+|------|-------|------|-----------|
+| **Octopus linked** | Octopus ON | INSTRUMENTS · MIXER · SEQUENCER | Hardware-owned |
+| **MIDI controller** | MIDI OUT | INSTRUMENTS (seq + drums) · SEQUENCER | App-owned |
+
+**Beginner setup:** [User Manual §9.4](./user_manual.md#94-universal-midi-controller-mode-octopusapp-v6200--shipped) (macOS / Windows / DAW). Build reference: **[docs/midi_controller_mode.md](./docs/midi_controller_mode.md)**.
+
 ---
 
 ## Repository layout
@@ -69,6 +81,8 @@ See [User Manual §3.4 — App-connected mode](./user_manual.md#34-app-connected
 | `OctopusApp.html` | Web MIDI console → deploy to **octopus.isystem.app** |
 | `octopus_web.html` | Product info page → deploy to **octopus-info.isystem.app** |
 | `user_manual.md` | End-user documentation |
+| `docs/midi_controller_mode.md` | OctopusApp MIDI Controller mode (shipped v6.2) |
+| `DEPLOYMENT.md` | Production deploy + smoke tests (App v6.2, product site) |
 | `code_info.h` | Developer architecture manifest (`SYSTEM_FW_VERSION`) |
 
 ---
@@ -88,11 +102,16 @@ Consult **`code_info.h`** before changing SysEx commands or persistence.
 
 ## Deployment
 
-### OctopusApp (`octopus.isystem.app`)
+See **[DEPLOYMENT.md](./DEPLOYMENT.md)** for production checklists and cache headers.
+
+### OctopusApp (`octopus.isystem.app`) — **v6.2.00**
 
 1. Upload `OctopusApp.html` to the VPS web root for the `octopus` subdomain.
 2. Serve over **HTTPS** (Web MIDI requires a secure context).
-3. No server-side MIDI — all USB MIDI runs in the browser.
+3. Set `Cache-Control: no-cache` on the HTML entry (or users hard-refresh after updates).
+4. Run the smoke tests in DEPLOYMENT.md §1 (Octopus ON + MIDI OUT + regression).
+
+No server-side MIDI — all USB MIDI runs in the browser.
 
 ### Product site (`octopus-info.isystem.app`)
 
@@ -108,7 +127,7 @@ Flash via USB after field-testing `6.1.00` on hardware. Include `partitions.csv`
 ## Contributing & support
 
 - [CONTRIBUTING.md](./CONTRIBUTING.md) · [SECURITY.md](./SECURITY.md) · [CHANGELOG.md](./CHANGELOG.md)
-- GitHub Issues — include firmware **`6.1.00`**, App connected Y/N, repro steps
+- GitHub Issues — firmware **`6.1.00`**, OctopusApp **`6.2.00`**, App connected Y/N, repro steps
 
 ---
 

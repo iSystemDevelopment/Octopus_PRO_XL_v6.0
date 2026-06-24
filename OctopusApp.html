@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <!--
-  OctopusApp v6.1.00 — Octopus PRO XL Web MIDI Console
+  OctopusApp v6.2.01 — Octopus PRO XL Web MIDI Console
   © 2026 DIODAC ELECTRONICS / iSystem. All Rights Reserved.
   PROPRIETARY AND CONFIDENTIAL. Unauthorized use prohibited.
 -->
@@ -9,7 +9,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>OctopusApp v6.1.00 — OCTOPUS PRO XL</title>
+    <title>OctopusApp v6.2.01 — OCTOPUS PRO XL</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
@@ -165,6 +165,137 @@
             color: var(--cyan) !important;
             box-shadow: 0 0 5px var(--cyan);
             background: rgba(34, 211, 238, 0.05)
+        }
+
+        .btn.active-purple {
+            border-color: var(--purple) !important;
+            color: var(--purple) !important;
+            box-shadow: 0 0 5px var(--purple);
+            background: rgba(168, 85, 247, 0.06)
+        }
+
+        /* ── App mode shell: octopus (default) vs MIDI controller ───────────── */
+        body[data-app-mode="midi"] .octopus-only {
+            display: none !important
+        }
+
+        body[data-app-mode="octopus"] .midi-only {
+            display: none !important
+        }
+
+        body[data-app-mode="midi"] #btnPlay.reflector,
+        body[data-app-mode="midi"] #btnStop.reflector,
+        body[data-app-mode="midi"] #btnRec.reflector {
+            opacity: 1 !important;
+            cursor: pointer !important
+        }
+
+        body[data-app-mode="midi"] #seqBpm {
+            cursor: text !important;
+            opacity: 1 !important
+        }
+
+        #view-midi-inst {
+            flex-direction: column;
+            gap: 8px;
+            padding: 8px;
+            max-width: 1280px;
+            width: 100%
+        }
+
+        .midi-inst-split {
+            display: flex;
+            gap: 8px;
+            width: 100%;
+            flex: 1;
+            min-height: 0;
+            align-items: stretch
+        }
+
+        .midi-inst-panel {
+            flex: 1 1 0;
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            min-height: 0
+        }
+
+        .midi-inst-panel-body {
+            display: flex;
+            gap: 6px;
+            flex: 1;
+            min-height: 0;
+            align-items: stretch
+        }
+
+        .midi-knob-panel {
+            flex: 1 1 55%;
+            min-width: 0;
+            overflow-y: auto
+        }
+
+        .midi-seq-scope-toy {
+            flex: 1 1 45%;
+            min-width: 88px;
+            background: linear-gradient(180deg, #08040c 0%, #040208 100%);
+            border: 1px solid #2a1428;
+            border-radius: 4px;
+            position: relative;
+            overflow: hidden;
+            min-height: 72px;
+            box-shadow: inset 0 0 18px rgba(236, 72, 153, 0.06);
+            contain: layout paint style;
+            isolation: isolate
+        }
+
+        .midi-seq-scope-toy::after {
+            content: 'SEQ ACT';
+            position: absolute;
+            top: 3px;
+            right: 5px;
+            font-family: 'Orbitron', sans-serif;
+            font-size: 6px;
+            color: #4a2844;
+            letter-spacing: 1px;
+            pointer-events: none;
+            z-index: 1
+        }
+
+        .midi-drum-notes {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 4px;
+            margin-bottom: 6px;
+            flex-shrink: 0
+        }
+
+        .midi-drum-note-row {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            font-size: 8px;
+            color: #888
+        }
+
+        .midi-drum-note-row span {
+            width: 36px;
+            color: var(--orange);
+            font-family: 'Orbitron', sans-serif;
+            font-size: 7px;
+            letter-spacing: 0.3px
+        }
+
+        .midi-drum-note-row input {
+            width: 42px;
+            height: 18px;
+            font-size: 8px;
+            color: var(--orange) !important
+        }
+
+        #midi-drum-knobs.drum-grid {
+            flex: 1;
+            min-height: 72px;
+            grid-template-columns: 1fr
         }
 
         /* Harp play-mode segmented buttons (POLY / STR / SOLO) */
@@ -1150,14 +1281,14 @@
     </style>
 </head>
 
-<body>
+<body data-app-mode="octopus">
     <div id="persistBanner" class="wait" aria-live="polite">PLEASE WAIT</div>
     <!-- ═══════════════════════════════════════════════════════════════════════════
      HEADER (compact — all buttons visible)
 ═══════════════════════════════════════════════════════════════════════════ -->
     <header>
-        <div class="brand-mark"><i class="fa-solid fa-bolt" style="color:var(--purple)"></i>OCTOPUS<span style="color:var(--cyan)">PRO</span></div>
-        <select class="display-box" id="midiOut" style="width:150px" title="USB MIDI output port (auto-connects when Octopus is detected)"></select>
+        <div class="brand-mark"><i class="fa-solid fa-bolt" style="color:var(--purple)"></i>OCTOPUS<span style="color:var(--cyan)">PRO</span><span id="appVerBadge" style="font-size:7px;color:#555;margin-left:6px;letter-spacing:0.5px">v6.2</span></div>
+        <select class="display-box" id="midiOut" style="width:150px" title="USB MIDI output — ★ = Octopus (auto-sync); other ports = MIDI Controller mode"></select>
         <div id="connBadge" class="conn-badge" style="color:#444;border-color:#1a1a26"><i class="fa-solid fa-circle" style="font-size:6px"></i>Octopus Off</div>
 
         <div class="header-sep"></div>
@@ -1166,13 +1297,13 @@
         <button class="btn reflector" id="btnStop" onclick="app.stop()" title="STOP status (device-controlled: hardware SCALE = play/stop)"><i class="fa-solid fa-stop"></i></button>
         <button class="btn reflector" id="btnRec" onclick="app.toggleRec()" title="RECORD status (device-controlled: hardware OC short-press = record-arm)"><i class="fa-solid fa-circle" style="color:var(--red);font-size:8px"></i>REC</button>
 
-        <div class="header-sep"></div>
+        <div class="header-sep octopus-only"></div>
         <!-- File -->
-        <button class="btn" style="color:var(--green);border-color:var(--green)" onclick="app.openSaveModal()" title="Save to ESP NVS"><i class="fa-solid fa-floppy-disk"></i>SAVE</button>
-        <button class="btn" style="color:var(--cyan);border-color:var(--cyan)" onclick="app.openLoadModal()" title="Load session / song / factory pattern"><i class="fa-solid fa-folder-open"></i>LOAD</button>
-        <button class="btn" style="color:var(--purple);border-color:var(--purple)" onclick="app.openSlotsModal()" title="User sound + pattern slots (save / load / rename)"><i class="fa-solid fa-box-archive"></i>SLOTS</button>
-        <button class="btn" style="color:var(--red);border-color:var(--red)" onclick="app.openResetModal()" title="Scoped reset (mirrors hardware RESET menu)"><i class="fa-solid fa-rotate-left"></i>RESET</button>
-        <select class="display-box" id="masterFxPreset" onchange="app.txSysexSoon(CMD.M_FX_IDX,this.value)" style="width:160px" title="Master FX preset"></select>
+        <button class="btn octopus-only" style="color:var(--green);border-color:var(--green)" onclick="app.openSaveModal()" title="Save to ESP NVS"><i class="fa-solid fa-floppy-disk"></i>SAVE</button>
+        <button class="btn octopus-only" style="color:var(--cyan);border-color:var(--cyan)" onclick="app.openLoadModal()" title="Load session / song / factory pattern"><i class="fa-solid fa-folder-open"></i>LOAD</button>
+        <button class="btn octopus-only" style="color:var(--purple);border-color:var(--purple)" onclick="app.openSlotsModal()" title="User sound + pattern slots (save / load / rename)"><i class="fa-solid fa-box-archive"></i>SLOTS</button>
+        <button class="btn octopus-only" style="color:var(--red);border-color:var(--red)" onclick="app.openResetModal()" title="Scoped reset (mirrors hardware RESET menu)"><i class="fa-solid fa-rotate-left"></i>RESET</button>
+        <select class="display-box octopus-only" id="masterFxPreset" onchange="app.txSysexSoon(CMD.M_FX_IDX,this.value)" style="width:160px" title="Master FX preset"></select>
 
         <div class="header-sep"></div>
         <!-- Pattern tools -->
@@ -1183,14 +1314,14 @@
         <input class="display-box" id="randDensity" type="number" min="0" max="100" step="5" value="35" title="Randomizer density % — chance each cell is ON" style="width:44px;text-align:center">
         <button class="btn active-red" onclick="app.clearGrid()" title="Clear active grid + P-locks + reset both sounds to preset 0 (mirrors hardware SEQ SETUP → Clear)"><i class="fa-solid fa-trash"></i>CLR</button>
 
-        <div class="header-sep"></div>
+        <div class="header-sep octopus-only"></div>
         <!-- Mutes -->
-        <button class="btn" id="btnMuteH" onclick="app.toggleMute('H')" title="Harp mute">H</button>
-        <button class="btn" id="btnMuteS" onclick="app.toggleMute('S')" title="Seq mute">S</button>
-        <button class="btn" id="btnMuteD" onclick="app.toggleMute('D')" title="Drum mute">D</button>
+        <button class="btn octopus-only" id="btnMuteH" onclick="app.toggleMute('H')" title="Harp mute">H</button>
+        <button class="btn octopus-only" id="btnMuteS" onclick="app.toggleMute('S')" title="Seq mute">S</button>
+        <button class="btn octopus-only" id="btnMuteD" onclick="app.toggleMute('D')" title="Drum mute">D</button>
 
-        <div class="header-sep"></div>
-        <button class="btn" id="btnDbeam" onclick="app.toggleDbeam()" title="D-BEAM bypass"><i class="fa-solid fa-eye"></i>DBEAM</button>
+        <div class="header-sep octopus-only"></div>
+        <button class="btn octopus-only" id="btnDbeam" onclick="app.toggleDbeam()" title="D-BEAM bypass"><i class="fa-solid fa-eye"></i>DBEAM</button>
 
         <div style="flex:1"></div>
     </header>
@@ -1201,7 +1332,7 @@
     <div class="global-sub-header">
         <div class="view-tabs">
             <div class="view-tab active" id="tab1" onclick="app.switchView(1)">INSTRUMENTS</div>
-            <div class="view-tab" id="tab2" onclick="app.switchView(2)">MIXER</div>
+            <div class="view-tab octopus-only" id="tab2" onclick="app.switchView(2)">MIXER</div>
             <div class="view-tab" id="tab3" onclick="app.switchView(3)">SEQUENCER</div>
         </div>
         <div class="seq-toolbar">
@@ -1211,7 +1342,7 @@
             <div class="btn" id="btnBankB" onclick="app.setBank(1)">B</div>
             <div class="btn" id="btnBankC" onclick="app.setBank(2)">C</div>
             <div class="btn" id="btnBankD" onclick="app.setBank(3)">D</div>
-            <button class="btn" id="btnBankChain" onclick="app.toggleChainLoop()" title="Chain loop — play banks A→D in order (song mode)"><i class="fa-solid fa-link"></i></button>
+            <button class="btn octopus-only" id="btnBankChain" onclick="app.toggleChainLoop()" title="Chain loop — play banks A→D in order (song mode)"><i class="fa-solid fa-link"></i></button>
             <!-- Step pages P1–P4: each page edits 16 of up to 64 steps (matches firmware hwSeqData) -->
             <div class="btn" id="btnPage1" onclick="app.setGridPage(0)" title="Steps 1–16">P1</div>
             <div class="btn" id="btnPage2" onclick="app.setGridPage(1)" title="Steps 17–32">P2</div>
@@ -1225,17 +1356,17 @@
                 <div class="head-led" id="led-3"></div>
             </div>
             <!-- View: PAT grid editor ↔ chain step editor (playback loop = 🔗 next to banks) -->
-            <button class="btn" id="btnSeqMode" onclick="app.toggleSongView()" style="color:var(--cyan);border-color:var(--cyan);min-width:76px;justify-content:center" title="Switch pattern grid ↔ chain step editor"><i class="fa-solid fa-table-cells"></i>PAT</button>
+            <button class="btn octopus-only" id="btnSeqMode" onclick="app.toggleSongView()" style="color:var(--cyan);border-color:var(--cyan);min-width:76px;justify-content:center" title="Switch pattern grid ↔ chain step editor"><i class="fa-solid fa-table-cells"></i>PAT</button>
             <!-- Chain slot selector -->
-            <select class="display-box" style="border-color:var(--green);color:var(--green);width:96px" id="songSlotSelect" onchange="app.setSongSlot(this.value)"></select>
+            <select class="display-box octopus-only" style="border-color:var(--green);color:var(--green);width:96px" id="songSlotSelect" onchange="app.setSongSlot(this.value)"></select>
             <!-- Pattern loaders -->
-            <select class="display-box pink-txt" id="synthPat" onchange="app.loadSynthPat(this.value)" style="width:150px"></select>
-            <select class="display-box orange-txt" id="drumPat" onchange="app.loadDrumPat(this.value)" style="width:150px"></select>
+            <select class="display-box pink-txt octopus-only" id="synthPat" onchange="app.loadSynthPat(this.value)" style="width:150px"></select>
+            <select class="display-box orange-txt octopus-only" id="drumPat" onchange="app.loadDrumPat(this.value)" style="width:150px"></select>
             <!-- Transport params -->
             <span style="color:#555;font-size:9px;white-space:nowrap">BPM</span>
             <!-- [CLOCK-AUTHORITY] Display-only echo of the ESP tempo.  BPM is owned by the
              hardware (encoder) — the App never sets it, it only reflects CMD.BPM. -->
-            <input type="number" class="display-box dark-input-panel" id="seqBpm" value="120" min="40" max="240" readonly title="Tempo is set on the device — the App only displays it" style="width:46px;color:var(--orange)!important;opacity:0.85;cursor:not-allowed">
+            <input type="number" class="display-box dark-input-panel" id="seqBpm" value="120" min="40" max="240" readonly title="Tempo is set on the device — the App only displays it" style="width:46px;color:var(--orange)!important;opacity:0.85;cursor:not-allowed" onchange="app.onBpmInput(this.value)">
             <span style="color:#555;font-size:9px;white-space:nowrap">LEN</span>
             <select id="seqLen" class="display-box dark-input-panel" style="width:42px;color:var(--cyan)!important" onchange="app.setSeqLength(this.value)">
                 <option value="16">16</option>
@@ -1252,7 +1383,32 @@
      ROUTING UTILITY BAR
 ═══════════════════════════════════════════════════════════════════════════ -->
     <div class="global-utility-header">
-        <div style="display:flex;gap:10px;align-items:center">
+        <div class="midi-only" style="display:flex;gap:10px;align-items:center;flex:1;flex-wrap:wrap">
+            <span style="color:var(--cyan)"><i class="fa-solid fa-circle-nodes"></i> MIDI OUT</span>
+            <label style="font-size:9px;color:#888">MELODY
+                <select id="midiMelodyCh" class="display-box" style="height:18px;font-size:8px;width:44px;color:var(--pink)" onchange="app._midiRoutingChanged()">
+                    <option value="1">Ch 1</option><option value="2">Ch 2</option><option value="3">Ch 3</option>
+                    <option value="4">Ch 4</option><option value="5">Ch 5</option><option value="6">Ch 6</option>
+                </select>
+            </label>
+            <label style="font-size:9px;color:#888">DRUMS
+                <select id="midiDrumCh" class="display-box" style="height:18px;font-size:8px;width:46px;color:var(--orange)" onchange="app._midiRoutingChanged()">
+                    <option value="9">Ch 9</option><option value="10" selected>Ch 10</option><option value="11">Ch 11</option>
+                </select>
+            </label>
+            <label style="font-size:9px;color:#888">SCALE
+                <select id="midiScale" class="display-box" style="height:18px;font-size:8px;width:88px;color:var(--pink)" onchange="app.setGlobalScale(this.value)"></select>
+            </label>
+            <label style="font-size:9px;color:#888">OCT
+                <input type="number" id="midiSeqOct" class="display-box" value="0" min="-4" max="4" style="width:34px;height:18px;font-size:8px;color:var(--pink)" onchange="app.setSeqOctave(this.value)">
+            </label>
+            <span style="color:#555;font-size:9px">50% gate</span>
+            <button type="button" class="btn" id="btnMidiClockOut" onclick="app.setMidiClockOut(!app.midiClockOut)" title="MIDI clock 0xF8 · 24 PPQN while playing">CLK</button>
+            <button type="button" class="btn" style="font-size:8px;padding:2px 6px" onclick="app.exportMidiSession()" title="Export MIDI session JSON"><i class="fa-solid fa-download"></i> EXP</button>
+            <button type="button" class="btn" style="font-size:8px;padding:2px 6px" onclick="document.getElementById('midiImportFile').click()" title="Import MIDI session JSON"><i class="fa-solid fa-upload"></i> IMP</button>
+            <input type="file" id="midiImportFile" accept="application/json,.json" style="display:none" onchange="app.importMidiSession(this)">
+        </div>
+        <div class="octopus-only" style="display:flex;gap:10px;align-items:center">
             <span style="color:var(--purple)"><i class="fa-solid fa-circle-nodes"></i> MIDI ROUTING:</span>
             HARP <select id="wireHarpCh" class="display-box" style="height:18px;font-size:8px;width:44px;color:var(--cyan)" onchange="app.txSysex(135,this.value)">
                 <option value="1">Ch 1</option>
@@ -1277,15 +1433,15 @@
                 <option value="0">PB OFF</option>
             </select>
         </div>
-        <div style="display:flex;gap:8px;align-items:center">
+        <div class="octopus-only" style="display:flex;gap:8px;align-items:center">
             <span style="color:var(--cyan)"><i class="fa-solid fa-sliders"></i> INSERT FX SENDS:</span>
             HARP <span id="wireHarpDly" style="color:#fff">0%</span>dly/<span id="wireHarpRev" style="color:#fff">0%</span>rev
             SEQ <span id="wireSeqDly" style="color:#fff">0%</span>dly/<span id="wireSeqRev" style="color:#fff">0%</span>rev
             DRUM <span id="wireDrumDly" style="color:#fff">0%</span>dly/<span id="wireDrumRev" style="color:#fff">0%</span>rev
         </div>
         <div style="display:flex;gap:8px;align-items:center;margin-left:auto">
-            <div id="cpuLoad" class="cpu-box" title="Audio-core CPU load (device)"><i class="fa-solid fa-microchip"></i><span id="cpuLoadVal">--</span></div>
-            <button class="btn" onclick="app.toggleMonitor()" title="Sysex monitor"><i class="fa-solid fa-terminal"></i>MON</button>
+            <div id="cpuLoad" class="cpu-box octopus-only" title="Audio-core CPU load (device)"><i class="fa-solid fa-microchip"></i><span id="cpuLoadVal">--</span></div>
+            <button class="btn octopus-only" onclick="app.toggleMonitor()" title="Sysex monitor"><i class="fa-solid fa-terminal"></i>MON</button>
             <button class="btn" onclick="app.toggleHelp()" title="Help"><i class="fa-solid fa-circle-question"></i>HELP</button>
         </div>
     </div>
@@ -1294,7 +1450,7 @@
      MAIN CONTENT
 ═══════════════════════════════════════════════════════════════════════════ -->
     <main style="position:relative">
-        <!-- INSTRUMENTS VIEW -->
+        <!-- INSTRUMENTS VIEW (Octopus) -->
         <div id="view-synths" class="view-content active">
             <!-- LASER SHOW + HUE MATRIX and D-BEAM EXPRESSION share one row, each ~½ width -->
             <div style="display:flex;gap:5px;width:100%;max-width:1280px;flex:0;align-items:stretch">
@@ -1406,6 +1562,57 @@
             </div>
         </div>
 
+        <!-- INSTRUMENTS VIEW (MIDI Controller) -->
+        <div id="view-midi-inst" class="view-content midi-only">
+            <div class="midi-inst-split">
+                <div class="control-row midi-inst-panel">
+                    <div class="row-header">
+                        <span><i class="fa-solid fa-wave-square" style="color:var(--pink)"></i> SEQUENCER SYNTH MIDI</span>
+                        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+                            <label style="font-size:8px;color:#888">CH
+                                <select id="midiInstMelCh" class="display-box" style="height:18px;font-size:8px;width:44px;color:var(--pink)" onchange="app._midiInstMelCh(this.value)">
+                                    <option value="1">1</option><option value="2">2</option><option value="3">3</option>
+                                    <option value="4">4</option><option value="5">5</option><option value="6">6</option>
+                                </select>
+                            </label>
+                            <label style="font-size:8px;color:#888">PC
+                                <input type="number" id="midiMelPc" class="display-box dark-input-panel" value="0" min="0" max="127" style="width:40px;height:18px;font-size:8px;color:var(--pink)" onchange="app.setMidiMelPc(this.value)">
+                            </label>
+                            <label style="font-size:8px;color:#888">SCALE
+                                <select id="midiInstScale" class="display-box" style="height:18px;font-size:8px;width:88px;color:var(--pink)" onchange="app._midiInstScale(this.value)"></select>
+                            </label>
+                            <label style="font-size:8px;color:#888">OCT
+                                <input type="number" id="midiInstOct" class="display-box dark-input-panel" value="0" min="-4" max="4" style="width:34px;height:18px;font-size:8px;color:var(--pink)" onchange="app._midiInstOct(this.value)">
+                            </label>
+                        </div>
+                    </div>
+                    <div class="midi-inst-panel-body">
+                        <div id="midi-seq-knobs" class="panel-container midi-knob-panel"></div>
+                        <div id="midi-seq-scope-host" class="midi-seq-scope-toy" title="Melody MIDI activity — pulses on note/CC out">
+                            <canvas class="drum-scope-canvas" id="midi-seq-scope-canvas"></canvas>
+                        </div>
+                    </div>
+                </div>
+                <div class="control-row midi-inst-panel">
+                    <div class="row-header">
+                        <span><i class="fa-solid fa-drum" style="color:var(--orange)"></i> DRUM MACHINE MIDI</span>
+                        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+                            <label style="font-size:8px;color:#888">CH
+                                <select id="midiInstDrumCh" class="display-box" style="height:18px;font-size:8px;width:46px;color:var(--orange)" onchange="app._midiInstDrumCh(this.value)">
+                                    <option value="9">9</option><option value="10" selected>10</option><option value="11">11</option>
+                                </select>
+                            </label>
+                            <label style="font-size:8px;color:#888">PC
+                                <input type="number" id="midiDrumPc" class="display-box dark-input-panel" value="0" min="0" max="127" style="width:40px;height:18px;font-size:8px;color:var(--orange)" onchange="app.setMidiDrumPc(this.value)" title="Optional — sent on change">
+                            </label>
+                        </div>
+                    </div>
+                    <div class="midi-drum-notes" id="midi-drum-notes"></div>
+                    <div id="midi-drum-knobs" class="drum-grid"></div>
+                </div>
+            </div>
+        </div>
+
         <!-- MIXER VIEW -->
         <div id="view-mixer" class="view-content">
             <div class="control-row" style="flex:2">
@@ -1481,11 +1688,15 @@
     <div class="modal" id="helpModal">
         <div class="modal-content" style="width:640px;height:520px">
             <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #1c1c2e;padding-bottom:6px;margin-bottom:8px">
-                <h3 style="margin:0;font-size:10px;color:var(--purple)">OCTOPUS PRO XL — HELP</h3>
+                <div style="display:flex;gap:6px;align-items:center">
+                    <h3 style="margin:0;font-size:10px;color:var(--purple)">HELP</h3>
+                    <button type="button" class="btn active-purple" id="helpTabOctopus" onclick="app.showHelpTab('octopus')" style="font-size:8px;padding:3px 8px">OCTOPUS</button>
+                    <button type="button" class="btn" id="helpTabMidi" onclick="app.showHelpTab('midi')" style="font-size:8px;padding:3px 8px;color:var(--cyan);border-color:var(--cyan)">MIDI CONTROLLER</button>
+                </div>
                 <button class="btn active-red" onclick="app.toggleHelp()">CLOSE</button>
             </div>
-            <div style="font-size:10px;color:#aaa;overflow-y:auto;flex:1;line-height:1.65;padding-right:4px">
-                <p style="color:#fff;font-size:9px;border-bottom:1px solid #1c1c2e;padding-bottom:4px;margin-bottom:8px;font-family:'Orbitron',sans-serif">FIRMWARE 6.1.00 · OCTOPUSAPP v6.1.00</p>
+            <div id="helpBodyOctopus" style="font-size:10px;color:#aaa;overflow-y:auto;flex:1;line-height:1.65;padding-right:4px">
+                <p style="color:#fff;font-size:9px;border-bottom:1px solid #1c1c2e;padding-bottom:4px;margin-bottom:8px;font-family:'Orbitron',sans-serif">FIRMWARE 6.1.00 · OCTOPUSAPP v6.2.00</p>
                 <p style="margin-top:0;font-size:9px;margin-bottom:10px">
                     <a href="https://octopus-info.isystem.app" target="_blank" rel="noopener" style="color:var(--purple)">Product site</a>
                     · <a href="https://octopus.isystem.app" style="color:var(--cyan)">octopus.isystem.app</a>
@@ -1512,7 +1723,11 @@
                 • <b>App telemetry</b> — CPU load in header; SYSEX MON panel (FILTER hides PING / STEP / CPU streams).<br>
                 • <b>USB-only MIDI</b> — DIN MIDI removed; v6.0 SysEx protocol (manufacturer 0x7C device→App, 0x7D App→device).</p>
 
-                <p style="margin-top:10px"><b style="color:var(--green)">WHAT'S NEW IN v6.1.00</b><br>
+                <p style="margin-top:10px"><b style="color:var(--green)">WHAT'S NEW IN v6.2.00 (APP)</b><br>
+                • <b>MIDI Controller mode</b> — no Octopus hardware required; badge <b>MIDI OUT</b>; standard MIDI to any USB interface.<br>
+                • See Help tab <b>MIDI CONTROLLER</b> for Mac / Windows / DAW setup (beginner guide).</p>
+
+                <p style="margin-top:10px"><b style="color:var(--green)">WHAT'S NEW IN v6.1.00 (FIRMWARE)</b><br>
                 • <b>Auto-connect</b> — USB plug-in syncs automatically (no Connect button).<br>
                 • <b>Octopus ON / Off</b> — two-state connection badge.<br>
                 • <b>SAVE / LOAD / RESET</b> — scope decode fixed; FULL/BANKS reset uses deferred boot wipe (fast reboot); App reloads and re-imports full hardware state after persist.<br>
@@ -1546,6 +1761,67 @@
                     <a href="https://github.com/iSystemDevelopment/Octopus_PRO_XL_v6.0" target="_blank" rel="noopener" style="color:#888">github.com/iSystemDevelopment/Octopus_PRO_XL_v6.0</a> — firmware, manual, changelog<br>
                     <a href="https://www.facebook.com/diodac.co.uk/" target="_blank" rel="noopener" style="color:#1877f2">facebook.com/diodac.co.uk</a> — DIODAC news &amp; support
                 </p>
+            </div>
+            <div id="helpBodyMidi" style="display:none;font-size:10px;color:#aaa;overflow-y:auto;flex:1;line-height:1.65;padding-right:4px">
+                <p style="color:#fff;font-size:9px;border-bottom:1px solid #1c1c2e;padding-bottom:4px;margin-bottom:8px;font-family:'Orbitron',sans-serif">OCTOPUSAPP v6.2.00 — UNIVERSAL MIDI CONTROLLER</p>
+                <p style="margin-top:0;font-size:9px;margin-bottom:10px">
+                    <a href="https://octopus-info.isystem.app#midi-mode" target="_blank" rel="noopener" style="color:var(--cyan)">Product site — MIDI Mode</a>
+                    · <a href="https://github.com/iSystemDevelopment/Octopus_PRO_XL_v6.0/blob/main/user_manual.md#94-universal-midi-controller-mode-octopusapp-v6200--shipped" target="_blank" rel="noopener" style="color:#aaa">User manual §9.4</a>
+                </p>
+
+                <p style="margin-top:0"><b style="color:var(--cyan)">BEGINNER — WHAT IS THIS?</b><br>
+                OctopusApp in <b>MIDI Controller mode</b> is a <b>step sequencer in your browser</b>. It sends normal MIDI (notes, knobs, program changes) to a synth, drum machine, or DAW. You do <b>not</b> need Octopus PRO XL hardware. Use <b>Google Chrome</b> (or Edge) at <a href="https://octopus.isystem.app" style="color:var(--cyan)">octopus.isystem.app</a> — not Safari or Firefox.</p>
+
+                <p style="margin-top:10px"><b style="color:var(--green)">QUICK START (3 MINUTES)</b><br>
+                1. Open Chrome → <b>octopus.isystem.app</b> → click <b>Allow</b> when asked for MIDI.<br>
+                2. Header <b>MIDI</b> menu → pick your output (anything without ★). Badge = <b style="color:var(--cyan)">MIDI OUT</b>.<br>
+                3. Tab <b>INSTRUMENTS</b> → melody Ch 1, drums Ch 10, set Program Change if needed.<br>
+                4. Tab <b>SEQUENCER</b> → click grid cells (rows 1–8 tune, 9–16 drums) → set BPM → <b>▶ Play</b>.<br>
+                5. <b>■ Stop</b> sends all notes off. Pattern auto-saves in this browser.</p>
+
+                <p style="margin-top:10px"><b style="color:var(--purple)">macOS + GOOGLE CHROME</b><br>
+                <b>Direct to hardware synth</b><br>
+                • Plug in USB MIDI gear → Allow MIDI in Chrome → select device in App dropdown → match MIDI channel on synth → Play.<br><br>
+                <b>Into Logic / Ableton / Reaper / etc.</b><br>
+                • <b>Audio MIDI Setup</b> → Window → <b>Show MIDI Studio</b> → open <b>IAC Driver</b> → tick <b>Device is online</b> (creates IAC Bus 1).<br>
+                • OctopusApp MIDI port = <b>IAC Driver Bus 1</b>.<br>
+                • DAW: new instrument track → MIDI input = <b>IAC Bus 1</b> → channel 1 (melody) or 10 (drums).<br>
+                • Program pattern here → Play → DAW receives MIDI. Arm + Record in DAW to capture.<br>
+                • Optional: routing bar <b>CLK</b> sends MIDI clock (24 PPQN) while playing.</p>
+
+                <p style="margin-top:10px"><b style="color:var(--purple)">WINDOWS + GOOGLE CHROME</b><br>
+                <b>Direct to hardware</b><br>
+                • Install USB interface driver if needed → Chrome → Allow MIDI → pick port in App → Play.<br><br>
+                <b>Into Ableton / FL Studio / Cubase / Reaper / etc.</b><br>
+                • Install free <b>loopMIDI</b> (tobias-erichsen.de) → add a port (e.g. “OctopusApp”).<br>
+                • OctopusApp MIDI dropdown = that loopMIDI port.<br>
+                • DAW preferences → enable that port as <b>MIDI input</b> → instrument track → same port + channel.<br>
+                • Play in OctopusApp — not inside the DAW transport (App owns tempo in MIDI mode).</p>
+
+                <p style="margin-top:10px"><b style="color:var(--orange)">USING WITH A DAW (IMPORTANT)</b><br>
+                OctopusApp is <b>not a VST plugin</b>. You never “open” it inside the DAW — you route MIDI <b>from Chrome into the DAW</b>:<br>
+                <span style="color:#666;font-family:monospace;font-size:9px">Chrome (this tab) → virtual cable (IAC / loopMIDI) or USB → DAW MIDI track → plugin or external out</span><br><br>
+                • One App tab → one MIDI output port. For multiple devices, use the DAW to split channels.<br>
+                • Melody grid rows → melody channel · Drum rows → drum channel (GM: kick 36, snare 38… editable in INSTRUMENTS).<br>
+                • INSTRUMENTS CC knobs send live Control Change (volume, filter, etc.).<br>
+                • <b>EXP</b> / <b>IMP</b> in routing bar = backup/restore full session JSON.</p>
+
+                <p style="margin-top:10px"><b style="color:var(--green)">TWO MODES</b><br>
+                • <b>Octopus ON</b> — ★ port + hardware SysEx. Full 3-tab editor, hardware transport.<br>
+                • <b>MIDI OUT</b> — this guide. 2 tabs only. App play/stop/BPM. No SAVE/LOAD to device flash.</p>
+
+                <p style="margin-top:10px"><b style="color:var(--green)">TABS IN MIDI MODE</b><br>
+                • <b>SEQUENCER</b> — 64 steps (P1–P4), banks A–D, CPY/PST/RND/CLR.<br>
+                • <b>INSTRUMENTS</b> — seq synth MIDI (Ch, PC, 8× CC, scope) + drum MIDI (notes per row, scope).</p>
+
+                <p style="margin-top:10px"><b style="color:var(--orange)">TROUBLESHOOTING</b><br>
+                • No ports listed → Allow MIDI · refresh · replug USB · Windows: check driver.<br>
+                • DAW silent → same virtual port on App + track input · matching MIDI channel · plugin armed.<br>
+                • Stuck notes → press Stop in App (sends all notes off).<br>
+                • Lost pattern → cleared browser data wipes localStorage — use EXP first.</p>
+
+                <p style="margin-top:10px"><b style="color:var(--purple)">BACK TO OCTOPUS HARDWARE</b><br>
+                Plug in USB → select ★ Octopus port → badge <b>Octopus ON</b>. MIDI-mode patterns stay in browser storage separately.</p>
             </div>
         </div>
     </div>
@@ -1674,6 +1950,10 @@
      JAVASCRIPT
 ═══════════════════════════════════════════════════════════════════════════ -->
     <script>
+        const APP_VERSION = '6.2.01';
+        const MIDI_SESSION_KEY = 'octopusapp_midi_session_v1';
+        const PORT_BOOT_KEY = 'octopusapp_port_boot_v1';
+
         /* ─────────────────────────────────────────────────────────────────────────────
          * CMD TABLE — 1:1 with firmware sysex.h v6.0
          * ─────────────────────────────────────────────────────────────────────────────*/
@@ -1920,6 +2200,19 @@
             "11 Melodic Min", "12 Spanish", "13 Arabic", "14 Chromatic",
             "15 Rainbow Maj", "16 Rainbow Min"
         ];
+        /* 1:1 patches.h SCALES_NOTES — row 0 = top (+12 st), row 7 = root */
+        const SCALE_MIDI_NOTES = [
+            [60, 62, 64, 65, 67, 69, 71, 72], [60, 62, 63, 65, 67, 68, 70, 72],
+            [60, 62, 64, 67, 69, 72, 74, 76], [60, 63, 65, 66, 67, 70, 72, 75],
+            [60, 62, 63, 65, 67, 69, 70, 72], [60, 61, 63, 65, 67, 68, 70, 72],
+            [60, 62, 63, 65, 67, 69, 70, 72], [60, 62, 64, 66, 67, 69, 71, 72],
+            [60, 61, 63, 65, 66, 68, 70, 72], [60, 62, 63, 65, 67, 68, 71, 72],
+            [60, 62, 63, 65, 67, 69, 71, 72], [60, 61, 64, 65, 67, 68, 70, 72],
+            [60, 61, 64, 65, 67, 68, 71, 72], [60, 61, 62, 63, 64, 65, 66, 67],
+            [60, 62, 64, 65, 67, 69, 71, 72], [60, 62, 63, 65, 67, 68, 70, 72]
+        ];
+        /* midi.h GM_DRUM_MAP — grid rows 8–15 → kick … perc */
+        const GM_DRUM_MAP = [36, 38, 39, 42, 46, 50, 43, 56];
         // PRESET_NAMES[] in assets.cpp
 
         const PRESET_NAMES = [
@@ -3129,11 +3422,39 @@
             ]
         };
 
+        const DRUM_ROW_LABELS = ['KICK', 'SNARE', 'CLAP', 'HH-C', 'HH-O', 'TOM-H', 'TOM-L', 'PERC'];
+        /* Standard MIDI CC map for external synths (GM / MPE-friendly defaults). */
+        const MIDI_KNOBS = {
+            seqSynth: [
+                { group: 'MIDI CC', label: 'VOL', cc: 7, min: 0, max: 127, def: 100, fmt: v => Math.round(v) },
+                { group: 'MIDI CC', label: 'EXPR', cc: 11, min: 0, max: 127, def: 127, fmt: v => Math.round(v) },
+                { group: 'MIDI CC', label: 'MOD', cc: 1, min: 0, max: 127, def: 0, fmt: v => Math.round(v) },
+                { group: 'MIDI CC', label: 'PAN', cc: 10, min: 0, max: 127, def: 64, fmt: v => Math.round(v) },
+                { group: 'MIDI CC', label: 'CUT', cc: 74, min: 0, max: 127, def: 96, fmt: v => Math.round(v) },
+                { group: 'MIDI CC', label: 'RES', cc: 71, min: 0, max: 127, def: 32, fmt: v => Math.round(v) },
+                { group: 'MIDI CC', label: 'ATK', cc: 73, min: 0, max: 127, def: 40, fmt: v => Math.round(v) },
+                { group: 'MIDI CC', label: 'REL', cc: 72, min: 0, max: 127, def: 64, fmt: v => Math.round(v) }
+            ]
+        };
+
         /* ─────────────────────────────────────────────────────────────────────────────
          * APP OBJECT
          * ─────────────────────────────────────────────────────────────────────────────*/
         const app = {
             midiOut: null,
+            _appMode: 'octopus', /* 'octopus' | 'midi' | 'disconnected' — Phase 1 sets at runtime */
+            midiScaleIdx: 0,
+            _midiGateTimers: null,
+            midiMap: {
+                melPc: 0,
+                drumPc: 0,
+                drumNotes: GM_DRUM_MAP.slice(),
+                cc: Object.fromEntries(MIDI_KNOBS.seqSynth.map(k => [k.cc, k.def]))
+            },
+            midiKnobStates: {},
+            midiClockOut: false,
+            _midiPpqnAccumMs: 0,
+            _midiPersistTimer: null,
             bankIdx: 0,
             chainIdx: 0, // chainIdx forced 0 — banks A/B/C/D = firmware banks 0-3
             NUM_BANKS: 4,
@@ -3193,6 +3514,8 @@
             userPatSaved: Array(NUM_USER_SLOTS).fill(false),
             _playPage: -1,
             _playBeat: -1,
+            _midiClockLastTs: 0,
+            _midiClockAccumMs: 0,
             _playAbsStep: -1, // absolute step index for wrap detection
             _playheadEl: null, // single grid overlay — zero per-cell class toggles
             _phPendingStep: -1,     // deferred paint when sequencer tab hidden
@@ -3268,9 +3591,83 @@
                     return named.find(o => /out/i.test(o.name) && !/in/i.test(o.name)) ||
                         named.find(o => !/in/i.test(o.name)) || named[0];
                 }
-                return outs.length === 1 ? outs[0] : null;
+                /* No ★ Octopus port — auto-pick first live output → MIDI Controller mode. */
+                return outs.length ? outs[0] : null;
+            },
+            _portIsOctopus(port) {
+                return this._isOctopusPortName((port || this.midiOut)?.name);
+            },
+            /** 'octopus' | 'midi' | 'disconnected' — drives layout shell (Phase 1+). */
+            setAppMode(mode) {
+                const next = (mode === 'midi' || mode === 'disconnected') ? mode : 'octopus';
+                const prev = this._appMode;
+                if (prev === next) return;
+                if (prev === 'midi') {
+                    this._midiClearGateTimers();
+                    this.allNotesOff();
+                    this._persistMidiSession();
+                }
+                this._appMode = next;
+                document.body.dataset.appMode = next === 'midi' ? 'midi' : 'octopus';
+
+                if (next === 'midi') {
+                    this.stopHeartbeat();
+                    this._connOnline = false;
+                    this._midiSyncInstBar();
+                    const onSeq = document.getElementById('view-seq')?.classList.contains('active');
+                    if (onSeq) this.switchView(3);
+                    else this.switchView(1);
+                    this.updateConnBadge(this.midiOut && this._portLive(this.midiOut));
+                } else if (prev === 'midi') {
+                    if (this.isPlaying) this._setTransport(false, false);
+                    const onMidiInst = document.getElementById('view-midi-inst')?.classList.contains('active');
+                    if (onMidiInst) this.switchView(1);
+                    if (next === 'disconnected' || !this._connOnline)
+                        this.updateConnBadge(false);
+                }
+                this._applyTransportChrome();
+            },
+            /** BPM / transport header — editable + active in MIDI mode only. */
+            _applyTransportChrome() {
+                const midi = this._appMode === 'midi';
+                const bpm = document.getElementById('seqBpm');
+                if (bpm) {
+                    bpm.readOnly = !midi;
+                    bpm.title = midi
+                        ? 'Tempo — MIDI Controller mode (local clock)'
+                        : 'Tempo is set on the device — the App only displays it';
+                }
+                const tips = midi ? {
+                    play: 'Start local sequencer clock',
+                    stop: 'Stop clock',
+                    rec: 'Record arm (local flag — MIDI mode)'
+                } : {
+                    play: 'PLAY status (device-controlled: hardware SCALE = play/stop)',
+                    stop: 'STOP status (device-controlled: hardware SCALE = play/stop)',
+                    rec: 'RECORD status (device-controlled: hardware OC short-press = record-arm)'
+                };
+                const bp = document.getElementById('btnPlay');
+                const bs = document.getElementById('btnStop');
+                const br = document.getElementById('btnRec');
+                if (bp) { bp.classList.toggle('reflector', !midi); bp.title = tips.play; }
+                if (bs) { bs.classList.toggle('reflector', !midi); bs.title = tips.stop; }
+                if (br) { br.classList.toggle('reflector', !midi); br.title = tips.rec; }
+            },
+            _requireOctopusHardware(action) {
+                if (this._appMode === 'midi')
+                    return this.log(action + ' — Octopus hardware only (pick a ★ Octopus port).'), false;
+                if (this._appMode === 'disconnected' || !this.midiOut)
+                    return this.log(action + ' — connect Octopus USB first.'), false;
+                if (!this._portIsOctopus())
+                    return this.log(action + ' — Octopus hardware only.'), false;
+                if (!this._connOnline)
+                    return this.log(action + ' — waiting for Octopus sync…'), false;
+                return true;
             },
             _touchDeviceRx() {
+                if (this._appMode === 'midi') return;
+                if (this._portIsOctopus() && this._appMode !== 'octopus')
+                    this.setAppMode('octopus');
                 this._lastDeviceRxMs = Date.now();
                 this._linkWarned = false;
                 if (!this._connOnline) {
@@ -3279,7 +3676,9 @@
                     this.log('Octopus connected — importing live device state.');
                     if (this._reloadAfterReconnect) {
                         this._reloadAfterReconnect = false;
-                        this._scheduleAppReload('device reconnected after save/reset');
+                        const pid = this.midiOut?.id;
+                        if (pid) this._requestPortBootReload(pid, 'octopus', 'device reconnected after save/reset');
+                        else this._scheduleAppReload('device reconnected after save/reset');
                     }
                 }
             },
@@ -3288,6 +3687,39 @@
                 this.log('Reloading App' + (reason ? ' (' + reason + ')' : '') + '…');
                 this._reloadTimer = setTimeout(() => { location.reload(); }, 400);
             },
+            _stashPortBoot(portId, mode) {
+                try {
+                    sessionStorage.setItem(PORT_BOOT_KEY, JSON.stringify({
+                        portId,
+                        mode: mode === 'midi' ? 'midi' : 'octopus',
+                        t: Date.now()
+                    }));
+                } catch (e) {}
+            },
+            _readPortBoot() {
+                try {
+                    const raw = sessionStorage.getItem(PORT_BOOT_KEY);
+                    if (!raw) return null;
+                    const o = JSON.parse(raw);
+                    if (!o || !o.portId) return null;
+                    if (Date.now() - (o.t || 0) > 120000) {
+                        sessionStorage.removeItem(PORT_BOOT_KEY);
+                        return null;
+                    }
+                    return o;
+                } catch (e) { return null; }
+            },
+            _clearPortBoot() {
+                try { sessionStorage.removeItem(PORT_BOOT_KEY); } catch (e) {}
+            },
+            /** Full page reload then connect — clean Octopus vs MIDI Controller shell. */
+            _requestPortBootReload(portId, mode, reason) {
+                if (this._reloadTimer) return;
+                if (this._appMode === 'midi') this._persistMidiSession();
+                this.allNotesOff();
+                this._stashPortBoot(portId, mode);
+                this._scheduleAppReload(reason || 'port connect');
+            },
             _touchTransportRx(kind) {
                 const now = Date.now();
                 if (kind === 'bpm') this._lastBpmRxMs = now;
@@ -3295,6 +3727,10 @@
                 else if (kind === 'step') this._lastStepSyncRxMs = now;
             },
             _armPersist(kind) {
+                if (this._appMode === 'midi') {
+                    this.log((kind || 'persist').toUpperCase() + ' blocked — Octopus hardware only.');
+                    return false;
+                }
                 if (this._persistBusy) {
                     this.log(kind.toUpperCase() + ' blocked — ' + this._persistKind + ' already in progress on device.');
                     return false;
@@ -3412,7 +3848,7 @@
             // [LINK-HEAL] Detect partial outbound failure.  While playing, never fire a
             // full APP_SYNC_REQ (256 grid rows + 140 knobs stalls the playhead for 100–500 ms).
             _checkTransportHealth(now) {
-                if (!this._connOnline || !this.midiOut || now <= this._linkGraceUntil) return;
+                if (this._appMode !== 'octopus' || !this._connOnline || !this.midiOut || now <= this._linkGraceUntil) return;
                 if (now < this._linkDegradedUntil) return;
                 const staleMs = 1500;
                 if (this.isPlaying) {
@@ -3421,7 +3857,7 @@
                         this.log('Playhead stale — requesting device resync…');
                         this._syncBurstExpected = true;
                         this._resetSlotSavedFlagsForSync();
-                        this.txSysex(CMD.APP_SYNC_REQ, 0);
+                        this.txParam(CMD.APP_SYNC_REQ, 0);
                         this._linkDegradedUntil = now + 8000;
                     }
                     return;
@@ -3432,7 +3868,7 @@
                     this.log('Link degraded — requesting device resync…');
                     this._syncBurstExpected = true;
                     this._resetSlotSavedFlagsForSync();
-                    this.txSysex(CMD.APP_SYNC_REQ, 0);
+                    this.txParam(CMD.APP_SYNC_REQ, 0);
                     const t = Date.now();
                     this._lastBpmRxMs = t;
                     this._lastTransportRxMs = t;
@@ -3627,6 +4063,7 @@
                 this.buildKnobs('seq-knobs', KNOBS.seqSynth, false);
                 this.buildKnobs('drum-knobs', KNOBS.drums, true);
                 this.buildKnobs('master-knobs', KNOBS.master, false);
+                this.buildMidiInst();
                 this.buildSequencer();
                 this.buildSongEditor();
                 this.setBank(0);
@@ -3634,6 +4071,7 @@
                 this._updatePageButtons();
                 this._initSelectTitles();
                 await this.setupMIDI();
+                this._applyTransportChrome();
                 window.addEventListener('resize', () => this._scheduleWindowPhResize());
                 this.animateVU();
                 /* Idle stopped state: show playhead at step 0 (matches hardware boot). */
@@ -3646,18 +4084,29 @@
                 // the device's live state (playhead, transport, BPM) with no flap.
                 document.addEventListener('visibilitychange', () => {
                     if (document.hidden) {
-                        this._audioKeepAlive(); // ensure the exemption stays active
+                        this._audioKeepAlive();
                     } else {
                         this._audioKeepAlive();
-                        if (this.midiOut) {
+                        if (this._appMode === 'octopus' && this._portIsOctopus() && this.midiOut) {
                             this._syncBurstExpected = true;
                             this._resetSlotSavedFlagsForSync();
-                            this.txSysex(CMD.PING, 0);
-                            this.txSysex(CMD.APP_SYNC_REQ, 0);
+                            this.txParam(CMD.PING, 0);
+                            this.txParam(CMD.APP_SYNC_REQ, 0);
                         }
                     }
                 });
-                this.log('OctopusApp v6.1.00 · ' + location.origin);
+                window.addEventListener('beforeunload', () => {
+                    if (this._appMode === 'midi') this._persistMidiSession();
+                    this.allNotesOff();
+                });
+                window.addEventListener('pagehide', () => {
+                    if (this._appMode === 'midi') this._persistMidiSession();
+                    this.allNotesOff();
+                });
+                this.log('OctopusApp v' + APP_VERSION + ' · ' + location.origin);
+                const vb = document.getElementById('appVerBadge');
+                if (vb) vb.textContent = 'v' + APP_VERSION.replace(/\.00$/, '');
+                this._loadMidiSession();
             },
 
             // Long dropdown names: a closed <select> ellipsizes overflowing text, so
@@ -3691,6 +4140,8 @@
                 fill('seqWave', WAVE_NAMES);
                 fill('harpScale', SCALE_NAMES);
                 fill('seqScale', SCALE_NAMES);
+                fill('midiScale', SCALE_NAMES);
+                fill('midiInstScale', SCALE_NAMES);
                 fill('masterFxPreset', MASTER_FX_NAMES);
                 ['harpFxA', 'seqFxA', 'drumFxA'].forEach(id => fill(id, INSERT_FX_NAMES));
                 ['harpFxB', 'seqFxB', 'drumFxB'].forEach(id => fill(id, DYNAMICS_NAMES));
@@ -3728,6 +4179,7 @@
             // bit-overlap bug: page bits corrupted step bits 4-5 for pages 1-3.
             // Frame: { F0, 7D, 05, bank_row, page, lo_lo4, lo_hi4, hi_lo4, hi_hi4, F7 }
             _txGridRow(bank, row, page, lo, hi) {
+                if (this._appMode !== 'octopus') return;
                 if (!this.midiOut) return;
                 try {
                     this.midiOut.send([
@@ -3743,6 +4195,7 @@
 
             // Parse one complete device→App SysEx frame (manufacturer 0x7C).
             _parseDeviceSysex(data) {
+                if (this._appMode === 'midi') return;
                 if (!data || data.length < 7 || data[0] !== 0xF0 || data[1] !== 0x7C) return;
                 this._touchDeviceRx();
                 const sub = data[2];
@@ -3862,31 +4315,53 @@
                             sel.innerHTML = '<option value="">— MIDI port —</option>';
                         }
                         const inN = await this._bindMidiInputs(access);
-                        let autoOut = null;
                         const outList = [...access.outputs.values()];
                         for (const out of outList) {
                             if (sel) {
                                 const tag = this._isOctopusPortName(out.name) ? '\u2605 ' : '';
                                 sel.appendChild(new Option(tag + out.name, out.id));
                             }
-                            if (!autoOut && this._isOctopusPortName(out.name) && this._portLive(out)) {
-                                autoOut = out;
-                            } else if (this.midiOut && out.id === this.midiOut.id && sel) {
-                                sel.value = out.id;
+                        }
+                        const boot = this._readPortBoot();
+                        if (boot) {
+                            const port = access.outputs.get(boot.portId);
+                            if (port && this._portLive(port)) {
+                                this.midiOut = port;
+                                if (sel) sel.value = port.id;
+                                this._clearPortBoot();
+                                await this.onConnect();
+                                if (inN === 0 && outList.length)
+                                    this.log('Warning: no MIDI inputs — close other tabs using this device');
+                                return;
                             }
+                            if (outList.length)
+                                this.log('Waiting for selected MIDI port…');
+                            else
+                                this.setAppMode('disconnected');
+                            return;
+                        }
+                        let autoOut = null;
+                        for (const out of outList) {
+                            if (!autoOut && this._isOctopusPortName(out.name) && this._portLive(out))
+                                autoOut = out;
                         }
                         if (!autoOut)
                             autoOut = this._pickAutoOutput(access);
                         if (autoOut) {
-                            const fresh = !this.midiOut || this.midiOut.id !== autoOut.id;
-                            this.midiOut = autoOut;
-                            if (sel) sel.value = autoOut.id;
-                            if (fresh) await this.onConnect();
-                            else await this._bindMidiInputs(access);
+                            if (this.midiOut && this.midiOut.id === autoOut.id) {
+                                if (sel) sel.value = autoOut.id;
+                                await this._bindMidiInputs(access);
+                            } else {
+                                if (this.midiOut) this.allNotesOff(this.midiOut);
+                                const mode = this._isOctopusPortName(autoOut.name) ? 'octopus' : 'midi';
+                                this._requestPortBootReload(autoOut.id, mode, 'MIDI connect');
+                            }
                         } else if (outList.length) {
-                            this.log(`MIDI: ${outList.length} out / ${access.inputs.size} in — plug in Octopus USB`);
+                            this.log(`MIDI: ${outList.length} out / ${access.inputs.size} in — pick a port (★ = Octopus)`);
+                            if (!this.midiOut) this.setAppMode('disconnected');
                         } else {
-                            this.log('No MIDI outputs — plug in Octopus via USB and allow Web MIDI');
+                            this.log('No MIDI outputs — plug in USB and allow Web MIDI');
+                            this.setAppMode('disconnected');
                         }
                         if (inN === 0 && outList.length)
                             this.log('Warning: no MIDI inputs — close other tabs using this device');
@@ -3895,9 +4370,22 @@
                     access.onstatechange = () => { this._scanMidi(); };
                     const sel = document.getElementById('midiOut');
                     if (sel) sel.onchange = e => {
-                        if (!e.target.value) return;
-                        this.midiOut = access.outputs.get(e.target.value);
-                        if (this.midiOut) this.onConnect();
+                        if (!e.target.value) {
+                            this.allNotesOff();
+                            this.midiOut = null;
+                            this.stopHeartbeat();
+                            this._clearPortBoot();
+                            this.setAppMode('disconnected');
+                            this.updateConnBadge(false);
+                            return;
+                        }
+                        const prev = this.midiOut;
+                        const next = access.outputs.get(e.target.value);
+                        if (!next) return;
+                        if (prev && prev.id === next.id) return;
+                        if (prev) this.allNotesOff(prev);
+                        const mode = this._isOctopusPortName(next.name) ? 'octopus' : 'midi';
+                        this._requestPortBootReload(next.id, mode, 'MIDI port change');
                     };
                 } catch (e) {
                     this.log('MIDI access denied: ' + e.message);
@@ -3948,13 +4436,21 @@
                         this.log('Warning: no MIDI inputs — close other tabs using this device');
                 }
                 if (!this.midiOut || !this._portLive(this.midiOut)) {
+                    this.setAppMode('disconnected');
                     this.updateConnBadge(false);
                     this.log('MIDI output unavailable — replug USB or pick another port');
                     return;
                 }
-                this.txSysex(CMD.APP_SYNC_REQ, 0);
-                this.startHeartbeat();
-                this.log('Syncing with ' + (this.midiOut.name || 'MIDI') + '…');
+                if (this._portIsOctopus()) {
+                    this.setAppMode('octopus');
+                    this.txParam(CMD.APP_SYNC_REQ, 0);
+                    this.startHeartbeat();
+                    this.log('Syncing with Octopus (' + (this.midiOut.name || 'MIDI') + ')…');
+                } else {
+                    this.setAppMode('midi');
+                    this.updateConnBadge(true);
+                    this.log('MIDI Controller mode → ' + (this.midiOut.name || 'port') + ' (standard MIDI; no SysEx).');
+                }
             },
             // Periodic heartbeat: the firmware marks the link "connected" only while it
             // keeps receiving App sysex (CMD.PING refreshes lastWebSysexMs).  Sending a
@@ -4000,10 +4496,15 @@
                 return w;
             },
             startHeartbeat() {
+                if (this._appMode === 'midi') return;
                 this.stopHeartbeat();
                 this._audioKeepAlive();
-                this.txSysex(CMD.PING, 0); // immediate first beat
+                this.txParam(CMD.PING, 0); // immediate first beat
                 const beat = () => {
+                    if (this._appMode !== 'octopus') {
+                        this.stopHeartbeat();
+                        return;
+                    }
                     if (!this.midiOut || !this._portLive(this.midiOut)) {
                         if (this._persistBusy && (this._persistKind === 'save' || this._persistKind === 'reset')) {
                             /* Expected USB drop while the device reboots — wait for reconnect. */
@@ -4047,7 +4548,7 @@
                             this._checkTransportHealth(now);
                         }
                     }
-                    this.txSysex(CMD.PING, 0);
+                    this.txParam(CMD.PING, 0);
                 };
                 if (window.Worker) {
                     try {
@@ -4076,18 +4577,16 @@
             // re-adopts the device the moment it returns. Self-cancels once reconnected or
             // when the user deliberately disconnected.
             _startReconnectPoll() {
+                if (this._appMode === 'midi') return;
                 if (this._reconnectTimer) return;
                 this._reconnectTimer = setInterval(async () => {
                     if (!this._midiAccess) { this._stopReconnectPoll(); return; }
                     const candidate = this._pickAutoOutput(this._midiAccess);
                     if (!candidate) return;
                     this._stopReconnectPoll();
-                    if (this._scanMidi) await this._scanMidi();
-                    this.midiOut = candidate;
-                    const sel = document.getElementById('midiOut');
-                    if (sel) sel.value = candidate.id;
+                    const mode = this._isOctopusPortName(candidate.name) ? 'octopus' : 'midi';
                     this.log('Device returned — reconnecting…');
-                    await this.onConnect();
+                    this._requestPortBootReload(candidate.id, mode, 'device returned');
                 }, 1000);
             },
             _stopReconnectPoll() {
@@ -4096,6 +4595,12 @@
             updateConnBadge(online) {
                 const b = document.getElementById('connBadge');
                 if (!b) return;
+                if (this._appMode === 'midi') {
+                    b.style.color = 'var(--cyan)';
+                    b.style.borderColor = 'var(--cyan)';
+                    b.innerHTML = '<i class="fa-solid fa-circle" style="font-size:6px"></i>MIDI OUT';
+                    return;
+                }
                 if (online) {
                     b.style.color = 'var(--green)';
                     b.style.borderColor = 'var(--green)';
@@ -4111,8 +4616,37 @@
                 }
             },
 
-            txSysex(cmd, val) {
-                if (!this.midiOut || this._suppressTx) return;
+            // ── Outbound router (Phase 2): Octopus SysEx vs standard MIDI ─────────────
+            _octopusSysexAllowed() {
+                return this._appMode === 'octopus' && this.midiOut && !this._suppressTx;
+            },
+            _sendMidiBytes(bytes, port) {
+                const p = port || this.midiOut;
+                if (!p || typeof p.send !== 'function') return false;
+                try {
+                    p.send(bytes);
+                    return true;
+                } catch (e) {
+                    this.log('MIDI send failed: ' + (e.message || e));
+                    return false;
+                }
+            },
+            /** CC 120/123 all-channels panic — call before port/mode changes (Phase 2+). */
+            allNotesOff(port) {
+                const p = port || this.midiOut;
+                if (!p || typeof p.send !== 'function') return;
+                const st = p.state || p.connection;
+                if (st === 'disconnected' || st === 'closed') return;
+                try {
+                    for (let ch = 0; ch < 16; ch++) {
+                        const status = 0xB0 | ch;
+                        p.send([status, 123, 0]);
+                        p.send([status, 120, 0]);
+                    }
+                } catch (e) {}
+            },
+            _txSysexOctopus(cmd, val) {
+                if (!this._octopusSysexAllowed()) return;
                 const v = Math.max(0, Math.min(16383, Math.floor(+val)));
                 const hi = (v >> 7) & 0x7F,
                     lo = v & 0x7F;
@@ -4123,18 +4657,323 @@
                     this.log('MIDI send failed: ' + (e.message || e));
                     return;
                 }
-                this.monSysex('→', cmd, v); // [MON-FIX] trace outbound frame
+                this.monSysex('→', cmd, v);
             },
-            // [THROTTLE] Debounced txSysex — one timer per CMD.  The final value
-            // always wins; intermediate values during rapid select-scroll are dropped.
-            // Use for heavy-load selects (patch/FX/wave) where every intermediate
-            // value triggers a synth preset load on the device.  Default 60 ms is
-            // fast enough to feel instant to a human but prevents machine-gun spam
-            // when mouse-wheeling through a dropdown list.
+            /** MIDI Controller mode — knob CC map handled by buildMidiKnobs (Phase 5). */
+            _txMidiMapped(cmd, val) {
+                void cmd;
+                void val;
+            },
+            _midiSyncInstBar() {
+                const pairs = [
+                    ['midiMelodyCh', 'midiInstMelCh'],
+                    ['midiDrumCh', 'midiInstDrumCh'],
+                    ['midiScale', 'midiInstScale'],
+                    ['midiSeqOct', 'midiInstOct']
+                ];
+                pairs.forEach(([bar, inst]) => {
+                    const eb = document.getElementById(bar), ei = document.getElementById(inst);
+                    if (eb && ei) ei.value = eb.value;
+                });
+            },
+            _midiRoutingChanged() {
+                this._midiSyncInstBar();
+                this._midiPersistSoon();
+            },
+            _midiInstMelCh(v) {
+                const s = String(v);
+                const bar = document.getElementById('midiMelodyCh');
+                const inst = document.getElementById('midiInstMelCh');
+                if (bar) bar.value = s;
+                if (inst) inst.value = s;
+            },
+            _midiInstDrumCh(v) {
+                const s = String(v);
+                const bar = document.getElementById('midiDrumCh');
+                const inst = document.getElementById('midiInstDrumCh');
+                if (bar) bar.value = s;
+                if (inst) inst.value = s;
+            },
+            _midiInstScale(v) {
+                this.setGlobalScale(v);
+                const s = String((+v) & 15);
+                const bar = document.getElementById('midiScale');
+                const inst = document.getElementById('midiInstScale');
+                if (bar) bar.value = s;
+                if (inst) inst.value = s;
+            },
+            _midiInstOct(v) {
+                this.setSeqOctave(v);
+            },
+            setMidiMelPc(v) {
+                const pc = Math.max(0, Math.min(127, (+v) | 0));
+                this.midiMap.melPc = pc;
+                const el = document.getElementById('midiMelPc');
+                if (el) el.value = pc;
+                this._midiSendProgramChange(this._midiMelodyChannel(), pc);
+                this._midiPersistSoon();
+            },
+            setMidiDrumPc(v) {
+                const pc = Math.max(0, Math.min(127, (+v) | 0));
+                this.midiMap.drumPc = pc;
+                const el = document.getElementById('midiDrumPc');
+                if (el) el.value = pc;
+                this._midiSendProgramChange(this._midiDrumChannel(), pc);
+                this._midiPersistSoon();
+            },
+            setMidiDrumNote(row, note) {
+                row = (row | 0) & 7;
+                note = Math.max(0, Math.min(127, (+note) | 0));
+                this.midiMap.drumNotes[row] = note;
+                const el = document.querySelector(`.midi-drum-note-in[data-row="${row}"]`);
+                if (el) el.value = note;
+                this._midiPersistSoon();
+            },
+            setMidiClockOut(on, persist = true) {
+                this.midiClockOut = !!on;
+                const btn = document.getElementById('btnMidiClockOut');
+                if (btn) btn.classList.toggle('active-cyan', this.midiClockOut);
+                if (!this.midiClockOut) this._midiPpqnAccumMs = 0;
+                if (persist) this._midiPersistSoon();
+            },
+            _midiPersistSoon() {
+                clearTimeout(this._midiPersistTimer);
+                this._midiPersistTimer = setTimeout(() => this._persistMidiSession(), 400);
+            },
+            _serializeMidiSession() {
+                const trn = Math.max(-12, Math.min(12, Math.round(+document.getElementById('seqTrn')?.value || 0)));
+                const octEl = document.getElementById('midiSeqOct') || document.getElementById('midiInstOct');
+                return {
+                    v: 1,
+                    app: APP_VERSION,
+                    savedAt: new Date().toISOString(),
+                    gridData: this.gridData.map(bank => bank.map(row => row.slice())),
+                    bankIdx: this.bankIdx,
+                    gridPageIdx: this.gridPageIdx,
+                    seqLen: this.seqLen,
+                    bpm: this.bpm,
+                    transpose: trn,
+                    midiScaleIdx: this.midiScaleIdx,
+                    seqOct: Math.max(-4, Math.min(4, Math.round(+octEl?.value || 0))),
+                    melCh: +(document.getElementById('midiMelodyCh')?.value || 1),
+                    drumCh: +(document.getElementById('midiDrumCh')?.value || 10),
+                    midiMap: {
+                        melPc: this.midiMap.melPc,
+                        drumPc: this.midiMap.drumPc,
+                        drumNotes: this.midiMap.drumNotes.slice(),
+                        cc: { ...this.midiMap.cc }
+                    },
+                    midiClockOut: !!this.midiClockOut
+                };
+            },
+            _persistMidiSession() {
+                try {
+                    localStorage.setItem(MIDI_SESSION_KEY, JSON.stringify(this._serializeMidiSession()));
+                } catch (e) { /* quota / private mode */ }
+            },
+            _loadMidiSession() {
+                try {
+                    const raw = localStorage.getItem(MIDI_SESSION_KEY);
+                    if (!raw) return false;
+                    return this._applyMidiSession(JSON.parse(raw), false);
+                } catch (e) {
+                    return false;
+                }
+            },
+            _applyMidiSession(o, logIt = true) {
+                if (!o || o.v !== 1) return false;
+                if (Array.isArray(o.gridData) && o.gridData.length === 4) {
+                    for (let b = 0; b < 4; b++) {
+                        if (!o.gridData[b] || o.gridData[b].length !== 16) continue;
+                        for (let r = 0; r < 16; r++) {
+                            if (!o.gridData[b][r] || o.gridData[b][r].length !== 64) continue;
+                            for (let c = 0; c < 64; c++)
+                                this.gridData[b][r][c] = !!o.gridData[b][r][c];
+                        }
+                    }
+                }
+                if (o.bpm != null) {
+                    this.bpm = Math.max(40, Math.min(240, Math.round(+o.bpm)));
+                    const el = document.getElementById('seqBpm');
+                    if (el) el.value = this.bpm;
+                }
+                if (o.seqLen != null) this.setSeqLength(o.seqLen);
+                if (o.transpose != null) this.setTranspose(o.transpose);
+                if (o.midiScaleIdx != null) this.setGlobalScale(o.midiScaleIdx);
+                if (o.seqOct != null) this.setSeqOctave(o.seqOct);
+                if (o.melCh != null) this._midiInstMelCh(o.melCh);
+                if (o.drumCh != null) this._midiInstDrumCh(o.drumCh);
+                if (o.midiMap) {
+                    if (o.midiMap.melPc != null) this.midiMap.melPc = (+o.midiMap.melPc) & 127;
+                    if (o.midiMap.drumPc != null) this.midiMap.drumPc = (+o.midiMap.drumPc) & 127;
+                    if (Array.isArray(o.midiMap.drumNotes) && o.midiMap.drumNotes.length === 8)
+                        this.midiMap.drumNotes = o.midiMap.drumNotes.map(n => Math.max(0, Math.min(127, (+n) | 0)));
+                    if (o.midiMap.cc) Object.assign(this.midiMap.cc, o.midiMap.cc);
+                    const melPc = document.getElementById('midiMelPc');
+                    if (melPc) melPc.value = this.midiMap.melPc;
+                    const drumPc = document.getElementById('midiDrumPc');
+                    if (drumPc) drumPc.value = this.midiMap.drumPc;
+                    for (let i = 0; i < 8; i++) {
+                        const el = document.querySelector(`.midi-drum-note-in[data-row="${i}"]`);
+                        if (el) el.value = this.midiMap.drumNotes[i];
+                    }
+                    this._refreshMidiKnobsFromMap();
+                }
+                if (o.midiClockOut != null) this.setMidiClockOut(!!o.midiClockOut, false);
+                if (o.bankIdx != null) this.setBank(o.bankIdx, false);
+                if (o.gridPageIdx != null) this.setGridPage(o.gridPageIdx, false);
+                else this.repaintGrid();
+                this._midiSyncInstBar();
+                if (logIt) this.log('MIDI session imported.');
+                return true;
+            },
+            _refreshMidiKnobsFromMap() {
+                for (const cc of Object.keys(this.midiKnobStates)) {
+                    const val = this.midiMap.cc[cc];
+                    if (val == null) continue;
+                    for (const entry of this.midiKnobStates[cc]) {
+                        const k = entry.meta;
+                        const clamped = Math.max(k.min, Math.min(k.max, +val));
+                        const sn = (clamped - k.min) / (k.max - k.min);
+                        entry.node.style.setProperty('--val', Math.max(0, Math.min(1, sn)));
+                        entry.text.innerText = k.fmt(clamped);
+                    }
+                }
+            },
+            exportMidiSession() {
+                const data = this._serializeMidiSession();
+                const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(blob);
+                a.download = `octopus-midi-bank${'ABCD'[this.bankIdx]}-${Date.now()}.json`;
+                a.click();
+                URL.revokeObjectURL(a.href);
+                this.log('MIDI session exported.');
+            },
+            importMidiSession(input) {
+                const file = input?.files?.[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = () => {
+                    try {
+                        if (this._applyMidiSession(JSON.parse(reader.result), true))
+                            this._persistMidiSession();
+                        else this.log('Import failed: unsupported session format.');
+                    } catch (e) {
+                        this.log('Import failed: invalid JSON.');
+                    }
+                    input.value = '';
+                };
+                reader.readAsText(file);
+            },
+            _midiSendCc(ch, cc, val) {
+                if (this._appMode !== 'midi') return;
+                val = Math.max(0, Math.min(127, (+val) | 0));
+                cc = cc & 127;
+                if (!this._sendMidiBytes([0xB0 | (ch & 15), cc, val])) return;
+                this.midiMap.cc[cc] = val;
+                if (ch === this._midiMelodyChannel()) this._midiPulseScope(this._midiSeqScope, 0.18);
+                this._midiPersistSoon();
+            },
+            _midiSendProgramChange(ch, pc) {
+                if (this._appMode !== 'midi') return;
+                pc = Math.max(0, Math.min(127, (+pc) | 0));
+                if (!this._sendMidiBytes([0xC0 | (ch & 15), pc])) return;
+                if (ch === this._midiMelodyChannel()) this._midiPulseScope(this._midiSeqScope, 0.35);
+                else if (ch === this._midiDrumChannel()) this._midiPulseScope(this._midiDrumScope, 0.35);
+            },
+            _midiPulseScope(s, amp) {
+                if (!s || amp <= 0) return;
+                if (amp > s.amp) s.amp = Math.min(1.35, amp);
+            },
+            _midiMelodyChannel() {
+                const el = document.getElementById(this._appMode === 'midi' ? 'midiMelodyCh' : 'wireSeqCh');
+                return Math.max(0, Math.min(15, ((el ? +el.value : 1) - 1) | 0));
+            },
+            _midiDrumChannel() {
+                const el = document.getElementById(this._appMode === 'midi' ? 'midiDrumCh' : 'wireDrumCh');
+                return Math.max(0, Math.min(15, ((el ? +el.value : 10) - 1) | 0));
+            },
+            _midiNoteOn(ch, note, vel) {
+                if (this._appMode !== 'midi') return;
+                const ok = this._sendMidiBytes([0x90 | (ch & 15), note & 127, Math.max(1, vel & 127)]);
+                if (!ok) return;
+                const a = 0.42 + Math.min(1, vel / 127) * 0.58;
+                if (ch === this._midiMelodyChannel()) this._midiPulseScope(this._midiSeqScope, a);
+                else if (ch === this._midiDrumChannel()) this._midiPulseScope(this._midiDrumScope, a);
+            },
+            _midiNoteOff(ch, note) {
+                if (this._appMode !== 'midi') return;
+                this._sendMidiBytes([0x80 | (ch & 15), note & 127, 0]);
+            },
+            _midiClearGateTimers() {
+                if (!this._midiGateTimers) return;
+                for (const id of this._midiGateTimers) clearTimeout(id);
+                this._midiGateTimers.length = 0;
+            },
+            _midiScheduleNoteOff(ch, note, delayMs) {
+                if (!this._midiGateTimers) this._midiGateTimers = [];
+                const id = setTimeout(() => {
+                    if (this._appMode === 'midi') this._midiNoteOff(ch, note);
+                }, Math.max(1, delayMs | 0));
+                this._midiGateTimers.push(id);
+            },
+            _midiMelodyNoteForRow(row) {
+                row = (row | 0) & 7;
+                const si = (this.midiScaleIdx | 0) & 15;
+                const scale = SCALE_MIDI_NOTES[si] || SCALE_MIDI_NOTES[0];
+                const trn = Math.max(-12, Math.min(12, Math.round(+document.getElementById('seqTrn')?.value || 0)));
+                const octEl = document.getElementById(this._appMode === 'midi' ? 'midiSeqOct' : 'seqOct');
+                const oct = Math.max(-4, Math.min(4, Math.round(+octEl?.value || 0)));
+                return Math.max(0, Math.min(127, scale[7 - row] + trn + oct * 12));
+            },
+            _midiDrumNoteForRow(row) {
+                const idx = ((row | 0) - 8) & 7;
+                const notes = this.midiMap?.drumNotes;
+                return (notes && notes[idx] != null) ? (notes[idx] & 127) : (GM_DRUM_MAP[idx] || 36);
+            },
+            /** Fire note-ons for one pattern step; 50% gate note-offs (groovebox default). */
+            _midiPlayStep(step) {
+                if (this._appMode !== 'midi' || !this.isPlaying) return;
+                const grid = this.gridData?.[this.bankIdx];
+                if (!grid) return;
+                const melCh = this._midiMelodyChannel();
+                const drumCh = this._midiDrumChannel();
+                const gateMs = this._midiStepMs() * 0.5;
+                this._midiClearGateTimers();
+                for (let r = 0; r < 8; r++) {
+                    if (!grid[r]?.[step]) continue;
+                    const note = this._midiMelodyNoteForRow(r);
+                    this._midiNoteOn(melCh, note, 100);
+                    this._midiScheduleNoteOff(melCh, note, gateMs);
+                }
+                for (let r = 8; r < 16; r++) {
+                    if (!grid[r]?.[step]) continue;
+                    const note = this._midiDrumNoteForRow(r);
+                    this._midiNoteOn(drumCh, note, 110);
+                    this._midiScheduleNoteOff(drumCh, note, gateMs);
+                }
+            },
+            /** Single outbound API: Octopus SysEx or MIDI-controller mapping. */
+            txParam(cmd, val) {
+                if (this._appMode === 'midi') {
+                    this._txMidiMapped(cmd, val);
+                    return;
+                }
+                this._txSysexOctopus(cmd, val);
+            },
+            txSysex(cmd, val) {
+                this.txParam(cmd, val);
+            },
+            // [THROTTLE] Debounced txParam — one timer per CMD.
             txSysexSoon(cmd, val, ms = 60) {
+                if (this._appMode === 'midi') {
+                    this.txParam(cmd, val);
+                    return;
+                }
                 if (!this._debounceTimers) this._debounceTimers = {};
                 clearTimeout(this._debounceTimers[cmd]);
-                this._debounceTimers[cmd] = setTimeout(() => this.txSysex(cmd, val), ms);
+                this._debounceTimers[cmd] = setTimeout(() => this.txParam(cmd, val), ms);
             },
             /* [WS4] One cmd may map to multiple knob widgets (e.g. AUX on drum row +
              * master console).  Update every registered node for a clean 1:1 echo. */
@@ -4294,7 +5133,15 @@
                     },
                     [CMD.H_PATCH]: v14 => { document.getElementById('harpPatch').value = v14; },
                     [CMD.S_PATCH]: v14 => { document.getElementById('seqPatch').value  = v14; },
-                    [CMD.H_SCALE]: v14 => { document.getElementById('harpScale').value = v14; document.getElementById('seqScale').value = v14; },
+                    [CMD.H_SCALE]: v14 => {
+                        this.midiScaleIdx = v14 & 15;
+                        document.getElementById('harpScale').value = v14;
+                        document.getElementById('seqScale').value = v14;
+                        const ms = document.getElementById('midiScale');
+                        if (ms) ms.value = v14;
+                        const inst = document.getElementById('midiInstScale');
+                        if (inst) inst.value = v14;
+                    },
                     [CMD.H_DLY_MIX]: v14 => { document.getElementById('wireHarpDly').innerText = Math.round(v14 / 16383 * 100) + '%'; },
                     [CMD.H_REV_MIX]: v14 => { document.getElementById('wireHarpRev').innerText = Math.round(v14 / 16383 * 100) + '%'; },
                     [CMD.S_DLY_MIX]: v14 => { document.getElementById('wireSeqDly').innerText  = Math.round(v14 / 16383 * 100) + '%'; },
@@ -4315,7 +5162,12 @@
                         const b = document.getElementById('seqEngTrn'); if (b) b.value = t;
                     },
                     [CMD.HW_H_OCT]: v14 => { const o = (v14 <= 8) ? (v14 - 4) : Math.max(-4, Math.min(4, Math.round((v14 / 16383) * 8 - 4))); const el = document.getElementById('harpOct'); if (el) el.value = o; },
-                    [CMD.HW_S_OCT]: v14 => { const o = (v14 <= 8) ? (v14 - 4) : Math.max(-4, Math.min(4, Math.round((v14 / 16383) * 8 - 4))); const el = document.getElementById('seqOct');  if (el) el.value = o; },
+                    [CMD.HW_S_OCT]: v14 => {
+                        const o = (v14 <= 8) ? (v14 - 4) : Math.max(-4, Math.min(4, Math.round((v14 / 16383) * 8 - 4)));
+                        const el = document.getElementById('seqOct'); if (el) el.value = o;
+                        const m = document.getElementById('midiSeqOct'); if (m) m.value = o;
+                        const inst = document.getElementById('midiInstOct'); if (inst) inst.value = o;
+                    },
                     [CMD.H_PITCH]: v14 => { this._setKnob(CMD.H_PITCH, v14); },
                     // Transport — hardware is SOLE owner; these are read-only reflectors.
                     // TRANSPORT 0/2=stop 1=play 3/4=rec-on/off  TRIG_MODE=legacy play echo.
@@ -4424,6 +5276,9 @@
             applyIncoming(cmd, v14) {
                 this._suppressTx = true;
                 try {
+                    if (this._appMode === 'midi' &&
+                        (cmd === CMD.STEP_SYNC || cmd === CMD.TRANSPORT || cmd === CMD.BPM || cmd === CMD.SONG_POS))
+                        return;
                     if (!this._dispatch) this._dispatch = this._buildDispatch();
                     const fn = this._dispatch[cmd];
                     if (fn) fn(v14);
@@ -4454,15 +5309,6 @@
                 document.getElementById('btnStop') ?.classList.toggle('active-green', !playing);
                 document.getElementById('btnRec') ?.classList.toggle('active-red', recording);
                 if (playing !== wasPlaying) {
-                    // [PLAYHEAD-1:1] On ANY transport edge, fully invalidate the playhead
-                    // cell cache so the next STEP_SYNC forces a fresh measure + paint.
-                    // These step counters MUST be able to fall back to -1: stop used to
-                    // leave them on the last step, so a same-step restart hit the cached
-                    // fast-path with a STALE _phRect (the grid may have been rebuilt or
-                    // resized while stopped) → the bar painted a cell OFF from the
-                    // hardware step.  Resetting to -1 guarantees stepChanged === true on
-                    // the first post-edge paint, so the App bar lands exactly on the
-                    // hardware step (1:1).  (This is the "counter could not reach -1" bug.)
                     this._playLast = -1;
                     this._playCol = -1;
                     this._playPage = -1;
@@ -4471,6 +5317,21 @@
                     this._phRectPage = -1;
                     this._pllAnchorStep = -1;
                     this._pllAnchorTime = -1;
+                    if (this._appMode === 'midi') {
+                        this._midiClockLastTs = 0;
+                        this._midiClockAccumMs = 0;
+                        this._midiPpqnAccumMs = 0;
+                        if (playing) {
+                            this._midiSendRealtime(0xFA);
+                            this._paintPlayhead(this.visStep | 0, true);
+                            this._updateBeatLeds((this.visStep | 0) & 15);
+                            this._midiPlayStep(this.visStep | 0);
+                        } else {
+                            this._midiSendRealtime(0xFC);
+                            this._midiClearGateTimers();
+                            this.allNotesOff();
+                        }
+                    }
                 }
                 if (!playing) {
                     for (let i = 0; i < 4; i++)
@@ -4480,13 +5341,77 @@
                 }
             },
             play() {
+                if (this._appMode === 'midi') {
+                    if (!this.isPlaying) this._setTransport(true, this.isRecording);
+                    return;
+                }
                 this._transportHint();
             },
             stop() {
+                if (this._appMode === 'midi') {
+                    if (this.isPlaying || this.isRecording) this._setTransport(false, false);
+                    return;
+                }
                 this._transportHint();
             },
             toggleRec() {
+                if (this._appMode === 'midi') {
+                    this._setTransport(this.isPlaying, !this.isRecording);
+                    return;
+                }
                 this._transportHint();
+            },
+            onBpmInput(v) {
+                const b = Math.max(40, Math.min(240, Math.round(+v)));
+                this.bpm = b;
+                const el = document.getElementById('seqBpm');
+                if (el && +el.value !== b) el.value = b;
+                if (this._appMode === 'midi') this._midiPersistSoon();
+            },
+            /** 16th-note step period from BPM (4 steps per quarter). */
+            _midiStepMs() {
+                const bpm = Math.max(40, Math.min(240, this.bpm | 0));
+                return 60000 / (bpm * 4);
+            },
+            _midiSendRealtime(byte) {
+                if (this._appMode !== 'midi') return;
+                this._sendMidiBytes([byte & 0xFF]);
+            },
+            /** MIDI Controller local clock — drives visStep + playhead (Phase 3). */
+            _midiClockTick(ts) {
+                if (this._appMode !== 'midi' || !this.isPlaying) {
+                    this._midiClockLastTs = 0;
+                    this._midiClockAccumMs = 0;
+                    return;
+                }
+                if (!this._midiClockLastTs) this._midiClockLastTs = ts;
+                let dt = ts - this._midiClockLastTs;
+                this._midiClockLastTs = ts;
+                if (dt > 250) dt = 250;
+
+                this._midiClockAccumMs += dt;
+                if (this.midiClockOut) {
+                    const bpm = Math.max(40, Math.min(240, this.bpm | 0));
+                    const clockMs = 60000 / (bpm * 24);
+                    this._midiPpqnAccumMs += dt;
+                    while (this._midiPpqnAccumMs >= clockMs) {
+                        this._midiPpqnAccumMs -= clockMs;
+                        this._midiSendRealtime(0xF8);
+                    }
+                }
+                const stepMs = this._midiStepMs();
+                const len = Math.max(1, this.seqLen | 0);
+                let advanced = false;
+                while (this._midiClockAccumMs >= stepMs) {
+                    this._midiClockAccumMs -= stepMs;
+                    const s = ((this.visStep | 0) + 1) % len;
+                    this.visStep = s;
+                    this._updateBeatLeds(s & 15);
+                    this._paintPlayhead(s);
+                    this._midiPlayStep(s);
+                    advanced = true;
+                }
+                if (advanced) this._midiClockAccumMs = Math.min(this._midiClockAccumMs, stepMs);
             },
             toggleMute(ch) {
                 const map = {
@@ -4543,29 +5468,38 @@
             // CMD_S_SCALE has no firmware handler). Keep both dropdowns in lock-step.
             setGlobalScale(v) {
                 const s = (+v) & 15;
-                this.txSysex(CMD.H_SCALE, s);
+                this.midiScaleIdx = s;
+                if (this._appMode !== 'midi') this.txParam(CMD.H_SCALE, s);
                 const a = document.getElementById('harpScale'),
-                    b = document.getElementById('seqScale');
+                    b = document.getElementById('seqScale'),
+                    m = document.getElementById('midiScale');
                 if (a) a.value = String(s);
                 if (b) b.value = String(s);
+                if (m) m.value = String(s);
+                const inst = document.getElementById('midiInstScale');
+                if (inst) inst.value = String(s);
+                if (this._appMode === 'midi') this._midiPersistSoon();
             },
 
             // ── Session save/load ─────────────────────────────────────────────────────
             /** scope: 0=FULL 1=BANKS_PATTERNS 2=MOTION 3=SETTINGS (ResetScope). */
             sessionSave(scope = 0) {
-                this.txSysex(CMD.SESSION_SAVE, this._encodePersistScope(scope));
+                if (!this._octopusSysexAllowed()) return;
+                this.txParam(CMD.SESSION_SAVE, this._encodePersistScope(scope));
             },
             // Scope labels shared by SAVE / LOAD / RESET popups (ResetScope order).
             _scopeName(scope) {
                 return ['FULL', 'BANKS + PATS', 'MOTION', 'SETTINGS'][(+scope) & 3] || 'FULL';
             },
             openSaveModal() {
+                if (!this._requireOctopusHardware('SAVE')) return;
                 document.getElementById('saveModal').style.display = 'flex';
             },
             closeSaveModal() {
                 document.getElementById('saveModal').style.display = 'none';
             },
             saveScoped(scope) {
+                if (!this._requireOctopusHardware('SAVE')) return;
                 const name = this._scopeName(scope);
                 if (!confirm('SAVE ' + name + '\nWrite to NVS and reboot?')) return;
                 if (!this._armPersist('save')) return;
@@ -4573,9 +5507,11 @@
                 this.sessionSave(scope);
             },
             sessionLoad(scope = 0) {
-                this.txSysex(CMD.SESSION_LOAD, this._encodePersistScope(scope));
+                if (!this._octopusSysexAllowed()) return;
+                this.txParam(CMD.SESSION_LOAD, this._encodePersistScope(scope));
             },
             loadScoped(scope) {
+                if (!this._requireOctopusHardware('LOAD')) return;
                 const name = this._scopeName(scope);
                 if (!confirm('LOAD ' + name + '\nReload from NVS?')) return;
                 if (!this._armPersist('load')) return;
@@ -4588,17 +5524,19 @@
 
             // ── RESET popup (scoped reset) ─────────────────────────────────
             openResetModal() {
+                if (!this._requireOctopusHardware('RESET')) return;
                 document.getElementById('resetModal').style.display = 'flex';
             },
             closeResetModal() {
                 document.getElementById('resetModal').style.display = 'none';
             },
             resetScoped(scope) {
+                if (!this._requireOctopusHardware('RESET')) return;
                 const name = this._scopeName(scope);
                 if (!confirm('RESET ' + name + '\nWipe RAM, persist, and reboot?')) return;
                 if (!this._armPersist('reset')) return;
                 this._showPersistWait('reset', scope);
-                this.txSysex(CMD.SCOPED_RESET, this._encodePersistScope(scope));
+                this.txParam(CMD.SCOPED_RESET, this._encodePersistScope(scope));
             },
 
             // ── SLOTS popup (user sound + pattern library, 1:1 with hardware) ─────────
@@ -4645,6 +5583,7 @@
                 } catch (e) { /* corrupt cache */ }
             },
             openSlotsModal() {
+                if (!this._requireOctopusHardware('SLOTS')) return;
                 this.renderSlotsVault();
                 document.getElementById('slotsModal').style.display = 'flex';
             },
@@ -4689,6 +5628,7 @@
                 }
             },
             txUserSoundName(eng, slot, name) {
+                if (this._appMode !== 'octopus') return;
                 if (!this.midiOut) return;
                 const f = new Uint8Array(21);
                 f[0] = 0xF0; f[1] = 0x7D; f[2] = 0x03;
@@ -4699,6 +5639,7 @@
                 this.midiOut.send(Array.from(f));
             },
             txUserPatName(slot, name) {
+                if (this._appMode !== 'octopus') return;
                 if (!this.midiOut) return;
                 const f = new Uint8Array(20);
                 f[0] = 0xF0; f[1] = 0x7D; f[2] = 0x04;
@@ -4767,6 +5708,7 @@
             //   • Song chain slot → CMD_SONG_SLOT   (selects the active chain slot)
             //   • Factory pattern → CMD_LOAD_PAT_S/D (device loads ROM into the active bank)
             openLoadModal() {
+                if (!this._requireOctopusHardware('LOAD')) return;
                 const bl = document.getElementById('loadBankLabel');
                 if (bl) bl.innerText = 'ABCD' [this.bankIdx] || 'A';
                 const ss = document.getElementById('loadSongSlot');
@@ -4777,6 +5719,7 @@
                 document.getElementById('loadModal').style.display = 'none';
             },
             loadSavedSession() {
+                if (!this._requireOctopusHardware('LOAD')) return;
                 this.sessionLoad();
                 this.closeLoadModal();
             },
@@ -4808,16 +5751,20 @@
             // setBpm intentionally removed — no web tempo control, no web timer.
             setTranspose(v) {
                 const t = Math.max(-12, Math.min(12, Math.round(+v)));
-                this.txSysex(CMD.TRANSPOSE, t + 12);
+                if (this._appMode !== 'midi') this.txParam(CMD.TRANSPOSE, t + 12);
                 // Keep both seq-transpose boxes (global header + engine panel) in sync.
                 const a = document.getElementById('seqTrn'); if (a) a.value = t;
                 const b = document.getElementById('seqEngTrn'); if (b) b.value = t;
+                if (this._appMode === 'midi') this._midiPersistSoon();
             },
             // Sequencer octave (±4). Wire: v14 = oct + 4.
             setSeqOctave(v) {
                 const o = Math.max(-4, Math.min(4, Math.round(+v)));
-                this.txSysex(CMD.HW_S_OCT, o + 4);
+                if (this._appMode !== 'midi') this.txParam(CMD.HW_S_OCT, o + 4);
                 const el = document.getElementById('seqOct'); if (el) el.value = o;
+                const m = document.getElementById('midiSeqOct'); if (m) m.value = o;
+                const inst = document.getElementById('midiInstOct'); if (inst) inst.value = o;
+                if (this._appMode === 'midi') this._midiPersistSoon();
             },
             setHarpWave(v) {
                 const w = Math.max(0, Math.min(24, Math.round(+v)));
@@ -4848,7 +5795,8 @@
             },
             setSeqLength(v) {
                 this.seqLen = Math.max(1, Math.min(64, Math.round(+v)));
-                this.txSysex(CMD.HW_S_LEN, this.seqLen);
+                if (this._appMode !== 'midi') this.txParam(CMD.HW_S_LEN, this.seqLen);
+                else this._midiPersistSoon();
                 this._updatePageButtons();
                 /* Length change can invalidate wrap/playhead state — re-sync always. */
                 const s = Math.min(this.visStep | 0, this.seqLen - 1);
@@ -4860,6 +5808,7 @@
                 this.gridPageIdx = (+p) & 3;
                 [1, 2, 3, 4].forEach(i => document.getElementById('btnPage' + i) ?.classList.toggle('active-green', (i - 1) === this.gridPageIdx));
                 if (repaint) this.repaintGrid();
+                if (this._appMode === 'midi') this._midiPersistSoon();
             },
             _updatePageButtons() {
                 const pages = Math.max(1, Math.ceil(this.seqLen / 16));
@@ -4877,11 +5826,12 @@
                 this.bankIdx = (+b) & 3;
                 this.chainIdx = 0;
                 ['A', 'B', 'C', 'D'].forEach((l, i) => document.getElementById('btnBank' + l) ?.classList.toggle('active-green', i === this.bankIdx));
-                if (tx) {
+                if (tx && this._appMode !== 'midi') {
                     this.txSysex(CMD.BANK, this.bankIdx);
                     this.txSysex(CMD.SEQ_CHAIN, 0);
                 }
                 this.repaintGrid();
+                if (this._appMode === 'midi') this._midiPersistSoon();
             },
 
             // ── Harp play mode (POLY8 / STRINGS / SOLO) ─────────────────────────────────
@@ -5034,11 +5984,13 @@
                         // [FIX-GRID-ENC] Use lossless _txGridRow (sub 0x05) instead of
                         // CMD.GRID_ROW_LO/HI — old format overlapped page bits with byte
                         // bits in v14, corrupting steps 4-5 for pages 1-3.
-                        this._txGridRow(bank, r, page, lo, hi);
+                        if (this._appMode !== 'midi')
+                            this._txGridRow(bank, r, page, lo, hi);
                     }
                 }
                 this.repaintGrid();
                 this.log('Pasted to bank ' + 'ABCD'[bank] + ' (all 64 steps)');
+                if (this._appMode === 'midi') this._midiPersistSoon();
             },
             // RND — randomize cells in the active bank only.
             //   kind 'synth' = melody rows 0-7, 'drum' = drum rows 8-15.
@@ -5058,27 +6010,39 @@
                         const on = Math.random() < p;
                         if (this.gridData[this.bankIdx][r][c] === on) continue;
                         this.gridData[this.bankIdx][r][c] = on;
-                        this.txSysex(CMD.GRID_TOG, (r << 7) | c);
+                        if (this._appMode !== 'midi')
+                            this.txSysex(CMD.GRID_TOG, (r << 7) | c);
                     }
                 this.repaintGrid();
-                // [RND-RESTART] Restart the sequencer from step 1 so the new random
-                // pattern is heard from the beginning immediately — only while playing
-                // (when stopped, seq_start() always resets the counter anyway).
-                if (this.isPlaying) this.txSysex(CMD.SEQ_RESTART, 0);
+                if (this.isPlaying) {
+                    if (this._appMode === 'midi') {
+                        this.visStep = 0;
+                        this._paintPlayhead(0, true);
+                        this._midiPlayStep(0);
+                    } else {
+                        this.txSysex(CMD.SEQ_RESTART, 0);
+                    }
+                }
                 this.log((kind === 'drum' ? 'Drums' : 'Notes') + ' randomized @ ' +
                     dens + '% (all pages, bank ' + 'ABCD' [this.bankIdx] + ')' +
                     (this.isPlaying ? ' — restarting from step 1' : ''));
+                if (this._appMode === 'midi') this._midiPersistSoon();
             },
             clearGrid() {
-                // 1:1 mirror of hardware SEQ SETUP → Clear: active grid + P-locks +
-                // BOTH sounds reset to preset 0.  We clear locally for instant feedback,
-                // then let the device do the authoritative clear (it echoes the cleared
-                // rows + reset sound knobs back, so App and hardware stay identical).
                 for (let r = 0; r < 16; r++)
                     for (let c = 0; c < 64; c++)
                         this.gridData[this.bankIdx][r][c] = false;
                 this.repaintGrid();
-                this.txSysex(CMD.SEQ_CLEAR, 0);
+                if (this._appMode === 'midi') {
+                    this.log('Cleared grid (bank ' + 'ABCD' [this.bankIdx] + ') — local only in MIDI mode.');
+                    this._midiPersistSoon();
+                    return;
+                }
+                // 1:1 mirror of hardware SEQ SETUP → Clear: active grid + P-locks +
+                // BOTH sounds reset to preset 0.  We clear locally for instant feedback,
+                // then let the device do the authoritative clear (it echoes the cleared
+                // rows + reset sound knobs back, so App and hardware stay identical).
+                this.txParam(CMD.SEQ_CLEAR, 0);
                 this.log('Cleared grid + P-locks + reset sounds (bank ' + 'ABCD' [this.bankIdx] + ')');
             },
 
@@ -5086,6 +6050,7 @@
             // Firmware loads its own ROM via LOAD_PAT_S/D; we mirror the grid + knobs locally
             // using the SAME mapping as patterns.h so App and hardware stay identical.
             loadSynthPat(idx) {
+                if (this._appMode === 'midi') return;
                 if (idx === "" || !SYNTH_PATTERNS[idx]) return;
                 const pat = SYNTH_PATTERNS[idx];
                 this.log('Loading synth pattern: ' + pat.name + ' → bank ' + 'ABCD' [this.bankIdx]);
@@ -5118,6 +6083,7 @@
                 this.txSysex(CMD.LOAD_PAT_S, +idx);
             },
             loadDrumPat(idx) {
+                if (this._appMode === 'midi') return;
                 if (idx === "" || !DRUM_PATTERNS[idx]) return;
                 const pat = DRUM_PATTERNS[idx];
                 this.log('Loading drum pattern: ' + pat.name + ' → bank ' + 'ABCD' [this.bankIdx]);
@@ -5231,7 +6197,8 @@
                     cell._gridOn = on;
                     cell.classList.toggle('active', on);
                 }
-                this.txSysex(CMD.GRID_TOG, (r << 7) | abs);
+                if (this._appMode !== 'midi') this.txParam(CMD.GRID_TOG, (r << 7) | abs);
+                else this._midiPersistSoon();
             },
             // [G2] Apply an absolute half-row from firmware.  page 0–3 selects steps
             // page*16+0..15; high=false → lower 8 of that page, high=true → upper 8.
@@ -5277,6 +6244,242 @@
                         }
                     }
                 /* Grid cell toggles only — playhead stays until step/page changes. */
+            },
+
+            // ── MIDI INSTRUMENTS panels (Phase 5) ───────────────────────────────────
+            buildMidiInst() {
+                const notesHost = document.getElementById('midi-drum-notes');
+                if (notesHost && !notesHost.children.length) {
+                    DRUM_ROW_LABELS.forEach((label, i) => {
+                        const row = document.createElement('div');
+                        row.className = 'midi-drum-note-row';
+                        row.innerHTML = `<span>${label}</span><input type="number" class="display-box dark-input-panel midi-drum-note-in" data-row="${i}" min="0" max="127" value="${this.midiMap.drumNotes[i]}" onchange="app.setMidiDrumNote(${i},this.value)">`;
+                        notesHost.appendChild(row);
+                    });
+                }
+                this.buildMidiKnobs('midi-seq-knobs', MIDI_KNOBS.seqSynth);
+                const drumGrid = document.getElementById('midi-drum-knobs');
+                if (drumGrid && !this._midiDrumScope) this._initMidiDrumScope(drumGrid);
+                if (!this._midiSeqScope) this._initMidiSeqScope();
+                this._midiSyncInstBar();
+            },
+            buildMidiKnobs(containerId, config) {
+                const cont = document.getElementById(containerId);
+                if (!cont || !config) return;
+                cont.innerHTML = '';
+                const groups = [...new Set(config.map(k => k.group))];
+                groups.forEach(g => {
+                    const p = document.createElement('div');
+                    p.className = 'sub-panel';
+                    p.innerHTML = `<div class="sub-panel-title">${g}</div><div class="sub-panel-knobs"></div>`;
+                    const kCont = p.querySelector('.sub-panel-knobs');
+                    config.filter(k => k.group === g).forEach(k => {
+                        const w = document.createElement('div');
+                        w.className = 'knob-wrapper';
+                        const rawFromNorm = nv => Math.max(k.min, Math.min(k.max, k.min + nv * (k.max - k.min)));
+                        const normFromRaw = raw => (raw - k.min) / (k.max - k.min);
+                        const applyKnob = (raw, txNow) => {
+                            const clamped = Math.max(k.min, Math.min(k.max, raw));
+                            const sn = normFromRaw(clamped);
+                            hitbox.style.setProperty('--val', Math.max(0, Math.min(1, sn)));
+                            val.innerText = k.fmt(clamped);
+                            if (txNow) this._midiSendCc(this._midiMelodyChannel(), k.cc, clamped);
+                            return clamped;
+                        };
+                        w.innerHTML = `<div class="knob-label">${k.label}</div><div class="knob-hitbox" style="--val:0"><div class="knob"></div></div><div class="knob-val">0</div>`;
+                        const hitbox = w.querySelector('.knob-hitbox'),
+                            val = w.querySelector('.knob-val');
+                        if (!this.midiKnobStates[k.cc]) this.midiKnobStates[k.cc] = [];
+                        this.midiKnobStates[k.cc].push({ node: hitbox, text: val, meta: k });
+                        const def = this.midiMap.cc[k.cc] != null ? this.midiMap.cc[k.cc] : k.def;
+                        applyKnob(def, false);
+                        let dragging = false, sy = 0, sv = 0, lastTxMs = 0, pendingRaw = null;
+                        hitbox.onpointerdown = e => {
+                            e.preventDefault();
+                            hitbox.setPointerCapture(e.pointerId);
+                            dragging = true;
+                            sy = e.clientY;
+                            sv = parseFloat(hitbox.style.getPropertyValue('--val')) || 0;
+                            if (e.pointerType === 'mouse') document.body.style.cursor = 'ns-resize';
+                        };
+                        hitbox.addEventListener('pointermove', e => {
+                            if (!dragging) return;
+                            const sensitivity = e.pointerType === 'touch' ? 220 : 150;
+                            const nv = Math.max(0, Math.min(1, sv + (sy - e.clientY) / sensitivity));
+                            const raw = applyKnob(rawFromNorm(nv), false);
+                            const now = performance.now();
+                            if (now - lastTxMs >= 16) {
+                                lastTxMs = now;
+                                pendingRaw = null;
+                                this._midiSendCc(this._midiMelodyChannel(), k.cc, raw);
+                            } else pendingRaw = raw;
+                        });
+                        hitbox.addEventListener('pointerup', () => {
+                            if (!dragging) return;
+                            dragging = false;
+                            document.body.style.cursor = 'default';
+                            if (pendingRaw !== null) {
+                                this._midiSendCc(this._midiMelodyChannel(), k.cc, pendingRaw);
+                                pendingRaw = null;
+                            }
+                        });
+                        hitbox.addEventListener('pointercancel', () => {
+                            if (pendingRaw !== null) this._midiSendCc(this._midiMelodyChannel(), k.cc, pendingRaw);
+                            dragging = false;
+                            document.body.style.cursor = 'default';
+                            pendingRaw = null;
+                        });
+                        hitbox.addEventListener('wheel', e => {
+                            e.preventDefault();
+                            const cur = parseFloat(hitbox.style.getPropertyValue('--val')) || 0;
+                            const stepN = (e.shiftKey ? 0.08 : 0.02) * (e.deltaY < 0 ? 1 : -1);
+                            const raw = applyKnob(rawFromNorm(Math.max(0, Math.min(1, cur + stepN))), false);
+                            this._midiSendCc(this._midiMelodyChannel(), k.cc, raw);
+                        }, { passive: false });
+                        kCont.appendChild(w);
+                    });
+                    cont.appendChild(p);
+                });
+            },
+            _initMidiSeqScope() {
+                const host = document.getElementById('midi-seq-scope-host');
+                const canvas = document.getElementById('midi-seq-scope-canvas');
+                if (!host || !canvas) return;
+                const resize = () => {
+                    const r = host.getBoundingClientRect();
+                    const dpr = window.devicePixelRatio || 1;
+                    canvas.width = Math.max(48, Math.floor(r.width * dpr));
+                    canvas.height = Math.max(48, Math.floor(r.height * dpr));
+                };
+                resize();
+                if (typeof ResizeObserver !== 'undefined') new ResizeObserver(resize).observe(host);
+                this._midiSeqScope = {
+                    host,
+                    canvas,
+                    ctx: null,
+                    resize,
+                    phase: Math.random() * Math.PI * 2,
+                    amp: 0,
+                    hits: 0,
+                    lastStep: -1,
+                    histLen: 128,
+                    history: new Float32Array(128),
+                    histIdx: 0,
+                    lastTs: 0,
+                    stroke: '#ec4899',
+                    glow: 'rgba(236, 72, 153, 0.55)',
+                    gridRow0: 0,
+                    gridRow1: 8
+                };
+            },
+            _initMidiDrumScope(drumGrid) {
+                const host = document.createElement('div');
+                host.className = 'drum-scope-toy';
+                host.title = 'Drum MIDI activity — pulses on note out';
+                const canvas = document.createElement('canvas');
+                canvas.className = 'drum-scope-canvas';
+                host.appendChild(canvas);
+                drumGrid.appendChild(host);
+                const resize = () => {
+                    const r = host.getBoundingClientRect();
+                    const dpr = window.devicePixelRatio || 1;
+                    canvas.width = Math.max(48, Math.floor(r.width * dpr));
+                    canvas.height = Math.max(48, Math.floor(r.height * dpr));
+                };
+                resize();
+                if (typeof ResizeObserver !== 'undefined') new ResizeObserver(resize).observe(host);
+                this._midiDrumScope = {
+                    host,
+                    canvas,
+                    ctx: null,
+                    resize,
+                    phase: Math.random() * Math.PI * 2,
+                    amp: 0,
+                    hits: 0,
+                    lastStep: -1,
+                    histLen: 128,
+                    history: new Float32Array(128),
+                    histIdx: 0,
+                    lastTs: 0,
+                    stroke: '#06b6d4',
+                    glow: 'rgba(6, 182, 212, 0.55)',
+                    gridRow0: 8,
+                    gridRow1: 16
+                };
+            },
+            _tickMidiActivityScope(ts, s) {
+                if (!s || document.hidden || !s.host.offsetParent) return;
+                if (!s.lastTs) s.lastTs = ts;
+                const dt = Math.min(0.05, Math.max(0.001, (ts - s.lastTs) * 0.001));
+                s.lastTs = ts;
+                const ctx = s.ctx || (s.ctx = s.canvas.getContext('2d'));
+                const w = s.canvas.width, h = s.canvas.height;
+                if (w < 8 || h < 8) return;
+                const step = this.isPlaying ? (this.visStep | 0) : -1;
+                if (step !== s.lastStep) {
+                    s.lastStep = step;
+                    if (step >= 0) {
+                        let hits = 0, energy = 0;
+                        const grid = this.gridData?.[this.bankIdx];
+                        if (grid) {
+                            for (let r = s.gridRow0; r < s.gridRow1; r++) {
+                                if (grid[r] && grid[r][step]) {
+                                    hits++;
+                                    energy += (r <= 9) ? 1.0 : (r >= 12 ? 0.5 : 0.72);
+                                }
+                            }
+                        }
+                        if (energy > 0) {
+                            const accent = (step % 4 === 0) ? 1.12 : 1.0;
+                            const hitAmp = Math.min(1.2, energy * 0.34 * accent);
+                            if (hitAmp > s.amp) s.amp = hitAmp;
+                            s.hits = Math.max(s.hits, hits);
+                        }
+                    }
+                }
+                const floor = this.isPlaying ? 0.03 : 0.02;
+                s.amp += (floor - s.amp) * (1 - Math.exp(-(this.isPlaying ? 5.0 : 2.0) * dt));
+                if (s.amp < floor) s.amp = floor;
+                s.hits *= 0.90;
+                const amp = s.amp;
+                const omega = 5.0 + s.hits * 2.6 + amp * 7.5;
+                s.phase += omega * dt;
+                const n1 = Math.sin(s.phase);
+                const n2 = Math.sin(s.phase * 2.13 + 0.55) * 0.32;
+                const n3 = Math.sin(s.phase * 0.51 + 1.1) * 0.16;
+                const noise = (Math.random() - 0.5) * 0.10 * amp;
+                s.history[s.histIdx] = (n1 + n2 + n3 + noise) * amp;
+                s.histIdx = (s.histIdx + 1) % s.histLen;
+                ctx.fillStyle = 'rgba(2, 2, 6, 0.28)';
+                ctx.fillRect(0, 0, w, h);
+                const cy = h * 0.5, pad = Math.max(2, w * 0.02), ampPx = h * 0.36;
+                ctx.strokeStyle = s.gridRow0 === 0 ? 'rgba(236, 72, 153, 0.14)' : 'rgba(6, 182, 212, 0.14)';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(pad, cy);
+                ctx.lineTo(w - pad, cy);
+                ctx.stroke();
+                ctx.strokeStyle = s.stroke;
+                ctx.lineWidth = Math.max(1.2, w / 100);
+                ctx.shadowBlur = 6;
+                ctx.shadowColor = s.glow;
+                ctx.beginPath();
+                for (let i = 0; i < s.histLen; i++) {
+                    const idx = (s.histIdx + i) % s.histLen;
+                    const x = pad + (i / (s.histLen - 1)) * (w - pad * 2);
+                    const y = cy - s.history[idx] * ampPx;
+                    if (i === 0) ctx.moveTo(x, y);
+                    else {
+                        const px = pad + ((i - 1) / (s.histLen - 1)) * (w - pad * 2);
+                        const py = cy - s.history[(s.histIdx + i - 1) % s.histLen] * ampPx;
+                        ctx.quadraticCurveTo(px, py, (px + x) * 0.5, (py + y) * 0.5);
+                    }
+                }
+                ctx.stroke();
+                ctx.shadowBlur = 0;
+            },
+            _tickMidiSeqScope(ts) {
+                this._tickMidiActivityScope(ts, this._midiSeqScope);
             },
 
             // ── Build knobs ───────────────────────────────────────────────────────────
@@ -5489,6 +6692,11 @@
             },
 
             _tickDrumScope(ts) {
+                if (this._appMode === 'midi') {
+                    this._tickMidiSeqScope(ts);
+                    this._tickMidiActivityScope(ts, this._midiDrumScope);
+                    return;
+                }
                 const s = this._drumScope;
                 if (!s) return;
                 // Tick only while the scope is actually on-screen (its host has a
@@ -5513,7 +6721,7 @@
                 }
 
                 // [SOUND-REACTIVE] Fire a transient on the ACTUAL drum hits at the live
-                // playhead step (device-driven via STEP_SYNC), not free-running noise.
+                // playhead step (local clock in MIDI mode, STEP_SYNC in Octopus mode).
                 // Drum rows are 8-15 of the playing bank's grid; kick/snare punch harder
                 // than hats/perc, downbeats accent. The trace now mirrors the pattern the
                 // device is really playing — it pulses on every drum hit and decays on
@@ -5593,10 +6801,26 @@
 
             // ── View switching ────────────────────────────────────────────────────────
             switchView(id) {
+                const midi = this._appMode === 'midi';
+                if (midi) {
+                    const views = ['view-midi-inst', 'view-seq'];
+                    const tabs = ['tab1', 'tab3'];
+                    const idx = id === 3 ? 1 : 0;
+                    views.forEach((v, i) => {
+                        document.getElementById(v)?.classList.toggle('active', i === idx);
+                        document.getElementById(tabs[i])?.classList.toggle('active', i === idx);
+                    });
+                    document.getElementById('view-synths')?.classList.remove('active');
+                    document.getElementById('view-mixer')?.classList.remove('active');
+                    if (idx === 1)
+                        requestAnimationFrame(() => this._paintPlayhead(this.visStep | 0));
+                    return;
+                }
                 ['view-synths', 'view-mixer', 'view-seq'].forEach((v, i) => {
-                    document.getElementById(v) ?.classList.toggle('active', i === id - 1);
-                    document.getElementById('tab' + (i + 1)) ?.classList.toggle('active', i === id - 1);
+                    document.getElementById(v)?.classList.toggle('active', i === id - 1);
+                    document.getElementById('tab' + (i + 1))?.classList.toggle('active', i === id - 1);
                 });
+                document.getElementById('view-midi-inst')?.classList.remove('active');
                 if (id === 3) {
                     requestAnimationFrame(() => this._paintPlayhead(this.visStep | 0));
                 }
@@ -5612,7 +6836,26 @@
             },
             toggleHelp() {
                 const m = document.getElementById('helpModal');
-                m.style.display = m.style.display === 'flex' ? 'none' : 'flex';
+                const show = m.style.display !== 'flex';
+                m.style.display = show ? 'flex' : 'none';
+                if (show) this.showHelpTab(this._appMode === 'midi' ? 'midi' : 'octopus');
+            },
+            showHelpTab(which) {
+                const o = document.getElementById('helpBodyOctopus');
+                const mi = document.getElementById('helpBodyMidi');
+                const bO = document.getElementById('helpTabOctopus');
+                const bM = document.getElementById('helpTabMidi');
+                const oct = which !== 'midi';
+                if (o) o.style.display = oct ? 'block' : 'none';
+                if (mi) mi.style.display = oct ? 'none' : 'block';
+                if (bO) {
+                    bO.classList.toggle('active-purple', oct);
+                    bO.style.opacity = oct ? '1' : '0.55';
+                }
+                if (bM) {
+                    bM.classList.toggle('active-cyan', !oct);
+                    bM.style.opacity = oct ? '0.55' : '1';
+                }
             },
             // ── SYSEX LINK MONITOR ──────────────────────────────────────────────────────
             // [MON-FIX] The monitor used to show ONLY status strings (never the actual
@@ -5710,7 +6953,9 @@
                     l.style.transform = 'scaleX(0)';
                     r.style.transform = 'scaleX(0)';
                 }
-                this._tickDrumScope(ts || performance.now());
+                const now = ts || performance.now();
+                if (this._appMode === 'midi') this._midiClockTick(now);
+                this._tickDrumScope(now);
                 requestAnimationFrame((t) => app.animateVU(t));
             }
         };

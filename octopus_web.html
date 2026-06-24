@@ -659,6 +659,7 @@
                 <a href="#seq" class="nav-link text-gray-400">Seq</a>
                 <a href="#fx" class="nav-link text-gray-400">FX</a>
                 <a href="#app" class="nav-link text-gray-400">App</a>
+                <a href="#midi-mode" class="nav-link text-gray-400">MIDI Mode</a>
                 <a href="CHANGELOG.md" class="nav-link text-gray-400">Changelog</a>
                 <a href="#resources" class="nav-link text-gray-400">Docs</a>
                 <a href="#specs" class="nav-link text-gray-400">Specs</a>
@@ -1131,6 +1132,116 @@
         </div>
     </section>
 
+    <!-- ════════════════════════ UNIVERSAL MIDI CONTROLLER MODE ════════════════════════ -->
+    <section id="midi-mode" class="py-24 px-6 border-t border-[#111]">
+        <div class="max-w-7xl mx-auto text-center mb-12">
+            <p class="text-xs uppercase tracking-[0.25em] text-[#06b6d4] mb-3 mono">New in OctopusApp v6.2.00</p>
+            <h2 class="text-3xl md:text-4xl text-white mb-4"><span class="text-[#06b6d4]">07.</span> Universal MIDI Controller Mode</h2>
+            <p class="max-w-3xl mx-auto text-gray-400 leading-relaxed">
+                OctopusApp is not only a mirror for Octopus PRO XL hardware. When <strong class="text-gray-300">no Octopus is connected</strong>,
+                the same browser App becomes a <strong class="text-[#06b6d4]">standalone MIDI controller</strong> — pick any USB MIDI interface from the port list
+                and drive external synths, drum machines, or a DAW with a <strong>64-step sequencer</strong>, <strong>Control Change</strong>, and <strong>Program Change</strong>.
+                <span class="block mt-3 text-sm text-gray-500">Browser-only feature — no firmware update required. Octopus linked mode stays identical to v6.1.</span>
+            </p>
+        </div>
+
+        <div class="max-w-6xl mx-auto grid md:grid-cols-2 gap-10 mb-14">
+            <div class="feature-card border-[#06b6d4]/30">
+                <h4 class="text-[#06b6d4] font-bold mb-3"><i class="fa-solid fa-plug-circle-xmark"></i> When to use it</h4>
+                <ul class="text-sm text-gray-400 space-y-2 list-disc pl-4">
+                    <li>Rehearse patterns on a laptop without the laser module powered.</li>
+                    <li>Sequence a hardware synth or groovebox over USB MIDI.</li>
+                    <li>Sketch drum + melody ideas before moving them to Octopus hardware.</li>
+                    <li>Teach or demo step sequencing with any class-compliant MIDI interface.</li>
+                </ul>
+            </div>
+            <div class="feature-card border-[#06b6d4]/30">
+                <h4 class="text-[#06b6d4] font-bold mb-3"><i class="fa-solid fa-shuffle"></i> Two modes, zero overlap</h4>
+                <div class="text-sm text-gray-400 space-y-2 mono text-xs">
+                    <p><span class="text-[#22c55e]">OCTOPUS ON</span> — SysEx sync, 3 tabs, hardware transport, NVS SAVE/LOAD</p>
+                    <p><span class="text-[#06b6d4]">MIDI OUT</span> — standard MIDI only, 2 tabs, App transport, browser storage</p>
+                </div>
+                <p class="text-sm text-gray-500 mt-4">Laser, D-BEAM, studio mixer, user slots, and device reset are <strong class="text-gray-400">unavailable</strong> in MIDI mode so they cannot touch Octopus settings.</p>
+            </div>
+        </div>
+
+        <div class="max-w-5xl mx-auto grid md:grid-cols-2 gap-8 mb-12">
+            <div class="box-glow-green rounded-xl p-6 bg-[#050508]" style="--glow: #06b6d4">
+                <h4 class="text-[#06b6d4] font-bold mb-2"><i class="fa-solid fa-table-cells"></i> Sequencer tab</h4>
+                <p class="text-sm text-gray-400">Same 16&times;16 pad matrix, banks A–D, and P1–P4 pages (up to 64 steps). The App runs its own BPM clock and playhead on an isolated GPU layer — no glitching when the UI is busy. Outbound <strong>note on/off</strong> on each step for melody rows (scale-aware) and drum rows (GM-style mapping).</p>
+            </div>
+            <div class="box-glow-green rounded-xl p-6 bg-[#050508]" style="--glow: #06b6d4">
+                <h4 class="text-[#06b6d4] font-bold mb-2"><i class="fa-solid fa-sliders"></i> Instruments tab (MIDI)</h4>
+                <p class="text-sm text-gray-400">Trimmed layout: <strong>Seq synth</strong> panel (MIDI channel, program change, CC knobs, activity canvas) and <strong>drum machine</strong> panel with the beat-reactive scope canvas — not the full studio mixing console, laser show, or D-BEAM editors from Octopus mode.</p>
+            </div>
+        </div>
+
+        <div class="max-w-3xl mx-auto feature-card mb-10">
+            <h4 class="text-white mb-2"><i class="fa-solid fa-music text-[#06b6d4]"></i> MIDI output</h4>
+            <p class="text-sm text-gray-400 mb-4">Standard channel voice messages only — compatible with any Web MIDI device:</p>
+            <div class="grid sm:grid-cols-2 gap-3 text-xs mono text-gray-500">
+                <div class="p-3 bg-[#0a0a0e] rounded border border-[#222]">Note on / off — grid steps</div>
+                <div class="p-3 bg-[#0a0a0e] rounded border border-[#222]">Control Change — filter, level, mod…</div>
+                <div class="p-3 bg-[#0a0a0e] rounded border border-[#222]">Program Change — per engine</div>
+                <div class="p-3 bg-[#0a0a0e] rounded border border-[#222]">Start / Stop / Clock — optional</div>
+            </div>
+        </div>
+
+        <div class="max-w-6xl mx-auto mb-14">
+            <h3 class="text-xl text-white mb-6 text-center brand tracking-wide"><i class="fa-solid fa-graduation-cap text-[#06b6d4]"></i> Beginner setup</h3>
+            <p class="text-sm text-gray-500 text-center max-w-2xl mx-auto mb-10">OctopusApp runs in <strong class="text-gray-400">Google Chrome</strong> (or Edge). You do not install a plugin inside your DAW — you route <strong class="text-gray-300">MIDI from the browser</strong> into the DAW or hardware.</p>
+
+            <div class="grid md:grid-cols-3 gap-6 mb-10">
+                <div class="feature-card border-[#06b6d4]/25 text-left">
+                    <h4 class="text-[#06b6d4] font-bold mb-3 text-sm"><i class="fa-brands fa-apple"></i> macOS + Chrome</h4>
+                    <ol class="text-xs text-gray-400 space-y-2 list-decimal pl-4 leading-relaxed">
+                        <li>Open <a href="https://octopus.isystem.app" class="text-[#06b6d4] hover:underline">octopus.isystem.app</a> → <strong class="text-gray-300">Allow</strong> MIDI.</li>
+                        <li><strong class="text-gray-300">Hardware only:</strong> pick your USB synth in the App MIDI menu → program grid → Play.</li>
+                        <li><strong class="text-gray-300">Into a DAW:</strong> Audio MIDI Setup → MIDI Studio → enable <strong class="text-gray-300">IAC Driver</strong>.</li>
+                        <li>App MIDI port = <strong class="text-gray-300">IAC Bus 1</strong> · DAW track input = same bus · match channels.</li>
+                    </ol>
+                </div>
+                <div class="feature-card border-[#06b6d4]/25 text-left">
+                    <h4 class="text-[#06b6d4] font-bold mb-3 text-sm"><i class="fa-brands fa-windows"></i> Windows + Chrome</h4>
+                    <ol class="text-xs text-gray-400 space-y-2 list-decimal pl-4 leading-relaxed">
+                        <li>Install USB MIDI driver if needed (Device Manager).</li>
+                        <li>Open <a href="https://octopus.isystem.app" class="text-[#06b6d4] hover:underline">octopus.isystem.app</a> → <strong class="text-gray-300">Allow</strong> MIDI.</li>
+                        <li><strong class="text-gray-300">Into a DAW:</strong> install <a href="https://www.tobias-erichsen.de/software/loopmidi.html" class="text-[#06b6d4] hover:underline" target="_blank" rel="noopener">loopMIDI</a> → create a port.</li>
+                        <li>App selects that port · DAW MIDI input = same port · arm track → Play in App.</li>
+                    </ol>
+                </div>
+                <div class="feature-card border-[#06b6d4]/25 text-left">
+                    <h4 class="text-[#06b6d4] font-bold mb-3 text-sm"><i class="fa-solid fa-sliders"></i> DAW as receiver</h4>
+                    <p class="text-xs text-gray-400 mb-3 leading-relaxed">Chrome → virtual MIDI cable → DAW instrument track. OctopusApp owns <strong class="text-gray-300">play/stop/BPM</strong> in MIDI mode.</p>
+                    <ul class="text-xs text-gray-500 space-y-1 list-disc pl-4">
+                        <li>Melody rows → melody channel (Ch 1)</li>
+                        <li>Drum rows → drum channel (Ch 10 GM)</li>
+                        <li>INSTRUMENTS tab → CC / Program Change</li>
+                        <li>Optional <strong class="text-gray-400">CLK</strong> → 24 PPQN clock out</li>
+                        <li><strong class="text-gray-400">EXP/IMP</strong> → backup patterns (JSON)</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="feature-card max-w-3xl mx-auto border-[#222]">
+                <p class="text-xs mono text-gray-500 text-center leading-relaxed">
+                    Chrome (OctopusApp) ──<span class="text-[#06b6d4]"> MIDI notes · CC · clock </span>──► IAC / loopMIDI / USB ──► Logic · Ableton · Reaper · hardware synth
+                </p>
+            </div>
+        </div>
+
+        <div class="text-center">
+            <a href="https://octopus.isystem.app" target="_blank" rel="noopener noreferrer"
+               class="inline-flex items-center gap-3 border border-[#06b6d4] text-[#06b6d4] font-bold py-3 px-8 rounded-lg hover:bg-[#06b6d4] hover:text-black transition-colors brand tracking-widest text-sm">
+                <i class="fa-solid fa-laptop-code"></i> OPEN OCTOPUSAPP
+            </a>
+            <p class="text-xs text-gray-600 mono mt-4">
+                <a href="https://github.com/iSystemDevelopment/Octopus_PRO_XL_v6.0/blob/main/user_manual.md#94-universal-midi-controller-mode-octopusapp-v6200--shipped" class="text-gray-500 hover:text-[#06b6d4]">User manual §9.4</a>
+                · In-app Help → <strong class="text-gray-500">MIDI CONTROLLER</strong> tab
+            </p>
+        </div>
+    </section>
+
     <!-- ════════════════════════ RESOURCES ════════════════════════ -->
     <section id="resources" class="py-20 px-6 border-t border-[#111] bg-[#050508]">
         <div class="max-w-5xl mx-auto text-center mb-12">
@@ -1148,7 +1259,7 @@
                class="feature-card resource-tile block hover:border-[#22c55e] text-left no-underline">
                 <div class="text-2xl mb-2 text-[#22c55e]"><i class="fa-solid fa-plug"></i></div>
                 <h3 class="text-white font-bold mb-1">OctopusApp</h3>
-                <p class="text-sm text-gray-400">Live Web MIDI console — connect USB and edit patches, grid, mixer, and song chains.</p>
+                <p class="text-sm text-gray-400">Live Web MIDI console v6.2 — Octopus sync or standalone MIDI Controller (no hardware required).</p>
             </a>
             <a href="user_manual.md" class="feature-card resource-tile block hover:border-[#a855f7] text-left no-underline">
                 <div class="text-2xl mb-2 text-[#a855f7]"><i class="fa-solid fa-book"></i></div>

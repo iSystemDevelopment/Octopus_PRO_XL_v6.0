@@ -445,6 +445,15 @@
  *   • App sends CMD_SESSION_LOAD=157 → firmware loads NVS, syncs atomics,
  *     echoes full state back to App.  App resync is automatic.
  *
+ *   OCTOPUSAPP v6.2.00 — UNIVERSAL MIDI CONTROLLER MODE (browser-only, shipped):
+ *   • When no ★ Octopus USB port + SysEx echo: App enters MIDI OUT mode (badge).
+ *   • 2-tab shell: INSTRUMENTS (seq MIDI + drum MIDI panels) + SEQUENCER.
+ *   • Outbound: standard MIDI note on/off, CC, Program Change; optional 24 PPQN clock.
+ *   • Transport + BPM owned by the App; patterns/CC map in localStorage key
+ *     octopusapp_midi_session_v1 (separate from Octopus NVS and slot cache).
+ *   • Octopus linked mode remains v6.1-identical when hardware is connected.
+ *   • User docs: user_manual.md §9.4; product site octopus-info.isystem.app#midi-mode.
+ *
  * ═══════════════════════════════════════════════════════════════════════════
  * 6. SONG MODE
  *

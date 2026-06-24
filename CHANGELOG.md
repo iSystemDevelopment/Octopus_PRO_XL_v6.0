@@ -5,8 +5,35 @@ All notable changes to Octopus PRO XL firmware and OctopusApp are documented her
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning aligns with firmware `SYSTEM_FW_VERSION` in `code_info.h`.
 
-> **Current version: [6.1.00](#610--2026-06-23)** — build + field-test before flashing to production.  
+> **Current version: [6.1.00](#610--2026-06-23)** — firmware field baseline.  
+> **OctopusApp: [6.2.00](#620--2026-06-23)** — universal MIDI Controller mode (browser-only).  
 > **Previous release: [6.0.01](#601--2026-06-22).**
+
+## [6.2.00] — 2026-06-23 (OctopusApp)
+
+Browser-only release. **No firmware changes.** Authoritative build order: [docs/midi_controller_mode.md](./docs/midi_controller_mode.md).
+
+### Added
+
+- **Universal MIDI Controller mode** — when no Octopus hardware is linked, select any Web MIDI output port; App sends standard note/CC/PC instead of Octopus SysEx.
+- **Trimmed 2-tab layout** — SEQUENCER (shared grid + local playhead) + INSTRUMENTS (seq synth MIDI panel + drum machine scope); MIXER / laser / D-BEAM / NVS tools unavailable.
+- **App-owned transport** — play, stop, editable BPM, local 16th-note step clock; MIDI Start/Stop (`0xFA`/`0xFC`); optional **MIDI clock out** (`0xF8`, 24 PPQN).
+- **Grid → MIDI notes** — melody rows use firmware scale map + transpose/octave; drum rows use GM notes (editable per row).
+- **INSTRUMENTS panels** — 8 CC knobs, Program Change, per-row drum notes, beat-reactive scope canvases.
+- **Dual Help** — separate in-app Help tab for MIDI Controller mode.
+- **localStorage** — `octopusapp_midi_session_v1` stores all 4 banks, routing, CC/PC map (separate from Octopus NVS / slot cache).
+- **EXP / IMP** — export/import MIDI session as JSON from the routing bar.
+
+### Changed (docs)
+
+- **User manual §9.4** — shipped MIDI Controller beginner guides (macOS / Windows + Chrome, DAW routing).
+- **Product site** — MIDI Mode section updated for v6.2.00; in-app Help MIDI CONTROLLER tab.
+- **DEPLOYMENT.md** — production upload + smoke-test checklist for App v6.2.00.
+
+### Unchanged
+
+- **Octopus linked mode** — identical to v6.1.00 when ★ Octopus port + SysEx echo is detected.
+- **Firmware** — remains **6.1.00**.
 
 ## [6.1.00] — 2026-06-23
 
