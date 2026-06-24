@@ -1151,12 +1151,11 @@ static void notifyPersistFail(uint8_t ackCmd) {
     txSysex(ackCmd, 0u);
 }
 
-/* Commit wiped RAM to NVS on a dedicated task (16 KB NvsBlk stack), ACK, reboot.
- * Does NOT use the SAVE/NvsWorker handshake — reset clears RAM first, then writes
- * that factory/empty image to flash so the next boot cannot reload old data.      */
+/* Commit wiped RAM to NVS on a 16 KB stack task, ACK, reboot.
+ * Calls settings_save_scoped directly (no nested NvsBlk + semaphore timeout).   */
 static void reset_commit_task(void*) {
   waitNvsWorkerIdle(4000u);
-  const bool ok = settings_persist_blocking(s_resetPersistScope, 8000u);
+  const bool ok = settings_save_scoped(s_resetPersistScope);
   if (ok) {
     if (isAppConnected()) txSysex(CMD_SCOPED_RESET, 16383u);
     delay(400);
@@ -1188,7 +1187,7 @@ void handleScopedReset(ResetScope scope) {
   applyResetScope(scope);
 
   if (!g_systemReady.load(std::memory_order_acquire)) {
-    if (!settings_persist_blocking(scope, 8000u)) {
+    if (!settings_save_scoped(scope)) {
       notifyPersistFail(CMD_SCOPED_RESET);
       return;
     }
@@ -1198,7 +1197,7 @@ void handleScopedReset(ResetScope scope) {
   }
 
   s_resetPersistScope = scope;
-  if (xTaskCreatePinnedToCore(reset_commit_task, "RstCommit", 4096, nullptr, 5,
+  if (xTaskCreatePinnedToCore(reset_commit_task, "RstCommit", 16384, nullptr, 5,
                               nullptr, 1) != pdPASS) {
     notifyPersistFail(CMD_SCOPED_RESET);
   }

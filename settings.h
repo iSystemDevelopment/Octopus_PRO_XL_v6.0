@@ -1468,9 +1468,16 @@ static inline bool settings_persist_blocking(ResetScope scope, uint32_t timeoutM
     vSemaphoreDelete(ctx.done);
     return false;
   }
-  const bool got = (xSemaphoreTake(ctx.done, pdMS_TO_TICKS(timeoutMs)) == pdTRUE);
+  const bool gotQuick = (xSemaphoreTake(ctx.done, pdMS_TO_TICKS(timeoutMs)) == pdTRUE);
+  if (!gotQuick) {
+    /* Child may still be writing large blobs (patterns/banks).  Never delete the
+     * semaphore or return false while NvsBlk is alive — that produced FAIL UI with
+     * a successful flash commit and no esp_restart() on FULL / BANKS+PATS reset. */
+    xSemaphoreTake(ctx.done, portMAX_DELAY);
+  }
+  const bool ok = ctx.ok;
   vSemaphoreDelete(ctx.done);
-  return got && ctx.ok;
+  return ok;
 }
 
 static inline bool settings_save_scoped(ResetScope scope) {
