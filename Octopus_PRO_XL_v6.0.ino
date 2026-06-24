@@ -155,8 +155,9 @@ void setup() {
     Serial.println(F("not detected — headless mode"));
   }
 
-  /* PHASE 4 — Load settings from NVS */
+  /* PHASE 4 — Deferred reset (FULL / BANKS+PATS flag) then load NVS */
   Serial.print(F("  [4] NVS settings ... "));
+  settings_execute_pending_reset_at_boot();
   if (!loadSettings()) {
     Serial.println(F("✓ (factory defaults applied)"));
   } else {

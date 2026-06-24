@@ -1012,7 +1012,7 @@ inline std::atomic<uint32_t> g_saveFlashMs{ 0 };
 /** millis() until which the OLED shows a "SAVE FAIL" toast after a failed commit. */
 inline std::atomic<uint32_t> g_saveFailFlashMs{ 0 };
 
-/** True while a scoped reset is committing wiped RAM to NVS (not a user SAVE). */
+/** True while SETTINGS/MOTION reset is committing via NvsWorker (OLED RESET pill). */
 inline std::atomic<bool> g_resetInProgress{ false };
 
 /** NVS blob target for the in-flight save (ResetScope values 0–3). */
@@ -1024,7 +1024,7 @@ inline SemaphoreHandle_t g_saveDoneSem{ nullptr };
 /** Set by requestScopedSave; NvsWorker calls esp_restart() after a successful save. */
 inline std::atomic<bool> g_restartAfterSave{ false };
 
-/** Result of the last NvsWorker save (for reset-persist task error UI). */
+/** Result of the last NvsWorker save (SETTINGS/MOTION reset or SAVE). */
 inline std::atomic<bool> g_saveLastOk{ true };
 
 /** SysEx cmd echoed as ACK after a successful persist (156=SAVE, 169=RESET). */

@@ -1515,7 +1515,7 @@
                 <p style="margin-top:10px"><b style="color:var(--green)">WHAT'S NEW IN v6.1.00</b><br>
                 • <b>Auto-connect</b> — USB plug-in syncs automatically (no Connect button).<br>
                 • <b>Octopus ON / Off</b> — two-state connection badge.<br>
-                • <b>SAVE / LOAD / RESET</b> — scope decode fixed; App reloads and re-imports full hardware state after persist.<br>
+                • <b>SAVE / LOAD / RESET</b> — scope decode fixed; FULL/BANKS reset uses deferred boot wipe (fast reboot); App reloads and re-imports full hardware state after persist.<br>
                 • <b>Soft Reset removed</b> — use RESET → Settings for factory knob/mixer defaults.<br>
                 • <b>App-connected hardware</b> — SCALE play/stop · OC short record-arm · encoder BPM.<br>
                 • <b>Playhead GPU layer</b> — isolated from grid UI repaints.<br>
@@ -1531,7 +1531,7 @@
                 TR-909 / TR-808 / Trap / House — kit selection loads per-voice tuning (drum knobs follow). CC 70 on the drum MIDI channel switches kit live.</p>
 
                 <p style="margin-top:10px"><b style="color:var(--orange)">SAVE · LOAD · RESET · CLR</b><br>
-                Popups mirror hardware scopes: <b>Full</b> / <b>Banks+Pats</b> / <b>Motion</b> / <b>Settings</b>. SAVE and scoped RESET reboot (device resumes in place); the App reloads and re-imports from hardware. LOAD reloads RAM with no reboot, then the App reloads. Only one persist action at a time. CLR = hardware Clear (active grid + P-locks + both sounds → preset 0). All destructive actions use YES/NO confirm.</p>
+                Popups mirror hardware scopes: <b>Full</b> / <b>Banks+Pats</b> / <b>Motion</b> / <b>Settings</b>. <b>SAVE</b> and <b>Settings/Motion reset</b> commit via NvsWorker then reboot; the App reloads and re-imports. <b>Full/Banks reset</b> arm an NVS flag and reboot in ~150 ms — the wipe runs on the next boot (same as OC+SCALE combo). <b>LOAD</b> reloads RAM with no reboot, then the App reloads. Only one persist action at a time. CLR = hardware Clear (active grid + P-locks + both sounds → preset 0). All destructive actions use YES/NO confirm.</p>
 
                 <p style="margin-top:10px"><b style="color:var(--purple)">USER SLOTS</b><br>
                 Header <b>SLOTS</b> — 64 harp sounds, 64 seq sounds, 64 patterns. Save / load / rename; custom names persist via SysEx name blobs and echo on connect.</p>
@@ -1620,7 +1620,7 @@
                 <button class="btn active-red" onclick="app.closeResetModal()">CLOSE</button>
             </div>
             <div style="display:flex;flex-direction:column;gap:10px">
-                <div style="color:#666;font-size:9px">Scoped reset wipes RAM, persists factory/empty state, then reboots — same scopes as the hardware RESET menu. Each is confirmed before sending. The App reloads after completion.</div>
+                <div style="color:#666;font-size:9px">Scoped reset — same four scopes as the hardware RESET menu. <b>Full</b> and <b>Banks+Pats</b> reboot immediately; factory wipe runs on the next boot. <b>Settings</b> and <b>Motion</b> commit on-device then reboot. Each action is confirmed before sending. The App reloads after completion.</div>
                 <button class="btn" style="color:var(--red);border-color:var(--red)" onclick="app.resetScoped(0)"><i class="fa-solid fa-rotate-left"></i>FULL RESET</button>
                 <button class="btn" style="color:var(--red);border-color:var(--red)" onclick="app.resetScoped(1)">BANKS + PATS RESET</button>
                 <button class="btn" style="color:var(--purple);border-color:var(--purple)" onclick="app.resetScoped(2)">MOTION CLEAR</button>
@@ -3302,7 +3302,7 @@
                 this._persistBusy = true;
                 this._persistKind = kind;
                 this._persistSince = Date.now();
-                /* NVS commit target < 4.5 s; ACK precedes reboot. */
+                /* NVS reset/commit < 4.5 s; ACK then mandatory reboot. */
                 const persistMs = (kind === 'reset' || kind === 'save') ? 5000 : 10000;
                 if (this._persistTimeoutId) clearTimeout(this._persistTimeoutId);
                 this._persistTimeoutId = setTimeout(() => {
@@ -4263,7 +4263,14 @@
                             else if (!this._persistBusy)
                                 this._scheduleAppReload('hardware reset');
                         } else if (v14 === 0) {
-                            if (this._persistBusy || this._persistKind === 'reset')
+                            /* Firmware always reboots after reset — wait for USB drop. */
+                            if (this._persistBusy && this._persistKind === 'reset') {
+                                this._persistAwaitReboot = true;
+                                if (this._persistTimeoutId) {
+                                    clearTimeout(this._persistTimeoutId);
+                                    this._persistTimeoutId = null;
+                                }
+                            } else if (this._persistBusy || this._persistKind === 'reset')
                                 this._persistFinished(false, false);
                         }
                     },
@@ -4579,7 +4586,7 @@
                 this.sessionLoad(scope);
             },
 
-            // ── RESET popup (scoped reset / soft reset) ─────────────────────────────────
+            // ── RESET popup (scoped reset) ─────────────────────────────────
             openResetModal() {
                 document.getElementById('resetModal').style.display = 'flex';
             },

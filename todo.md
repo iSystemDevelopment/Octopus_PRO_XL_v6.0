@@ -1,6 +1,6 @@
 # v6.1.00 — shipped
 
-Completed in this release — see CHANGELOG.md.
+Completed in this release — see CHANGELOG.md (includes deferred boot reset for FULL/BANKS+PATS).
 
 # Next upgrade — future work (`code_info.h` §9)
 

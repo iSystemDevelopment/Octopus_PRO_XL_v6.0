@@ -15,8 +15,11 @@
  *   "motion"       — sparse P-lock lanes
  *   + usrnames / usrpat / usrpatnames for user slot libraries
  *
- * Boot path: loadSettings() → seedFactoryBanks → settings_load → settings_sync_to_ssot
+ * Boot path: settings_execute_pending_reset_at_boot() (before loadSettings) →
+ *            loadSettings() → seedFactoryBanks → settings_load → settings_sync_to_ssot
  *            → persisted_extras_load().  Scoped SAVE/LOAD/RESET via ResetScope.
+ * Runtime FULL / BANKS+PATS reset: arm NVS flag "pend_rst" + immediate reboot only;
+ *            heavy wipe runs on next boot (same safe window as OC+SCALE combo).
  * Runtime saves go through NvsWorker (16 KB stack) or settings_persist_blocking().
  *
  * Persisted vs transient atomics — see code_info.h §2.  Struct fields append-only;
@@ -1379,10 +1382,14 @@ static inline void persisted_extras_load() {
  * settings blob (it is an arrangement of settings/state, not raw step data).
  * LOAD mirrors each scope exactly via settings_load_scoped().
  *
- * applyResetScope() wipes RAM to factory/empty per scope.  handleScopedReset()
- * then commits that image to NVS (so reboot cannot reload old flash) and restarts.
- * This is NOT "save user data then clear" — RAM is cleared first, then flash is
- * overwritten with the cleared/factory state.  setupToFactoryDefaults() == FULL.
+ * applyResetScope() wipes RAM to factory/empty per scope.
+ *
+ * Runtime reset paths:
+ *   FULL / BANKS_PATTERNS — settings_arm_pending_reset() + esp_restart(); the wipe
+ *     and NVS commit run in settings_execute_pending_reset_at_boot() before tasks
+ *     start (mirrors the reliable OC+SCALE boot-time factory reset).
+ *   SETTINGS / MOTION     — applyResetScope() + settings_commit_reset_scoped() via
+ *     NvsWorker (small NVS writes, safe while running).
  * ═══════════════════════════════════════════════════════════════════════════ */
 enum class ResetScope : uint8_t {
   FULL = 0,
@@ -1406,7 +1413,7 @@ static inline void reset_settings_to_factory() {
   settings_sync_to_ssot();
 }
 
-/** Apply a scoped reset to RAM only — caller persists via NvsWorker or boot sync. */
+/** Apply a scoped reset to RAM — persistence path depends on scope (see code_info.h §2). */
 inline void applyResetScope(ResetScope scope) {
   switch (scope) {
     case ResetScope::FULL:
@@ -1535,6 +1542,108 @@ static inline bool settings_save_scoped(ResetScope scope) {
   const bool ok = (err == ESP_OK);
   if (ok) settings_dirty.store(false, std::memory_order_release);
   return ok;
+}
+
+/** Commit a scoped reset to NVS after applyResetScope() has wiped RAM.
+ * Uses erase for large blobs (patterns/banks/usrpat) — faster and more reliable
+ * than re-writing 8 KB+ blobs while audio/MIDI are still running.  SETTINGS and
+ * MOTION write/erase a single small key (same as before).                         */
+static inline esp_err_t nvs_erase_key_ok(nvs_handle_t h, const char* key) {
+  const esp_err_t e = nvs_erase_key(h, key);
+  return (e == ESP_OK || e == ESP_ERR_NVS_NOT_FOUND) ? ESP_OK : e;
+}
+
+static inline bool settings_commit_reset_scoped(ResetScope scope) {
+  nvs_handle_t h;
+  if (nvs_open_octopus(NVS_READWRITE, &h) != ESP_OK) return false;
+
+  esp_err_t err = ESP_OK;
+  switch (scope) {
+    case ResetScope::FULL:
+      settings_sync_from_ssot();
+      g_settings.crc32 = g_settings.calculate_crc();
+      err = nvs_set_blob(h, "settings", &g_settings, sizeof(AllSettings));
+      if (err != ESP_OK) break;
+      err = nvs_erase_key_ok(h, "patterns");
+      if (err != ESP_OK) break;
+      err = nvs_erase_key_ok(h, "banks");
+      if (err != ESP_OK) break;
+      err = nvs_erase_key_ok(h, "usrnames");
+      if (err != ESP_OK) break;
+      err = nvs_erase_key_ok(h, "usrpat");
+      if (err != ESP_OK) break;
+      err = nvs_erase_key_ok(h, "usrpatnames");
+      if (err != ESP_OK) break;
+      err = nvs_erase_key_ok(h, "motion");
+      break;
+    case ResetScope::SETTINGS:
+      settings_sync_from_ssot();
+      g_settings.crc32 = g_settings.calculate_crc();
+      err = nvs_set_blob(h, "settings", &g_settings, sizeof(AllSettings));
+      break;
+    case ResetScope::BANKS_PATTERNS:
+      err = nvs_erase_key_ok(h, "patterns");
+      if (err != ESP_OK) break;
+      err = nvs_erase_key_ok(h, "banks");
+      if (err != ESP_OK) break;
+      err = nvs_erase_key_ok(h, "usrnames");
+      if (err != ESP_OK) break;
+      err = nvs_erase_key_ok(h, "usrpat");
+      if (err != ESP_OK) break;
+      err = nvs_erase_key_ok(h, "usrpatnames");
+      break;
+    case ResetScope::MOTION:
+      err = nvs_erase_key_ok(h, "motion");
+      break;
+  }
+
+  if (err == ESP_OK) err = nvs_commit(h);
+  nvs_close(h);
+
+  const bool ok = (err == ESP_OK);
+  if (ok) settings_dirty.store(false, std::memory_order_release);
+  return ok;
+}
+
+/* ── deferred reset (FULL / BANKS+PATS) ─────────────────────────────────────
+ * NVS key "pend_rst" (u8): 0=none, 1=FULL, 2=BANKS_PATTERNS.
+ * Runtime arms the flag + reboots; boot kernel executes before loadSettings(). */
+
+static constexpr const char* NVS_KEY_PENDING_RESET = "pend_rst";
+
+static inline bool settings_arm_pending_reset(ResetScope scope) {
+  if (scope != ResetScope::FULL && scope != ResetScope::BANKS_PATTERNS) return false;
+  nvs_handle_t h;
+  if (nvs_open_octopus(NVS_READWRITE, &h) != ESP_OK) return false;
+  const uint8_t v = (uint8_t)scope + 1u;
+  esp_err_t err = nvs_set_u8(h, NVS_KEY_PENDING_RESET, v);
+  if (err == ESP_OK) err = nvs_commit(h);
+  nvs_close(h);
+  return err == ESP_OK;
+}
+
+/** If a deferred reset was armed, wipe RAM + commit NVS then clear the flag.
+ * Call once at boot BEFORE loadSettings() — no RT tasks, minimal stack.          */
+static inline void settings_execute_pending_reset_at_boot() {
+  nvs_handle_t h;
+  if (nvs_open_octopus(NVS_READWRITE, &h) != ESP_OK) return;
+
+  uint8_t v = 0;
+  if (nvs_get_u8(h, NVS_KEY_PENDING_RESET, &v) != ESP_OK || v == 0u) {
+    nvs_close(h);
+    return;
+  }
+
+  nvs_erase_key(h, NVS_KEY_PENDING_RESET);
+  nvs_commit(h);
+  nvs_close(h);
+
+  if (v < 1u || v > 2u) return; /* only FULL(1) or BANKS_PATTERNS(2) */
+
+  const ResetScope scope = (ResetScope)(v - 1u);
+  ESP_LOGI("settings", "deferred reset executing scope %u", (unsigned)v);
+  applyResetScope(scope);
+  settings_commit_reset_scoped(scope);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════

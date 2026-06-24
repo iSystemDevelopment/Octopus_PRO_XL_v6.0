@@ -114,12 +114,14 @@ flowchart LR
 
 All parameter writes funnel through **`patches.h`** apply-functions so hardware encoder turns, OLED menu edits, and OctopusApp SysEx commands converge on identical atomic state. Session data is stored in **NVS** with four scoped operations:
 
-| Scope | Save / Load / Reset affects |
-|-------|----------------------------|
-| **Full** | Entire device state |
-| **Banks+Pats** | Pattern grids, user sound/pattern slots, bank data |
-| **Motion** | P-lock automation lanes only |
-| **Settings** | Mix, MIDI routing, laser, D-BEAM, harp setup — not step data |
+| Scope | Save | Load | Reset |
+|-------|------|------|-------|
+| **Full** | Entire device state → NVS + reboot | Reload all blobs (no reboot) | `pend_rst` flag + instant reboot → boot wipe |
+| **Banks+Pats** | Pattern grids, user slots, bank deltas → NVS + reboot | Re-seed factory banks + overlay stored blobs | `pend_rst` flag + instant reboot → boot wipe |
+| **Motion** | P-lock lanes → NVS + reboot | Clear matrix + overlay motion blob | NvsWorker erase + reboot |
+| **Settings** | Mix, MIDI, laser, D-BEAM, songs → NVS + reboot | Reload settings blob only | NvsWorker factory settings + reboot |
+
+**NVS keys:** `settings`, `patterns`, `banks`, `usrnames`, `usrpat`, `usrpatnames`, `motion`, plus control key `pend_rst` (u8) for deferred FULL/BANKS reset.
 
 ---
 
@@ -145,9 +147,11 @@ To restore factory defaults:
 1. Power off the device.
 2. Press and hold **OC** and **SCALE** simultaneously.
 3. Apply power while holding both buttons for approximately **150 ms** until the reset routine begins.
-4. The unit executes a **Full Reset**, writes NVS, and reboots.
+4. The unit arms a deferred reset, reboots, and on the next boot restores factory state before any audio or laser tasks start.
 
-Runtime scoped resets are available under **RESET** in the main menu ([§8.14](#814-reset)).
+Runtime **Full Reset** and **Banks+Pats Reset** arm an NVS flag and reboot immediately (under ~200 ms). The actual wipe runs at the start of the next boot — the same safe window as the button combo above. **Settings Reset** and **Motion Clear** complete on the running device via a short NvsWorker commit, then reboot.
+
+Scoped resets are also available under **RESET** in the main menu ([§8.14](#814-reset)).
 
 ### 3.4 App-connected mode
 
@@ -725,13 +729,22 @@ The OLED refreshes continuously (~30 Hz) while any telemetry view is open. **Sys
 
 ### 8.14 RESET
 
-Full Reset · Banks+Pats · Motion Clr · Settings — L2 click → confirm → execute (+ reboot for reset).
+Four scopes mirror SAVE/LOAD. L2 click → confirm → execute.
+
+| Scope | Runtime behaviour |
+|-------|-------------------|
+| **Full Reset** | Arms NVS `pend_rst` → immediate reboot → boot kernel wipes all blobs + factory settings |
+| **Banks+Pats** | Same deferred path — clears patterns, banks, user slots; keeps settings & motion |
+| **Motion Clr** | Clears P-lock matrix in RAM + NVS via NvsWorker → reboot |
+| **Settings** | Factory knob/mixer/laser defaults in RAM + NVS via NvsWorker → reboot |
+
+After reboot the OLED returns to the normal dashboard; OctopusApp reloads and re-imports via `APP_SYNC_REQ`.
 
 ---
 
 ### 8.15 SAVE / 8.16 LOAD
 
-Same four scopes. SAVE persists to NVS (+ reboot). LOAD reloads from NVS without reboot.
+Same four scopes. **SAVE** writes current RAM to NVS via NvsWorker (+ reboot). **LOAD** reloads from NVS into RAM without reboot (App receives full state echo).
 
 ---
 
@@ -789,7 +802,7 @@ SAVE · LOAD · RESET · SLOTS · CPY/PST · RND-H/RND-D · CLR · mutes · DBEA
 | BPM uneditable in App | By design — adjust on hardware encoder |
 | Lost pattern after power | Perform SAVE → Full Save |
 | Stuck notes | Short SCALE on HARP dashboard (panic) |
-| Factory restore | Boot with OC+SCALE held, or RESET → Full Reset |
+| Factory restore | Boot with OC+SCALE held, or RESET → Full Reset (instant reboot, wipe on next boot) |
 
 ---
 
@@ -799,9 +812,9 @@ SAVE · LOAD · RESET · SLOTS · CPY/PST · RND-H/RND-D · CLR · mutes · DBEA
 
 | Store | Count | Contents |
 |-------|-------|----------|
-| Factory presets | 128 | Shared browse bank |
-| User sound slots | 64 × 2 engines | Harp + seq patches |
-| User pattern slots | 64 | Grid + motion + sound snapshot |
+| Factory presets | 128 | Indices 0–127 in `userBank[]` / `seqBank[]` |
+| User sound slots | 64 × 2 engines | Harp + seq patches at indices 128–191 |
+| User pattern slots | 64 | Separate `g_userPat[]` library (not in bank array) |
 | Song slots | 16 | Chain programs |
 | Pattern banks | 4 | Live working sets A–D |
 
@@ -823,7 +836,7 @@ Authoritative list: **`code_info.h` §9**. Targets for the next upgrade:
 | Version | Date | Notes |
 |---------|------|-------|
 | 1.0 | 2026-06-20 | Initial v6.0 manual — architecture diagrams, arp/FX/D-BEAM reference |
-| 1.1 | 2026-06-23 | v6.1.00 — auto-connect App, scoped persist/reboot, 7-view TELEMETRY; §12.C future work |
+| 1.1 | 2026-06-23 | v6.1.00 — deferred boot reset (FULL/BANKS+PATS), auto-connect App, 7-view TELEMETRY |
 
 ---
 

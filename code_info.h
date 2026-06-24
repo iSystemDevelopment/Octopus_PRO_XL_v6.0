@@ -33,7 +33,10 @@
  *   • App-connected transport: SCALE play/stop, OC short record, ENC BPM
  *   • SEQ dashboard: BPM row + active mutes only; harp header without LOCAL/REMOTE
  *   • NVS namespace renamed to "octopus" (one-time migrate from octopus_v5)
- *   • Scoped SAVE/RESET persist then reboot (laser beam recovery); hardware LOAD is
+ *   • Deferred boot reset for FULL / BANKS+PATS (pend_rst flag + instant reboot;
+ *     heavy NVS wipe runs before tasks start — same safe window as OC+SCALE combo)
+ *   • Scoped SAVE reboots after NVS commit; FULL/BANKS RESET uses deferred boot
+ *     wipe (pend_rst); SETTINGS/MOTION RESET uses NvsWorker + reboot; hardware LOAD is
  *     RAM-only with full App re-sync, no reboot
  *   • TELEMETRY menu: seven L2 views aligned with TelemetryView 1–7 (AC scope,
  *     DC bias, DAC threshold, D-BEAM expression, SNR, system report, fog reject)
@@ -113,11 +116,26 @@
  *          patchMux.  Both are the single home for the mapping across the whole
  *          App control surface (midi.cpp App-RX funnels through them).
  *
- *   Direction C — NVS save:
+ *   Direction C — NVS save (session persist):
  *     settings_sync_from_ssot() → settings_save_scoped() on NvsWorker (16 KB stack)
- *     Triggered by ENC long-press, SAVE menu, CMD_SESSION_SAVE, or factory reset.
+ *     Triggered by SAVE menu, CMD_SESSION_SAVE, or user-slot persist.
  *     Boot/first-load reseed uses settings_persist_blocking() (same 16 KB NvsBlk task)
  *     — never call settings_save_scoped() from setup() or MidiUsbRx (~8 KB stacks).
+ *
+ *   Direction D — Scoped RESET (v6.1 workflow):
+ *     FULL / BANKS_PATTERNS (runtime, g_systemReady):
+ *       settings_arm_pending_reset() → NVS u8 "pend_rst" (1=FULL, 2=BANKS) +
+ *       ACK + immediate esp_restart().  No RAM wipe and no large blob I/O while
+ *       audio/tasks are running.
+ *     Boot kernel (before loadSettings in setup phase 4):
+ *       settings_execute_pending_reset_at_boot() reads pend_rst, clears it,
+ *       applyResetScope() + settings_commit_reset_scoped() (factory settings blob
+ *       + erase patterns/banks/usrpat/motion keys), then loadSettings().
+ *     SETTINGS / MOTION (runtime):
+ *       applyResetScope() + settings_commit_reset_scoped() on NvsWorker + reboot.
+ *     OC+SCALE @ boot (initHardwareInterface, !g_systemReady):
+ *       synchronous applyResetScope(FULL) + settings_commit_reset_scoped() + reboot.
+ *     LOAD: RAM-only settings_load_scoped() — never reboots.
  *
  *   RULE: The audio task (Core 0) NEVER writes to livePatch arrays.
  *         It reads them under patchMux.  Only patches.h apply* / recall* / load*
@@ -261,7 +279,7 @@
  *   134 HUE_REL      hueRelease         0..16383 → 0..4 s
  *   167 LSR_ANIM     laserShowAnim      0..3: Pulse/Chase/Strobe/Wave  [v2]
  *   168 LSR_DRUMFLASH laserDrumFlash    0..1 drum-flash depth          [v2]
- *   169 SCOPED_RESET handleScopedReset  v14=ResetScope+1; RAM wipe→commit NVS→reboot
+ *   169 SCOPED_RESET handleScopedReset  FULL/BANKS→pend_rst+reboot; boot wipe; SETTINGS/MOTION→NvsWorker
  *   170 SEQ_CLEAR    seqClearActive…    clear active grid+P-locks+sounds→preset0
  *   172 USR_SND_SAVE saveLiveToUserSlot v14=(eng<<13)|slot; live→slot 128+slot +persist
  *   173 USR_SND_LOAD loadUserSlotToLive v14=(eng<<13)|slot; recall user slot→live
@@ -356,11 +374,12 @@
  *   • Only patches.h apply* functions write to livePatch[].
  *   • Audio task reads livePatch[] but never writes it.
  *   • Critical sections (patchMux) must complete in < 5 µs.
- *   • All NVS writes must go through the save handshake (g_saveRequest flag).
- *   • Every runtime scoped SAVE or RESET reboots after a good NVS commit
- *     (requestScopedSave → g_restartAfterSave → settings_save_task ACK + esp_restart
- *     after ~700 ms).  Workaround for laser beams latching "broken" after flash write;
- *     boot reloads the just-saved settings reliably.
+ *   • All NVS writes must go through the save handshake (g_saveRequest flag) for SAVE,
+ *     or the deferred pend_rst path / boot-time reset for FULL/BANKS RESET.
+ *   • Scoped SAVE reboots after a good NVS commit (requestScopedSave →
+ *     g_restartAfterSave → settings_save_task ACK + esp_restart ~700 ms).
+ *     FULL/BANKS RESET reboots immediately after arming pend_rst; the wipe runs
+ *     on the next boot before tasks start (laser beam recovery without UI hang).
  *   • Transport (play/stop/record/BPM) is always hardware-owned; the App only reflects it.
  *
  * ═══════════════════════════════════════════════════════════════════════════
@@ -377,7 +396,8 @@
    * 5. App PINGs every ~800 ms to hold the link "connected".
  *   6. Badge: Octopus ON / Octopus Off (two-state; no manual Connect/Disconnect).
  *   7. After SAVE / LOAD / RESET (hardware or App), the App reloads and re-imports
- *      via APP_SYNC_REQ on reconnect.
+ *      via APP_SYNC_REQ on reconnect.  FULL/BANKS RESET reboots in ~150 ms
+ *      (boot wipe); SAVE and SETTINGS/MOTION RESET wait for NvsWorker then reboot.
  *
  *   DISCONNECTION (heartbeat timeout):
  *   1. pollSyncHeartbeat() / isAppConnected() — no App SysEx for
@@ -577,10 +597,10 @@
  *        (display.cpp), driven only by display_refresh_task (audio.cpp) under
  *        i2cMutex.  No other task touches the SH1107 at runtime, so the I2C bus
  *        is never contended.  Pre-task boot splashes draw before the scheduler
- *        starts; the post-boot "READY" splash and handleFactoryReset() both take
- *        i2cMutex so they cannot collide with an in-flight render transaction.
- *        handleFactoryReset() holds the mutex through esp_restart() so its
- *        "PLEASE WAIT" message is not overwritten. [DISP-LOCK]
+ *        Pre-task boot splashes draw before the scheduler starts.  Deferred FULL/
+ *        BANKS reset shows only a brief "REBOOT…" splash at runtime; the heavy
+ *        NVS work runs on the next boot before loadSettings().  OC+SCALE combo at
+ *        boot uses the synchronous !g_systemReady path (apply + commit + reboot).
  *      • Encoder: ESP32Encoder full-quad / ENC_PPR=4 per detent; EncoderPoll
  *        keeps the sub-detent remainder for lossless 1:1 stepping (no velocity
  *        acceleration).  Polled only from control_surface_task (200 Hz, Core 0

@@ -1140,39 +1140,33 @@ static void oledStatusLines(const char* line1, const char* line2) {
   xSemaphoreGive(i2cMutex);
 }
 
-static ResetScope s_resetPersistScope = ResetScope::FULL;
-
-/* Toast + optional App NACK — no full-screen OLED (App popup owns user feedback). */
-static void notifyPersistFail(uint8_t ackCmd) {
-  g_resetInProgress.store(false, std::memory_order_release);
-  g_saveFailFlashMs.store(millis() + 1500u, std::memory_order_relaxed);
-  displayDirty.store(true, std::memory_order_relaxed);
-  if (isAppConnected() && ackCmd)
-    txSysex(ackCmd, 0u);
-}
-
-/* Commit wiped RAM to NVS on a 16 KB stack task, ACK, reboot.
- * Calls settings_save_scoped directly (no nested NvsBlk + semaphore timeout).   */
-static void reset_commit_task(void*) {
-  waitNvsWorkerIdle(4000u);
-  const bool ok = settings_save_scoped(s_resetPersistScope);
-  if (ok) {
-    if (isAppConnected()) txSysex(CMD_SCOPED_RESET, 16383u);
-    delay(400);
-    esp_restart();
-  } else {
-    notifyPersistFail(CMD_SCOPED_RESET);
-  }
-  vTaskDelete(nullptr);
-}
-
-/* handleScopedReset — wipe RAM (applyResetScope), commit to NVS, restart.
- * Boot OC+SCALE combo: blocking persist (NvsWorker not running yet).            */
+/* handleScopedReset — FULL/BANKS+PATS: arm NVS flag + reboot (wipe on next boot).
+ * SETTINGS/MOTION: apply + NvsWorker commit + reboot.  Boot OC+SCALE: sync wipe. */
 void handleScopedReset(ResetScope scope) {
+  const bool runtime = g_systemReady.load(std::memory_order_acquire);
+  const bool deferred =
+      runtime && (scope == ResetScope::FULL || scope == ResetScope::BANKS_PATTERNS);
+
+  if (deferred) {
+    const char* line1 = (scope == ResetScope::FULL) ? "FULL RESET" : "BANKS+PATTERNS";
+    oledStatusLines(line1, "REBOOT...");
+    if (!settings_arm_pending_reset(scope)) {
+      g_saveFailFlashMs.store(millis() + 1500u, std::memory_order_relaxed);
+      displayDirty.store(true, std::memory_order_relaxed);
+      if (isAppConnected()) txSysex(CMD_SCOPED_RESET, 0u);
+      return;
+    }
+    if (isAppConnected()) txSysex(CMD_SCOPED_RESET, 16383u);
+    delay(150);
+    esp_restart();
+    return;
+  }
+
   if (g_resetInProgress.exchange(true, std::memory_order_acq_rel))
     return;
 
   recoverWedgedPersistFlags();
+  waitNvsWorkerIdle(4000u);
   saveForceUnlock();
 
   const char* line1 = "RESET";
@@ -1186,21 +1180,19 @@ void handleScopedReset(ResetScope scope) {
 
   applyResetScope(scope);
 
-  if (!g_systemReady.load(std::memory_order_acquire)) {
-    if (!settings_save_scoped(scope)) {
-      notifyPersistFail(CMD_SCOPED_RESET);
-      return;
-    }
+  if (!runtime) {
+    settings_commit_reset_scoped(scope);
+    if (isAppConnected()) txSysex(CMD_SCOPED_RESET, 16383u);
     delay(300);
     esp_restart();
     return;
   }
 
-  s_resetPersistScope = scope;
-  if (xTaskCreatePinnedToCore(reset_commit_task, "RstCommit", 16384, nullptr, 5,
-                              nullptr, 1) != pdPASS) {
-    notifyPersistFail(CMD_SCOPED_RESET);
-  }
+  g_persistAckCmd.store(CMD_SCOPED_RESET, std::memory_order_relaxed);
+  g_persistScope.store((uint8_t)scope, std::memory_order_release);
+  g_restartAfterSave.store(false, std::memory_order_release);
+  g_saveRequest.store(true, std::memory_order_release);
+  displayDirty.store(true, std::memory_order_relaxed);
 }
 
 /* handleScopedSave — menu / App scoped save (persist + reboot). */

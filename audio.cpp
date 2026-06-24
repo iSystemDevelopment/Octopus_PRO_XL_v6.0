@@ -334,21 +334,25 @@ void settings_save_task(void* pvParameters) {
     masterVol.store(savedVol, std::memory_order_relaxed);
 
     esp_task_wdt_reset();
+    const uint8_t ackCmd = g_persistAckCmd.load(std::memory_order_relaxed);
+    const bool isReset = (ackCmd == CMD_SCOPED_RESET);
     const ResetScope scope =
         (ResetScope)(g_persistScope.load(std::memory_order_relaxed) & 3u);
-    const bool ok = settings_save_scoped(scope);
+    /* FULL / BANKS+PATS use deferred boot reset — only SETTINGS/MOTION here. */
+    const bool ok = isReset ? settings_commit_reset_scoped(scope)
+                            : settings_save_scoped(scope);
     esp_task_wdt_reset();
     g_persistScope.store((uint8_t)ResetScope::FULL, std::memory_order_relaxed);
     g_saveLastOk.store(ok, std::memory_order_release);
     if (!ok) {
       g_saveFailFlashMs.store(millis() + 1500u, std::memory_order_relaxed);
       displayDirty.store(true, std::memory_order_relaxed);
-      if (isAppConnected()) {
+      if (isAppConnected() && !isReset) {
         const uint8_t ack = g_persistAckCmd.load(std::memory_order_relaxed);
-        if (ack == CMD_SCOPED_RESET || ack == CMD_SESSION_SAVE)
+        if (ack == CMD_SESSION_SAVE)
           txSysex(ack, 0u);
       }
-    } else {
+    } else if (!isReset) {
       g_saveFailFlashMs.store(0u, std::memory_order_relaxed);
       g_saveFlashMs.store(millis() + 1200u, std::memory_order_relaxed);
       displayDirty.store(true, std::memory_order_relaxed);
@@ -366,6 +370,15 @@ void settings_save_task(void* pvParameters) {
   
     if (haveI2c) xSemaphoreGive(i2cMutex);
     if (g_saveDoneSem) xSemaphoreGive(g_saveDoneSem);
+
+    if (isReset) {
+      g_resetInProgress.store(false, std::memory_order_release);
+      if (isAppConnected())
+        txSysex(CMD_SCOPED_RESET, ok ? 16383u : 0u);
+      g_beamRecover.store(true, std::memory_order_release);
+      delay(400);
+      esp_restart();
+    }
 
     if (ok && isAppConnected()) {
       const uint8_t ack = g_persistAckCmd.load(std::memory_order_relaxed);
