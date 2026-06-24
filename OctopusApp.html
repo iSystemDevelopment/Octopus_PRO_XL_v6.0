@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <!--
-  OctopusApp v6.2.03 — Octopus PRO XL Web MIDI Console
+  OctopusApp v6.2.05 — Octopus PRO XL Web MIDI Console
   © 2026 DIODAC ELECTRONICS / iSystem. All Rights Reserved.
   PROPRIETARY AND CONFIDENTIAL. Unauthorized use prohibited.
 -->
@@ -9,7 +9,27 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>OctopusApp v6.2.03 — OCTOPUS PRO XL</title>
+    <title>OctopusApp v6.2.05 — OCTOPUS PRO XL</title>
+    <meta name="description" content="OctopusApp — zero-install Web MIDI console for Octopus PRO XL. 64-step sequencer, Universal MIDI Controller mode, song chains. Free in Chrome or Edge at octopus.isystem.app.">
+    <meta name="theme-color" content="#020203">
+    <link rel="canonical" href="https://octopus.isystem.app/">
+    <link rel="icon" href="https://octopus-info.isystem.app/logo.jpg" type="image/jpeg">
+    <link rel="apple-touch-icon" href="https://octopus-info.isystem.app/logo.jpg">
+    <!-- Social share preview (Facebook, LinkedIn, Discord, iMessage, etc.) — images hosted on product site -->
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="OctopusApp">
+    <meta property="og:url" content="https://octopus.isystem.app/">
+    <meta property="og:title" content="OctopusApp — OCTOPUS PRO XL Web MIDI Console">
+    <meta property="og:description" content="Zero-install groovebox sequencer in your browser. Sync with Octopus PRO XL hardware or use standalone MIDI Controller mode — no plugins required.">
+    <meta property="og:image" content="https://octopus-info.isystem.app/octopus-app-hero.jpg">
+    <meta property="og:image:secure_url" content="https://octopus-info.isystem.app/octopus-app-hero.jpg">
+    <meta property="og:image:alt" content="OctopusApp web console — 64-step sequencer and MIDI Controller for Octopus PRO XL">
+    <meta property="og:locale" content="en_GB">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="OctopusApp — OCTOPUS PRO XL Web MIDI Console">
+    <meta name="twitter:description" content="Zero-install groovebox sequencer in your browser. Octopus hardware sync or standalone MIDI Controller.">
+    <meta name="twitter:image" content="https://octopus-info.isystem.app/octopus-app-hero.jpg">
+    <meta name="twitter:image:alt" content="OctopusApp web console for Octopus PRO XL">
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
@@ -197,122 +217,145 @@
 
         #view-midi-inst {
             flex-direction: column;
-            gap: 8px;
-            padding: 8px;
+            gap: 6px;
+            padding: 6px 10px;
             max-width: 1280px;
             width: 100%;
-            overflow-y: auto
+            height: 100%;
+            overflow: hidden
         }
 
         .midi-inst-split {
             display: flex;
             flex-direction: column;
-            gap: 8px;
+            gap: 6px;
             width: 100%;
             flex: 1;
             min-height: 0;
-            align-items: stretch
+            overflow: hidden
         }
 
         .midi-inst-panel {
-            flex: 0 0 auto;
+            flex: 1 1 0;
             width: 100%;
-            min-width: 0;
+            min-height: 0;
             display: flex;
             flex-direction: column;
-            min-height: 0
+            overflow: hidden
         }
 
         .midi-inst-panel-body {
             display: flex;
             flex-direction: column;
-            gap: 6px;
+            gap: 4px;
             flex: 1;
             min-height: 0;
-            align-items: stretch
-        }
-
-        .midi-knob-panel {
-            flex: 0 0 auto;
-            width: 100%;
-            min-width: 0;
-            max-height: none;
-            overflow: visible
+            overflow: hidden
         }
 
         #midi-seq-knobs.panel-container {
-            flex-direction: column;
-            flex-wrap: nowrap;
-            overflow-x: hidden;
-            overflow-y: visible;
-            padding-bottom: 0
+            flex: 0 0 auto;
+            display: block;
+            overflow: visible;
+            padding: 0
         }
 
         #midi-seq-knobs .sub-panel {
-            flex: 0 0 auto;
             width: 100%;
-            min-width: 0;
             height: auto;
-            min-height: 0
+            flex: none;
+            min-height: 0;
+            padding: 4px 6px
+        }
+
+        #midi-seq-knobs .sub-panel-title {
+            margin-bottom: 4px
         }
 
         #midi-seq-knobs .sub-panel-knobs {
-            flex-direction: column;
-            align-items: stretch;
-            gap: 3px;
-            overflow: visible;
-            padding: 2px 4px 4px
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 3px 10px;
+            overflow: visible
         }
 
         #midi-seq-knobs .knob-wrapper {
-            flex-direction: row;
-            justify-content: flex-start;
+            display: grid;
+            grid-template-columns: 30px 22px 1fr;
             align-items: center;
-            gap: 8px;
+            gap: 6px;
             height: auto;
-            min-height: 28px;
-            padding: 1px 6px;
+            min-height: 0;
+            padding: 2px 4px;
             border-radius: 3px;
-            background: rgba(0, 0, 0, 0.2)
+            background: rgba(0, 0, 0, 0.25);
+            justify-content: stretch
         }
 
         #midi-seq-knobs .knob-label {
-            width: 36px;
+            width: auto;
             text-align: left;
-            flex-shrink: 0
+            font-size: 7px;
+            height: auto
         }
 
         #midi-seq-knobs .knob-hitbox {
+            width: 22px;
+            height: 22px;
             flex-shrink: 0
         }
 
-        #midi-seq-knobs .knob-val {
-            margin-left: auto;
-            min-width: 28px;
-            text-align: right
+        #midi-seq-knobs .knob {
+            width: 14px;
+            height: 14px
         }
 
-        .midi-seq-scope-toy {
-            flex: 0 0 auto;
+        #midi-seq-knobs .midi-knob-val {
+            justify-self: end;
             width: 100%;
-            min-width: 0;
-            min-height: 72px;
-            max-height: 100px;
-            background: linear-gradient(180deg, #08040c 0%, #040208 100%);
-            border: 1px solid #2a1428;
+            max-width: 40px;
+            min-width: 34px;
+            height: 16px;
+            line-height: 14px;
+            font-size: 8px;
+            font-family: 'Orbitron', sans-serif;
+            font-weight: bold;
+            color: #7dffb0;
+            text-align: center;
+            background: #02110a;
+            border: 1px solid #0c2b1c;
+            border-radius: 2px;
+            text-shadow: 0 0 4px rgba(80, 255, 150, 0.5);
+            box-shadow: inset 0 0 4px rgba(0, 0, 0, 0.9);
+            padding: 0 2px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap
+        }
+
+        .midi-scope-toy {
+            flex: 0 0 44px;
+            width: 100%;
+            height: 44px;
+            min-height: 44px;
+            max-height: 44px;
             border-radius: 4px;
             position: relative;
             overflow: hidden;
-            min-height: 72px;
-            box-shadow: inset 0 0 18px rgba(236, 72, 153, 0.06);
             contain: layout paint style;
             isolation: isolate
+        }
+
+        .midi-seq-scope-toy {
+            background: linear-gradient(180deg, #08040c 0%, #040208 100%);
+            border: 1px solid #2a1428;
+            box-shadow: inset 0 0 12px rgba(236, 72, 153, 0.06)
         }
 
         .midi-seq-scope-toy::after {
             content: 'SEQ ACT';
             position: absolute;
-            top: 3px;
+            top: 2px;
             right: 5px;
             font-family: 'Orbitron', sans-serif;
             font-size: 6px;
@@ -322,11 +365,51 @@
             z-index: 1
         }
 
+        .midi-drum-scope-toy {
+            background: linear-gradient(180deg, #040408 0%, #020204 100%);
+            border: 1px solid #1c2830;
+            box-shadow: inset 0 0 12px rgba(6, 182, 212, 0.06);
+            margin-top: 4px
+        }
+
+        .midi-drum-scope-toy::after {
+            content: 'DRUM ACT';
+            position: absolute;
+            top: 2px;
+            right: 5px;
+            font-family: 'Orbitron', sans-serif;
+            font-size: 6px;
+            color: #2a3a44;
+            letter-spacing: 1px;
+            pointer-events: none;
+            z-index: 1
+        }
+
+        .midi-scope-canvas {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            display: block;
+            transform: translateZ(0);
+            backface-visibility: hidden;
+            contain: strict;
+            pointer-events: none
+        }
+
         .midi-drum-notes {
-            display: flex;
-            flex-direction: column;
-            gap: 3px;
-            margin-bottom: 6px;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2px 10px;
+            margin-bottom: 2px;
+            flex: 1 1 auto;
+            min-height: 0;
+            align-content: start;
+            overflow: hidden
+        }
+
+        .midi-inst-panel-body .midi-scope-toy {
+            flex: 0 0 44px;
             flex-shrink: 0
         }
 
@@ -335,11 +418,13 @@
             align-items: center;
             gap: 4px;
             font-size: 8px;
-            color: #888
+            color: #888;
+            min-height: 20px
         }
 
         .midi-drum-note-row span {
-            width: 36px;
+            width: 34px;
+            flex-shrink: 0;
             color: var(--orange);
             font-family: 'Orbitron', sans-serif;
             font-size: 7px;
@@ -347,18 +432,29 @@
         }
 
         .midi-drum-note-row input {
-            width: 42px;
+            width: 40px;
             height: 18px;
+            min-height: 18px;
+            max-height: 18px;
             font-size: 8px;
-            color: var(--orange) !important
+            padding: 0 4px;
+            color: var(--orange) !important;
+            box-sizing: border-box
         }
 
-        #midi-drum-knobs.drum-grid {
-            flex: 0 0 auto;
-            width: 100%;
-            min-height: 72px;
-            max-height: 100px;
-            grid-template-columns: 1fr
+        .midi-inst-panel .row-header label {
+            display: inline-flex;
+            align-items: center;
+            gap: 3px;
+            white-space: nowrap
+        }
+
+        .midi-inst-panel .row-header select.display-box,
+        .midi-inst-panel .row-header input.display-box {
+            height: 18px;
+            min-height: 18px;
+            line-height: 16px;
+            box-sizing: border-box
         }
 
         /* Harp play-mode segmented buttons (POLY / STR / SOLO) */
@@ -1065,7 +1161,8 @@
 
         .seq-grid-stage {
             width: 100%;
-            height: 100%;
+            flex: 1;
+            min-height: 0;
             max-width: 1280px;
             position: relative;
             isolation: isolate;
@@ -1085,7 +1182,8 @@
             position: absolute;
             top: 0;
             left: 0;
-            display: none;
+            visibility: hidden;
+            opacity: 0;
             pointer-events: none;
             z-index: 8;
             margin: 0;
@@ -1097,11 +1195,13 @@
             will-change: transform;
             transform: translate3d(0, 0, 0);
             contain: strict;
-            backface-visibility: hidden
+            backface-visibility: hidden;
+            transition: none
         }
 
         #seq-playhead.ph-visible {
-            display: block
+            visibility: visible;
+            opacity: 1
         }
 
         .seq-row-label {
@@ -1136,10 +1236,8 @@
         }
 
         .seq-step:hover {
-            border-color: #2a2a3a;
-            box-shadow: inset 0 1px 1px rgba(255,255,255,0.10), 0 1px 1px rgba(0,0,0,0.6);
-            /* Hover stays on the cell layer — playhead is outside #seq-grid-wrap paint tree. */
-            z-index: 1
+            outline: 1px solid #2a2a3a;
+            outline-offset: -1px
         }
 
         .seq-step.active {
@@ -1472,10 +1570,10 @@
             <div class="btn" id="btnBankD" onclick="app.setBank(3)">D</div>
             <button class="btn" id="btnBankChain" onclick="app.toggleChainLoop()" title="Chain loop — play banks in song order (🔗 song mode)"><i class="fa-solid fa-link"></i></button>
             <!-- Step pages P1–P4: each page edits 16 of up to 64 steps (matches firmware hwSeqData) -->
-            <div class="btn" id="btnPage1" onclick="app.setGridPage(0)" title="Steps 1–16">P1</div>
-            <div class="btn" id="btnPage2" onclick="app.setGridPage(1)" title="Steps 17–32">P2</div>
-            <div class="btn" id="btnPage3" onclick="app.setGridPage(2)" title="Steps 33–48">P3</div>
-            <div class="btn" id="btnPage4" onclick="app.setGridPage(3)" title="Steps 49–64">P4</div>
+            <div class="btn" id="btnPage1" onclick="app.userSetGridPage(0)" title="Pattern steps 1–16 — opens SEQUENCER grid">P1</div>
+            <div class="btn" id="btnPage2" onclick="app.userSetGridPage(1)" title="Pattern steps 17–32 — opens SEQUENCER grid">P2</div>
+            <div class="btn" id="btnPage3" onclick="app.userSetGridPage(2)" title="Pattern steps 33–48 — opens SEQUENCER grid">P3</div>
+            <div class="btn" id="btnPage4" onclick="app.userSetGridPage(3)" title="Pattern steps 49–64 — opens SEQUENCER grid">P4</div>
             <!-- Playhead LEDs -->
             <div class="head-indicator">
                 <div class="head-led" id="led-0"></div>
@@ -1484,7 +1582,7 @@
                 <div class="head-led" id="led-3"></div>
             </div>
             <!-- View: PAT grid editor ↔ chain step editor (playback loop = 🔗 next to banks) -->
-            <button class="btn" id="btnSeqMode" onclick="app.toggleSongView()" style="color:var(--cyan);border-color:var(--cyan);min-width:76px;justify-content:center" title="Switch pattern grid ↔ chain step editor"><i class="fa-solid fa-table-cells"></i>PAT</button>
+            <button class="btn" id="btnSeqMode" onclick="app.toggleSongView()" style="color:var(--cyan);border-color:var(--cyan);min-width:76px;justify-content:center" title="Open song chain editor — assign banks A–D per step (🔗 enables playback)"><i class="fa-solid fa-list-ol"></i>SONG</button>
             <select class="display-box" style="border-color:var(--green);color:var(--green);width:96px" id="songSlotSelect" onchange="app.setSongSlot(this.value)"></select>
             <select class="display-box pink-txt octopus-only" id="synthPat" onchange="app.loadSynthPat(this.value)" style="width:150px"></select>
             <select class="display-box orange-txt octopus-only" id="drumPat" onchange="app.loadDrumPat(this.value)" style="width:150px"></select>
@@ -1569,7 +1667,7 @@
         </div>
         <div style="display:flex;gap:8px;align-items:center;margin-left:auto">
             <div id="cpuLoad" class="cpu-box octopus-only" title="Audio-core CPU load (device)"><i class="fa-solid fa-microchip"></i><span id="cpuLoadVal">--</span></div>
-            <a class="donate-chip" href="https://www.paypal.com/donate/?business=diodac.electronics%40gmail.com&amp;item_name=Octopus+PRO+XL" target="_blank" rel="noopener noreferrer" title="Optional tip for DIODAC ELECTRONICS — opens PayPal in a new tab"><i class="fa-brands fa-paypal"></i> TIP</a>
+            <a class="donate-chip" href="https://www.paypal.com/donate?hosted_button_id=KX7B76V37PED8" target="_blank" rel="noopener noreferrer" title="Optional tip for DIODAC ELECTRONICS — opens PayPal in a new tab"><i class="fa-brands fa-paypal"></i> TIP</a>
             <button class="btn octopus-only" onclick="app.toggleMonitor()" title="Sysex monitor"><i class="fa-solid fa-terminal"></i>MON</button>
             <button class="btn" onclick="app.toggleHelp()" title="Help"><i class="fa-solid fa-circle-question"></i>HELP</button>
         </div>
@@ -1716,9 +1814,9 @@
                         </div>
                     </div>
                     <div class="midi-inst-panel-body">
-                        <div id="midi-seq-knobs" class="panel-container midi-knob-panel"></div>
-                        <div id="midi-seq-scope-host" class="midi-seq-scope-toy" title="Melody MIDI activity — pulses on note/CC out">
-                            <canvas class="drum-scope-canvas" id="midi-seq-scope-canvas"></canvas>
+                        <div id="midi-seq-knobs" class="panel-container"></div>
+                        <div id="midi-seq-scope-host" class="midi-scope-toy midi-seq-scope-toy" title="Melody MIDI activity — pulses on note/CC out">
+                            <canvas class="midi-scope-canvas" id="midi-seq-scope-canvas"></canvas>
                         </div>
                     </div>
                 </div>
@@ -1736,8 +1834,12 @@
                             </label>
                         </div>
                     </div>
-                    <div class="midi-drum-notes" id="midi-drum-notes"></div>
-                    <div id="midi-drum-knobs" class="drum-grid"></div>
+                    <div class="midi-inst-panel-body">
+                        <div class="midi-drum-notes" id="midi-drum-notes"></div>
+                        <div id="midi-drum-scope-host" class="midi-scope-toy midi-drum-scope-toy" title="Drum MIDI activity — pulses on note out">
+                            <canvas class="midi-scope-canvas" id="midi-drum-scope-canvas"></canvas>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -1802,7 +1904,7 @@
 
     <footer class="app-donate-bar" aria-label="Support">
         <span>&copy; 2026 DIODAC ELECTRONICS / iSystem</span>
-        <a class="donate-chip" href="https://www.paypal.com/donate/?business=diodac.electronics%40gmail.com&amp;item_name=Octopus+PRO+XL" target="_blank" rel="noopener noreferrer" title="Enjoying OctopusApp? Optional donation via PayPal"><i class="fa-brands fa-paypal"></i> DONATE</a>
+        <a class="donate-chip" href="https://www.paypal.com/donate?hosted_button_id=KX7B76V37PED8" target="_blank" rel="noopener noreferrer" title="Enjoying OctopusApp? Optional donation via PayPal"><i class="fa-brands fa-paypal"></i> DONATE</a>
     </footer>
 
     <!-- ═══════════════════════════════════════════════════════════════════════════
@@ -1848,9 +1950,10 @@
 
                 <p style="margin-top:10px"><b style="color:var(--green)">PLATFORM FEATURES</b><br>
                 • <b>64-step sequencer</b> — grid pages P1–P4 (16 steps each); live playhead on the SEQUENCER tab driven by STEP_SYNC.<br>
-                • <b>Song mode</b> — 16 chain slots × up to 16 steps (bank A–D + repeats); 🔗 toggle + PAT/EDIT chain editor.<br>
+                • <b>Song mode</b> — 16 chain slots × up to 16 steps (bank A–D + repeats); 🔗 toggle + <b>SONG</b> chain editor.<br>
                 • <b>Seq arpeggiator</b> — 8 patterns / 8 rates / gate; single-note steps expand through the active scale motif.<br>
                 • <b>Harp arpeggiator</b> — 4 patterns / 4 rates; POLY8 / STRINGS / SOLO play modes; scale motif expansion.<br>
+                • <b>Shared room bus</b> — one delay/reverb for all engines (MIXER → SHARED ROOM). <b>SCENE</b> recalls 16 room presets; <b>LINK</b> OFF (default) keeps FX-A insert recall from changing room character — only sends update.<br>
                 • <b>Organic Drive</b> insert FX (FX-A index 12) — organic saturation for melody and drums.<br>
                 • <b>Drum engine</b> — global D.PITCH, fog-reject gate, 4 kits (TR-909 / TR-808 / Trap / House), and a live <b>beat-reactive drum scope</b> (MIXER tab) that pulses on the actual pattern hits at the device playhead.<br>
                 • <b>128 factory presets</b> + 64 user sound slots per engine + 64 user pattern slots (header SLOTS).<br>
@@ -1890,13 +1993,14 @@
                 <p style="margin-top:10px"><b style="color:var(--green)">BANKS · CHAIN · GRID TOOLS</b><br>
                 <b>Banks A–D</b> — four independent patterns; edits never bleed across banks.<br>
                 <b>🔗 Chain</b> — song mode plays banks in order; up to 16 steps per song slot.<br>
-                <b>CPY/PST</b> — copy/paste active bank grid only. <b>RND-H / RND-D</b> — randomize melody or drum rows (density slider). Pages P1–P4 = steps 1–16 … 49–64.</p>
+                <b>SONG</b> — visual chain editor (bank + repeats per step). <b>P1–P4</b> — pattern step pages (opens SEQUENCER grid).<br>
+                <b>CPY/PST</b> — copy/paste active bank grid only. <b>RND-H / RND-D</b> — randomize melody or drum rows (density slider).</p>
 
                 <p style="margin-top:10px;color:#666;font-size:9px">
                     <a href="https://octopus-info.isystem.app" target="_blank" rel="noopener" style="color:var(--purple)">octopus-info.isystem.app</a> — product info &amp; specs<br>
                     <a href="https://github.com/iSystemDevelopment/Octopus_PRO_XL_v6.0" target="_blank" rel="noopener" style="color:#888">github.com/iSystemDevelopment/Octopus_PRO_XL_v6.0</a> — firmware, manual, changelog<br>
                     <a href="https://www.facebook.com/diodac.co.uk/" target="_blank" rel="noopener" style="color:#1877f2">facebook.com/diodac.co.uk</a> — DIODAC news &amp; support<br>
-                    <a href="https://www.paypal.com/donate/?business=diodac.electronics%40gmail.com&amp;item_name=Octopus+PRO+XL" target="_blank" rel="noopener noreferrer" style="color:#7eb8e8"><i class="fa-brands fa-paypal"></i> Optional PayPal tip</a> — helps fund OctopusApp &amp; firmware (thank you!)
+                    <a href="https://www.paypal.com/donate?hosted_button_id=KX7B76V37PED8" target="_blank" rel="noopener noreferrer" style="color:#7eb8e8"><i class="fa-brands fa-paypal"></i> Optional PayPal tip</a> — helps fund OctopusApp &amp; firmware (thank you!)
                 </p>
             </div>
             <div id="helpBodyMidi" style="display:none;font-size:10px;color:#aaa;overflow-y:auto;flex:1;line-height:1.65;padding-right:4px">
@@ -1964,7 +2068,7 @@
                 • Lost pattern → cleared browser data wipes localStorage — use EXP first.</p>
 
                 <p style="margin-top:10px"><b style="color:#7eb8e8">SUPPORT THE PROJECT</b><br>
-                OctopusApp &amp; firmware are free to use. If they help your music, an optional <a href="https://www.paypal.com/donate/?business=diodac.electronics%40gmail.com&amp;item_name=Octopus+PRO+XL" target="_blank" rel="noopener noreferrer" style="color:#7eb8e8">PayPal donation</a> to <b>DIODAC ELECTRONICS</b> is appreciated — also via the <b>TIP</b> chip in the routing bar.</p>
+                OctopusApp &amp; firmware are free to use. If they help your music, an optional <a href="https://www.paypal.com/donate?hosted_button_id=KX7B76V37PED8" target="_blank" rel="noopener noreferrer" style="color:#7eb8e8">PayPal donation</a> to <b>DIODAC ELECTRONICS</b> is appreciated — also via the <b>TIP</b> chip in the routing bar.</p>
 
                 <p style="margin-top:10px"><b style="color:var(--purple)">BACK TO OCTOPUS HARDWARE</b><br>
                 Plug in USB → select ★ Octopus port → badge <b>Octopus ON</b>. MIDI-mode patterns stay in browser storage separately.</p>
@@ -2096,7 +2200,8 @@
      JAVASCRIPT
 ═══════════════════════════════════════════════════════════════════════════ -->
     <script>
-        const APP_VERSION = '6.2.03';
+        const APP_VERSION = '6.2.05';
+        const PAYPAL_DONATE_URL = 'https://www.paypal.com/donate?hosted_button_id=KX7B76V37PED8';
         const MIDI_SESSION_KEY = 'octopusapp_midi_session_v1';
         const PORT_BOOT_KEY = 'octopusapp_port_boot_v1';
 
@@ -2270,9 +2375,8 @@
             // [RND-RESTART] App→firmware: restart step counter from 0 while playing.
             // Sent after RND-H / RND-D so the new random pattern plays from beat 1.
             SEQ_RESTART: 193,
-            // [SUBSTEP] device→App ONLY: sub-step phase for the PLL playhead.
-            // v14 = (step6 << 8) | phase8 — refines _pllAnchorTime within the current step.
-            STEP_PHASE: 194
+            AUX_SCENE_IDX: 194,    // v14 0–15 shared room scene (loadAuxScene)
+            LINK_AUX_PRESET: 195   // v14 0=OFF 16383=ON — FX-A recall copies aux when ON
         };
         const ARP_PAT_NAMES = ['Up', 'Down', 'UpDn', 'DnUp', 'Rnd', 'AsIs', 'Up+1', 'Dn-1'];
         const ARP_RATE_NAMES = ['1/1', '1/2', '1/4', '1/8', '1/8T', '1/16', '1/16T', '1/32'];
@@ -2338,6 +2442,13 @@
             "DynBypass", "GlueComp", "PunchComp", "SoftLim", "BrickLim",
             "NoiseGate", "TightGate", "TrnsPunch", "SnapAtk", "DrumSmack",
             "BusGlue", "VocalRide", "HarpSust", "SeqPump", "SubGate", "MaxSafe"
+        ];
+        /* kAuxSceneNames[] in display.h — 1:1 with AUX_SCENES[] in effect.cpp */
+        const AUX_SCENE_NAMES = [
+            "Dry Room", "Tight Plate", "Studio Booth", "Live Hall",
+            "Cosmic Plate", "Tape Echo", "Slap Back", "Shimmer Hall",
+            "Dark Cave", "Nebula Wash", "Pulse Chamber", "Ambient Bloom",
+            "Drum Box", "Cathedral", "Lo-Fi Deck", "Void Infinite"
         ];
         // SCALES[].name in patches.h
         const SCALE_NAMES = [
@@ -3458,8 +3569,8 @@
                     fmt: v => Math.round(v / 16383 * 100) + '%'
                 },
                 {
-                    group: 'AUX BUS',
-                    label: 'DLY T',
+                    group: 'SHARED ROOM',
+                    label: 'RM TIME',
                     cmd: 113,
                     min: 0,
                     max: 16383,
@@ -3467,8 +3578,8 @@
                     fmt: v => (v / 16383 * 1.5).toFixed(2) + 's'
                 },
                 {
-                    group: 'AUX BUS',
-                    label: 'DLY FB',
+                    group: 'SHARED ROOM',
+                    label: 'RM FB',
                     cmd: 142,
                     min: 0,
                     max: 16383,
@@ -3476,8 +3587,8 @@
                     fmt: v => Math.round(v / 16383 * 95) + '%'
                 },
                 {
-                    group: 'AUX BUS',
-                    label: 'REV SZ',
+                    group: 'SHARED ROOM',
+                    label: 'RM SIZE',
                     cmd: 114,
                     min: 0,
                     max: 16383,
@@ -3485,13 +3596,31 @@
                     fmt: v => (v / 16383 * 0.95).toFixed(2)
                 },
                 {
-                    group: 'AUX BUS',
-                    label: 'REV DP',
+                    group: 'SHARED ROOM',
+                    label: 'RM DAMP',
                     cmd: 143,
                     min: 0,
                     max: 16383,
                     def: AUX_ENC.revDamp(0.35),
                     fmt: v => Math.round(v / 16383 * 100) + '%'
+                },
+                {
+                    group: 'SHARED ROOM',
+                    label: 'SCENE',
+                    cmd: 194,
+                    min: 0,
+                    max: 15,
+                    steps: 16,
+                    discrete: true,
+                    def: 0,
+                    fmt: v => AUX_SCENE_NAMES[Math.round(v) & 15] || '?'
+                },
+                {
+                    group: 'SHARED ROOM',
+                    label: 'LINK',
+                    cmd: 195,
+                    toggle: true,
+                    def: 0
                 },
                 {
                     group: 'TUBE',
@@ -4026,7 +4155,7 @@
             },
             // Transport + playhead bypass the deferred queue — everything else is budgeted.
             _rxIsPriority(cmd) {
-                return cmd === CMD.STEP_SYNC || cmd === CMD.STEP_PHASE || cmd === CMD.TRANSPORT || cmd === CMD.TRIG_MODE
+                return cmd === CMD.STEP_SYNC || cmd === CMD.TRANSPORT || cmd === CMD.TRIG_MODE
                     || cmd === CMD.BPM || cmd === CMD.SONG_POS
                     || cmd === CMD.SESSION_SAVE || cmd === CMD.SESSION_LOAD
                     || cmd === CMD.SCOPED_RESET;
@@ -4102,37 +4231,51 @@
                 if (this._phResizeTimer) clearTimeout(this._phResizeTimer);
                 this._phResizeTimer = setTimeout(() => {
                     this._phResizeTimer = null;
+                    const stage = this._phStageEl();
+                    if (!stage) return;
+                    const r = stage.getBoundingClientRect();
+                    const g = this._phGeom;
+                    if (g && Math.abs(r.width - g.stageW) < 3) return;
+                    if (g && Math.abs(r.width - g.stageW) < 1 && Math.abs(r.height - g.stageH) < 1) return;
                     this._phGeom = null;
                     this._phRectPage = -1;
                     this._paintPlayhead(this.visStep | 0, true);
-                }, 250);
+                }, 150);
             },
             _phStageEl() {
                 return document.getElementById('seq-grid-stage') ||
                     document.getElementById('seq-grid-wrap');
             },
-            /** Measure column positions once per page/resize — not on every step or hover. */
+            /** Measure column positions from grid CSS — stable under :hover (no per-cell layout reads). */
             _remeasurePhGeometry() {
                 const stage = this._phStageEl();
                 const wrap = document.getElementById('seq-grid-wrap');
                 if (!stage || !wrap) return false;
                 const sr = stage.getBoundingClientRect();
                 if (!(sr.width > 0 && sr.height > 0)) return false;
-                const cols = new Array(16);
-                let y = 0, w = 0, h = sr.height;
-                for (let c = 0; c < 16; c++) {
-                    const cell = this._domGridCache[0]?.[c];
-                    if (!cell) return false;
-                    const cr = cell.getBoundingClientRect();
-                    cols[c] = cr.left - sr.left;
-                    if (c === 0) {
-                        y = cr.top - sr.top;
-                        w = cr.width;
-                    }
+                const LABEL_W = 54, GAP = 2, COLS = 16;
+                const colW = (sr.width - LABEL_W - GAP * (COLS + 1)) / COLS;
+                if (!(colW > 0)) return false;
+                const cols = new Array(COLS);
+                for (let c = 0; c < COLS; c++)
+                    cols[c] = LABEL_W + GAP + c * (colW + GAP);
+                let y = 0, h = sr.height;
+                const cell = this._domGridCache[0]?.[0];
+                const cellBot = this._domGridCache[15]?.[0];
+                if (cell && cellBot) {
+                    const cr0 = cell.getBoundingClientRect();
+                    const crB = cellBot.getBoundingClientRect();
+                    y = cr0.top - sr.top;
+                    h = crB.bottom - cr0.top;
+                    if (!(h > 0)) h = sr.height;
                 }
-                this._phGeom = { cols, y, w, h, page: this.gridPageIdx | 0 };
+                this._phGeom = {
+                    cols, y, w: colW, h,
+                    page: this.gridPageIdx | 0,
+                    stageW: sr.width, stageH: sr.height
+                };
                 this._phRectPage = this._phGeom.page;
-                this._phRect = { x: cols[0], y, w, h };
+                this._phRect = { x: cols[0], y, w: colW, h };
                 return true;
             },
             _applyPhTransform(ph, x, y) {
@@ -4175,7 +4318,7 @@
 
                 if (page !== this.gridPageIdx) {
                     this.setGridPage(page, true);
-                    requestAnimationFrame(() => this._paintPlayhead(s, true));
+                    this._phPendingStep = s;
                     return;
                 }
 
@@ -4192,6 +4335,17 @@
                 this._playAbsStep = s;
                 this._playLast = s;
 
+                if (!force && hasGeom) {
+                    this._applyPhTransform(ph, geom.cols[col], geom.y);
+                    ph.classList.add('ph-visible');
+                    this._phPendingStep = -1;
+                    if (this.isPlaying) {
+                        ph.classList.add('ph-playing');
+                        this._updateBeatLeds(col);
+                    } else ph.classList.remove('ph-playing');
+                    return;
+                }
+
                 if (force || !hasGeom) {
                     if (!this._remeasurePhGeometry()) {
                         this._phPendingStep = s;
@@ -4199,13 +4353,14 @@
                     }
                 }
 
-                const g = this._phGeom;
-                const x = g.cols[col];
-                ph.style.width = g.w + 'px';
-                ph.style.height = g.h + 'px';
-                ph.style.left = '0';
-                ph.style.top = '0';
-                this._applyPhTransform(ph, x, g.y);
+                const g2 = this._phGeom;
+                const x = g2.cols[col];
+                const wPx = g2.w + 'px', hPx = g2.h + 'px';
+                if (ph.style.width !== wPx) ph.style.width = wPx;
+                if (ph.style.height !== hPx) ph.style.height = hPx;
+                if (ph.style.left !== '0px') ph.style.left = '0';
+                if (ph.style.top !== '0px') ph.style.top = '0';
+                this._applyPhTransform(ph, x, g2.y);
                 ph.classList.add('ph-visible');
                 this._phPendingStep = -1;
 
@@ -4226,6 +4381,7 @@
                 this.buildMidiInst();
                 this.buildSequencer();
                 this.buildSongEditor();
+                this._updateSeqModeBtn();
                 this.setBank(0);
                 this.setGridPage(0, false);
                 this._updatePageButtons();
@@ -5297,6 +5453,8 @@
                     [CMD.BANK]: v14 => { this.setBank(v14 & 3, false); },
                     [CMD.SEQ_CHAIN]: () => { this.chainIdx = 0; },
                     [CMD.M_FX_IDX]: v14 => { document.getElementById('masterFxPreset').value = v14; },
+                    [CMD.AUX_SCENE_IDX]: v14 => { this._setKnob(CMD.AUX_SCENE_IDX, v14 & 15); },
+                    [CMD.LINK_AUX_PRESET]: v14 => { this._setArpToggle(CMD.LINK_AUX_PRESET, v14 > 0); },
                     [CMD.WIRE_HARP_CH]: v14 => { this._setWireCh('wireHarpCh', v14); },
                     [CMD.WIRE_SEQ_CH]:  v14 => { this._setWireCh('wireSeqCh',  v14); },
                     [CMD.WIRE_DRUM_CH]: v14 => { this._setWireCh('wireDrumCh', v14); },
@@ -5503,13 +5661,6 @@
                         if (this.isPlaying) this._updateBeatLeds(s & 15);
                         this._paintPlayhead(s);
                     },
-                    // [SUBSTEP-REVERTED] CMD_STEP_PHASE (194) is intentionally NOT handled.
-                    // The sub-step nudge it drove caused a per-step FORWARD JUMP whenever a
-                    // STEP_SYNC arrived late (it snapped _pllAnchorTime to the reported
-                    // phase), i.e. a visible jiggle.  The plain glide below is already 1:1
-                    // with the hardware at the CELL level (STEP_SYNC sets the cell) and
-                    // glides smoothly within it, lagging only by the constant USB latency —
-                    // no jitter.  Constant 194 stays RESERVED so wire IDs never renumber.
                     [CMD.CPU_LOAD]: v14 => {
                         // [CPU-ENC] 14-bit-safe packing (mirrors groovebox.cpp):
                         //   bits 0-6  load %  ·  bits 7-12 out-ring drops (0-63 sat)
@@ -5582,8 +5733,10 @@
                     this._playCol = -1;
                     this._playPage = -1;
                     this._playAbsStep = -1;
-                    this._phGeom = null;
-                    this._phRectPage = -1;
+                    if (playing) {
+                        this._phGeom = null;
+                        this._phRectPage = -1;
+                    }
                     this._pllAnchorStep = -1;
                     this._pllAnchorTime = -1;
                     if (this._appMode === 'midi') {
@@ -5607,7 +5760,7 @@
                     for (let i = 0; i < 4; i++)
                         document.getElementById('led-' + i)?.classList.remove('active');
                     this._playBeat = -1;
-                    this._paintPlayhead(this.visStep | 0);
+                    this._paintPlayhead(this.visStep | 0, true);
                 }
             },
             play() {
@@ -6079,13 +6232,26 @@
                 this._paintPlayhead(s);
             },
             // P1–P4: each page shows 16 columns of the 64-step pattern for the active bank.
-            setGridPage(p, repaint = true) {
+            userSetGridPage(p) {
+                this.setGridPage(p, true, true);
+            },
+            setGridPage(p, repaint = true, fromUser = false) {
                 this.gridPageIdx = (+p) & 3;
                 [1, 2, 3, 4].forEach(i => document.getElementById('btnPage' + i) ?.classList.toggle('active-green', (i - 1) === this.gridPageIdx));
                 if (repaint) {
+                    if (fromUser) {
+                        if (this.showSongEditor) this._setSongView(false, false);
+                        this.switchView(3);
+                    }
                     this.repaintGrid();
                     this._phGeom = null;
-                    requestAnimationFrame(() => this._paintPlayhead(this.visStep | 0, true));
+                    requestAnimationFrame(() => {
+                        requestAnimationFrame(() => {
+                            const step = this._phPendingStep >= 0 ? this._phPendingStep : (this.visStep | 0);
+                            this._phPendingStep = -1;
+                            this._paintPlayhead(step, true);
+                        });
+                    });
                 }
                 if (this._appMode === 'midi') this._midiPersistSoon();
             },
@@ -6160,7 +6326,7 @@
                     this._setSongView(false, false);
                 }
             },
-            /* PAT button: view only — pattern grid ↔ chain step editor (no firmware toggle) */
+            /* SONG button: pattern grid ↔ chain step editor (no firmware toggle) */
             toggleSongView() {
                 this._setSongView(!this.showSongEditor, true);
             },
@@ -6169,11 +6335,15 @@
                 document.getElementById('song-editor') ?.classList.toggle('visible', this.showSongEditor);
                 const stage = this._phStageEl();
                 if (stage) stage.style.display = this.showSongEditor ? 'none' : '';
-                if (!this.showSongEditor) {
-                    requestAnimationFrame(() => this._paintPlayhead(this.visStep | 0));
+                if (this.showSongEditor) {
+                    this._songEditorDirty = true;
+                    requestAnimationFrame(() => this.buildSongEditor());
+                } else {
+                    this._phGeom = null;
+                    requestAnimationFrame(() => this._paintPlayhead(this.visStep | 0, true));
                 }
                 this._updateSeqModeBtn();
-                if (autoSwitchTab && this.showSongEditor) this.switchView(3);
+                if (autoSwitchTab) this.switchView(3);
             },
             _updateChainBtn() {
                 document.getElementById('btnBankChain') ?.classList.toggle('active-green', this.isSongMode);
@@ -6181,8 +6351,13 @@
             _updateSeqModeBtn() {
                 const btn = document.getElementById('btnSeqMode');
                 if (!btn) return;
-                btn.innerHTML = this.showSongEditor ? '<i class="fa-solid fa-list-ol"></i>EDIT' : '<i class="fa-solid fa-table-cells"></i>PAT';
+                btn.innerHTML = this.showSongEditor
+                    ? '<i class="fa-solid fa-table-cells"></i>GRID'
+                    : '<i class="fa-solid fa-list-ol"></i>SONG';
                 btn.classList.toggle('active-green', this.showSongEditor);
+                btn.title = this.showSongEditor
+                    ? 'Return to pattern grid (P1–P4 pages)'
+                    : 'Open song chain editor — assign banks A–D per step (🔗 enables playback)';
             },
             setSongSlot(idx) {
                 this.songSlotIdx = +idx & 15;
@@ -6516,7 +6691,15 @@
                 }
                 stage.appendChild(ph);
                 if (typeof ResizeObserver !== 'undefined') {
-                    this._phResizeOb = new ResizeObserver(() => this._scheduleWindowPhResize());
+                    this._phResizeOb = new ResizeObserver((entries) => {
+                        const e = entries[0];
+                        if (!e) return;
+                        const { width, height } = e.contentRect;
+                        const g = this._phGeom;
+                        if (g && Math.abs(width - g.stageW) < 3) return;
+                        if (g && Math.abs(width - g.stageW) < 1 && Math.abs(height - g.stageH) < 1) return;
+                        this._scheduleWindowPhResize();
+                    });
                     this._phResizeOb.observe(stage);
                 }
                 this.repaintGrid();
@@ -6599,9 +6782,12 @@
                     });
                 }
                 this.buildMidiKnobs('midi-seq-knobs', MIDI_KNOBS.seqSynth);
-                const drumGrid = document.getElementById('midi-drum-knobs');
-                if (drumGrid && !this._midiDrumScope) this._initMidiDrumScope(drumGrid);
                 if (!this._midiSeqScope) this._initMidiSeqScope();
+                if (!this._midiDrumScope) this._initMidiDrumScope();
+                requestAnimationFrame(() => {
+                    this._midiSeqScope?.resize?.();
+                    this._midiDrumScope?.resize?.();
+                });
                 this._midiSyncInstBar();
             },
             buildMidiKnobs(containerId, config) {
@@ -6627,9 +6813,9 @@
                             if (txNow) this._midiSendCc(this._midiMelodyChannel(), k.cc, clamped);
                             return clamped;
                         };
-                        w.innerHTML = `<div class="knob-label">${k.label}</div><div class="knob-hitbox" style="--val:0"><div class="knob"></div></div><div class="knob-val">0</div>`;
+                        w.innerHTML = `<div class="knob-label">${k.label}</div><div class="knob-hitbox" style="--val:0"><div class="knob"></div></div><div class="midi-knob-val">0</div>`;
                         const hitbox = w.querySelector('.knob-hitbox'),
-                            val = w.querySelector('.knob-val');
+                            val = w.querySelector('.midi-knob-val');
                         if (!this.midiKnobStates[k.cc]) this.midiKnobStates[k.cc] = [];
                         this.midiKnobStates[k.cc].push({ node: hitbox, text: val, meta: k });
                         const def = this.midiMap.cc[k.cc] != null ? this.midiMap.cc[k.cc] : k.def;
@@ -6682,74 +6868,61 @@
                     cont.appendChild(p);
                 });
             },
-            _initMidiSeqScope() {
-                const host = document.getElementById('midi-seq-scope-host');
-                const canvas = document.getElementById('midi-seq-scope-canvas');
-                if (!host || !canvas) return;
+            _initMidiScopeHost(host, canvas, opts) {
+                if (!host || !canvas) return null;
                 const resize = () => {
                     const r = host.getBoundingClientRect();
+                    if (!(r.width > 2 && r.height > 2)) return;
                     const dpr = window.devicePixelRatio || 1;
-                    canvas.width = Math.max(48, Math.floor(r.width * dpr));
-                    canvas.height = Math.max(48, Math.floor(r.height * dpr));
+                    const w = Math.max(44, Math.floor(r.width * dpr));
+                    const h = Math.max(44, Math.floor(r.height * dpr));
+                    if (canvas.width !== w || canvas.height !== h) {
+                        canvas.width = w;
+                        canvas.height = h;
+                    }
                 };
                 resize();
+                requestAnimationFrame(resize);
                 if (typeof ResizeObserver !== 'undefined') new ResizeObserver(resize).observe(host);
-                this._midiSeqScope = {
+                return {
                     host,
                     canvas,
                     ctx: null,
                     resize,
                     phase: Math.random() * Math.PI * 2,
-                    amp: 0,
+                    amp: 0.04,
                     hits: 0,
                     lastStep: -1,
                     histLen: 128,
                     history: new Float32Array(128),
                     histIdx: 0,
                     lastTs: 0,
-                    stroke: '#ec4899',
-                    glow: 'rgba(236, 72, 153, 0.55)',
-                    gridRow0: 0,
-                    gridRow1: 8
+                    stroke: opts.stroke,
+                    glow: opts.glow,
+                    gridRow0: opts.gridRow0,
+                    gridRow1: opts.gridRow1
                 };
             },
-            _initMidiDrumScope(drumGrid) {
-                const host = document.createElement('div');
-                host.className = 'drum-scope-toy';
-                host.title = 'Drum MIDI activity — pulses on note out';
-                const canvas = document.createElement('canvas');
-                canvas.className = 'drum-scope-canvas';
-                host.appendChild(canvas);
-                drumGrid.appendChild(host);
-                const resize = () => {
-                    const r = host.getBoundingClientRect();
-                    const dpr = window.devicePixelRatio || 1;
-                    canvas.width = Math.max(48, Math.floor(r.width * dpr));
-                    canvas.height = Math.max(48, Math.floor(r.height * dpr));
-                };
-                resize();
-                if (typeof ResizeObserver !== 'undefined') new ResizeObserver(resize).observe(host);
-                this._midiDrumScope = {
-                    host,
-                    canvas,
-                    ctx: null,
-                    resize,
-                    phase: Math.random() * Math.PI * 2,
-                    amp: 0,
-                    hits: 0,
-                    lastStep: -1,
-                    histLen: 128,
-                    history: new Float32Array(128),
-                    histIdx: 0,
-                    lastTs: 0,
-                    stroke: '#06b6d4',
-                    glow: 'rgba(6, 182, 212, 0.55)',
-                    gridRow0: 8,
-                    gridRow1: 16
-                };
+            _initMidiSeqScope() {
+                this._midiSeqScope = this._initMidiScopeHost(
+                    document.getElementById('midi-seq-scope-host'),
+                    document.getElementById('midi-seq-scope-canvas'),
+                    { stroke: '#ec4899', glow: 'rgba(236, 72, 153, 0.55)', gridRow0: 0, gridRow1: 8 }
+                );
+            },
+            _initMidiDrumScope() {
+                this._midiDrumScope = this._initMidiScopeHost(
+                    document.getElementById('midi-drum-scope-host'),
+                    document.getElementById('midi-drum-scope-canvas'),
+                    { stroke: '#06b6d4', glow: 'rgba(6, 182, 212, 0.55)', gridRow0: 8, gridRow1: 16 }
+                );
+            },
+            _midiScopeViewActive() {
+                return document.getElementById('view-midi-inst')?.classList.contains('active');
             },
             _tickMidiActivityScope(ts, s) {
-                if (!s || document.hidden || !s.host.offsetParent) return;
+                if (!s || document.hidden) return;
+                if (!this._midiScopeViewActive()) return;
                 if (!s.lastTs) s.lastTs = ts;
                 const dt = Math.min(0.05, Math.max(0.001, (ts - s.lastTs) * 0.001));
                 s.lastTs = ts;
@@ -6839,7 +7012,7 @@
                         if (g === 'MIX') {
                             p.classList.add('sub-panel-mix');
                             kCont.classList.add('knobs-spaced');
-                        } else if (g === 'SYNTH AUX' || g === 'AUX BUS') {
+                        } else if (g === 'SYNTH AUX' || g === 'SHARED ROOM') {
                             p.classList.add('sub-panel-compact');
                             kCont.classList.add('knobs-compact');
                         } else if (g === 'TUBE' || g === 'DJ' || g === 'EQ') {
@@ -7153,8 +7326,13 @@
                     });
                     document.getElementById('view-synths')?.classList.remove('active');
                     document.getElementById('view-mixer')?.classList.remove('active');
-                    if (idx === 1)
-                        requestAnimationFrame(() => this._paintPlayhead(this.visStep | 0));
+                    if (idx === 0) {
+                        requestAnimationFrame(() => {
+                            this._midiSeqScope?.resize?.();
+                            this._midiDrumScope?.resize?.();
+                        });
+                    } else if (idx === 1)
+                        requestAnimationFrame(() => this._paintPlayhead(this.visStep | 0, true));
                     return;
                 }
                 ['view-synths', 'view-mixer', 'view-seq'].forEach((v, i) => {
@@ -7207,7 +7385,7 @@
             // stay readable; toggle with the FILTER button.
             _monBuf: [],
             _monOpen: false,
-            _monFilter: true,                       // hide PING / STEP_SYNC / STEP_PHASE / CPU_LOAD / SONG_POS
+            _monFilter: true,                       // hide PING / STEP_SYNC / CPU_LOAD / SONG_POS
             _monMax: 300,
             _ac: null,                              // [LIVE-PERF] silent keep-alive AudioContext
             _acOsc: null,                           // [LIVE-PERF] its zero-gain oscillator
@@ -7224,8 +7402,7 @@
             // High-rate / low-value streams suppressed when the filter is on.
             _monNoisy(cmd) {
                 return cmd === CMD.PING || cmd === CMD.STEP_SYNC ||
-                    cmd === CMD.CPU_LOAD || cmd === CMD.SONG_POS ||
-                    cmd === CMD.STEP_PHASE;
+                    cmd === CMD.CPU_LOAD || cmd === CMD.SONG_POS;
             },
             _monPush(line) {
                 const b = this._monBuf;

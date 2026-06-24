@@ -451,14 +451,32 @@ void handleSysexCommand(uint8_t cmd, uint16_t v14) {
       break;
     }
 
-    case CMD_H_FX_IDX:   loadHarpFx  (v14 & 0x0Fu); harpFxIndex .store((int)(v14 & 0xFu)); txInsertFxSends(0u); break;
+    case CMD_H_FX_IDX:   loadHarpFx  (v14 & 0x0Fu); harpFxIndex .store((int)(v14 & 0xFu)); txInsertFxSends(0u);
+                         maybeEchoAuxAfterInsertLoad(); break;
     case CMD_H_FX_IDX_B: loadHarpFxB (v14 & 0x0Fu); harpFxIndexB.store((int)(v14 & 0xFu)); txSysex(CMD_H_FX_IDX_B, v14 & 0xFu); break;
-    case CMD_S_FX_IDX:   loadSeqFx   (v14 & 0x0Fu); seqFxIndex  .store((int)(v14 & 0xFu)); txInsertFxSends(1u); break;
+    case CMD_S_FX_IDX:   loadSeqFx   (v14 & 0x0Fu); seqFxIndex  .store((int)(v14 & 0xFu)); txInsertFxSends(1u);
+                         maybeEchoAuxAfterInsertLoad(); break;
     case CMD_S_FX_IDX_B: loadSeqFxB  (v14 & 0x0Fu); seqFxIndexB .store((int)(v14 & 0xFu)); txSysex(CMD_S_FX_IDX_B, v14 & 0xFu); break;
     case CMD_D_FX_IDX:   loadDrumFx(v14 & 0x0Fu); drumFxIndexA.store((int)(v14 & 0xFu));
-                         txSysex(CMD_D_FX_IDX, v14 & 0xFu); echoDrumInsertParams(); break;
+                         txSysex(CMD_D_FX_IDX, v14 & 0xFu); echoDrumInsertParams();
+                         maybeEchoAuxAfterInsertLoad(); break;
     case CMD_D_FX_IDX_B: loadDrumFxB (v14 & 0x0Fu); drumFxIndexB.store((int)(v14 & 0xFu)); txSysex(CMD_D_FX_IDX_B, v14 & 0xFu); break;
     case CMD_M_FX_IDX:   fx.loadMasterFx((int)(v14 & 0x0Fu)); txMasterFxParams(); break;
+
+    case CMD_AUX_SCENE_IDX: {
+      const int i = (int)(v14 & 0x0Fu);
+      loadAuxScene(i);
+      txSysex(CMD_AUX_SCENE_IDX, (uint16_t)i);
+      echoAuxParams();
+      break;
+    }
+    case CMD_LINK_AUX_PRESET: {
+      const bool en = v14 > 8191;
+      linkAuxToInsertPreset.store(en, std::memory_order_relaxed);
+      txSysex(CMD_LINK_AUX_PRESET, en ? 16383u : 0u);
+      displayDirty.store(true, std::memory_order_relaxed);
+      break;
+    }
 
     case CMD_H_FX_TIME: case CMD_S_FX_TIME:
     case CMD_H_FX_SIZE: case CMD_S_FX_SIZE:

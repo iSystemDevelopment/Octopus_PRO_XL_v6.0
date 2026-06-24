@@ -12,8 +12,10 @@
  * → master bus (tube drive, glue comp, EQ3, limiter).  Per-instrument slots
  * A→B in series: slot A = modulation FX bank, slot B = dynamics bank.
  *
- * Shared aux time/size/damping come from masterAux* atomics + NVS — loadInsert
- * does not stomp them.  Drum aux sends wired; tail gate is amplitude-aware
+ * Shared aux time/size/damping: one global return bus (masterAux* atomics + NVS).
+ * Recall explicitly via AUX FX → Room Scn (AUX_SCENES[]) or manual Room knobs.
+ * Insert-A presets set sends only unless Link Aux is ON.  Hot path: per-buffer
+ * insert param snapshots + single SharedAux instance (CPU/RAM budget safe).
  * (FX_TAIL_* in effect.cpp), not a fixed 3 s counter.
  *
  * Hot path: fx_process_multi_buf_safe() in effect.cpp (IRAM, Core 0).
@@ -217,6 +219,17 @@ enum class DynMode : uint8_t { OFF = 0,
 
 enum class InsertBank : uint8_t { FX = 0, DYN = 1 };
 
+/* Per-buffer param snapshot — delay/dynamics state stays in InsertSlot. */
+struct InsertFxSnap {
+  InsertMode mode = InsertMode::OFF;
+  float p1 = 0.f, p2 = 0.f, p3 = 0.f, fx_mix = 0.f;
+};
+struct InsertDynSnap {
+  DynMode mode = DynMode::OFF;
+  float thr = 0.5f, ratio = 4.f, atk = 0.05f, rel = 0.01f;
+  float makeup = 1.f, mix = 0.f, thr_safe = 0.5f;
+};
+
 struct InsertFxPreset {
   char name[24];
   InsertMode type;
@@ -244,10 +257,17 @@ struct MasterFxPreset {
   float eq_low, eq_high;
 };
 
+/* Shared delay/reverb room — independent of per-engine insert presets. */
+struct AuxScenePreset {
+  char name[20];
+  float dly_time, dly_fb, rev_size, rev_damp;
+};
+
 /* Preset tables in effect.cpp. */
 extern const InsertFxPreset INSERT_FX_PRESETS[16];
 extern const DynPreset DYNAMICS_PRESETS[16];
 extern const MasterFxPreset MASTER_FX_PRESETS[16];
+extern const AuxScenePreset AUX_SCENES[16];
 
 /* ─────────────────────────────────────────────────────────────────────────────
  * SynthFX — per-instrument insert effect (chorus / flange / ring-mod / distortion / phaser)
@@ -274,6 +294,7 @@ public:
     dist_lpL = 0.0f;
   }
   void loadPreset(const InsertFxPreset& p) {
+    clear(); /* avoid stale delay energy on preset switch */
     mode = p.type;
     p1 = p.p1;
     p2 = p.p2;
@@ -281,51 +302,57 @@ public:
     fx_mix = p.fx_mix;
   }
 
-  /* Mono process_mono() — pipeline uses this exclusively (not legacy stereo process()). */
-  inline void process_mono(float& x) {
-    /* _unsafe delay ops: valid only when fx.initialized (hot path guard). */
-    if (fx_mix < 0.001f || mode == InsertMode::OFF) {
+  void captureSnap(InsertFxSnap& s) const {
+    s.mode = mode;
+    s.p1 = p1;
+    s.p2 = p2;
+    s.p3 = p3;
+    s.fx_mix = fx_mix;
+  }
+
+  /* Mono process_mono() — pipeline uses snap params; delay/LFO state stays live. */
+  inline void process_mono(float& x, const InsertFxSnap& snap) {
+    if (snap.fx_mix < 0.001f || snap.mode == InsertMode::OFF) {
       ch_dlL.write_unsafe(x);
       return;
     }
     float wet = x;
-    switch (mode) {
+    switch (snap.mode) {
       case InsertMode::CHORUS: {
-        const float swing = p2 * 220.5f;
-        wet = ch_dlL.readFrac_unsafe(308.7f + lfoL.tri(p1) * swing);
+        const float swing = snap.p2 * 220.5f;
+        wet = ch_dlL.readFrac_unsafe(308.7f + lfoL.tri(snap.p1) * swing);
         ch_dlL.write_unsafe(x);
         break;
       }
       case InsertMode::FLANGE: {
-        const float modL = 2.0f + p2 * 100.0f * (0.5f + 0.5f * lfoL.tri(p1));
+        const float modL = 2.0f + snap.p2 * 100.0f * (0.5f + 0.5f * lfoL.tri(snap.p1));
         wet = ch_dlL.readFrac_unsafe(modL);
-        ch_dlL.write_unsafe(fx_clampf(x + wet * p3));
+        ch_dlL.write_unsafe(fx_clampf(x + wet * snap.p3));
         break;
       }
       case InsertMode::RING_MOD: {
-        wet = x * lfoL.sine(p1);
+        wet = x * lfoL.sine(snap.p1);
         ch_dlL.write_unsafe(x);
         break;
       }
       case InsertMode::DISTORTION: {
-        const float coef = std::min(0.999f, std::max(0.001f, p2));
-        dist_lpL += (fx_tanh(x * p1) - dist_lpL) * coef;
-        wet = fx_clampf(dist_lpL * p3);
+        const float coef = std::min(0.999f, std::max(0.001f, snap.p2));
+        dist_lpL += (fx_tanh(x * snap.p1) - dist_lpL) * coef;
+        wet = fx_clampf(dist_lpL * snap.p3);
         ch_dlL.write_unsafe(x);
         break;
       }
       case InsertMode::PHASER: {
-        /* Short modulated comb — p1=LFO Hz, p2=depth, p3=feedback */
-        const float mod = 3.0f + p2 * 80.0f * (0.5f + 0.5f * lfoL.tri(p1));
+        const float mod = 3.0f + snap.p2 * 80.0f * (0.5f + 0.5f * lfoL.tri(snap.p1));
         wet = ch_dlL.readFrac_unsafe(mod);
-        ch_dlL.write_unsafe(fx_clampf(x + wet * std::min(0.75f, p3)));
+        ch_dlL.write_unsafe(fx_clampf(x + wet * std::min(0.75f, snap.p3)));
         break;
       }
       default:
         ch_dlL.write_unsafe(x);
         return;
     }
-    x = x * (1.0f - fx_mix) + wet * fx_mix;
+    x = x * (1.0f - snap.fx_mix) + wet * snap.fx_mix;
   }
 };
 
@@ -364,50 +391,61 @@ struct InsertSlot {
     dyn_mix = p.mix;
     dyn_env = 0.f;
   }
-  inline void process_dyn_mono(float& x) {
-    if (dyn_mix < 0.001f || dyn_mode == DynMode::OFF) return;
+  void captureSnap(InsertFxSnap& fxSnap, InsertDynSnap& dynSnap) const {
+    fx.captureSnap(fxSnap);
+    dynSnap.mode = dyn_mode;
+    dynSnap.thr = dyn_thr;
+    dynSnap.ratio = dyn_ratio;
+    dynSnap.atk = dyn_atk;
+    dynSnap.rel = dyn_rel;
+    dynSnap.makeup = dyn_makeup;
+    dynSnap.mix = dyn_mix;
+    dynSnap.thr_safe = dyn_thr_safe;
+  }
+
+  inline void process_dyn_mono(float& x, const InsertDynSnap& snap) {
+    if (snap.mix < 0.001f || snap.mode == DynMode::OFF) return;
     const float dry = x;
     float wet = x;
     const float a = fabsf(x);
-    switch (dyn_mode) {
+    switch (snap.mode) {
       case DynMode::COMPRESSOR: {
-        dyn_env += (a - dyn_env) * (a > dyn_env ? dyn_atk : dyn_rel);
+        dyn_env += (a - dyn_env) * (a > dyn_env ? snap.atk : snap.rel);
         float gr = 1.f;
-        if (dyn_env > dyn_thr) {
-          gr = (dyn_thr_safe + (dyn_env - dyn_thr_safe) / std::max(1.f, dyn_ratio)) / dyn_env;
+        if (dyn_env > snap.thr) {
+          gr = (snap.thr_safe + (dyn_env - snap.thr_safe) / std::max(1.f, snap.ratio)) / dyn_env;
         }
-        wet = x * gr * dyn_makeup;
+        wet = x * gr * snap.makeup;
         break;
       }
       case DynMode::GATE: {
-        dyn_env += (a - dyn_env) * (a > dyn_thr ? dyn_atk : dyn_rel);
-        wet = (dyn_env > dyn_thr) ? x : x * (dyn_env / dyn_thr_safe);
-        wet *= dyn_makeup;
+        dyn_env += (a - dyn_env) * (a > snap.thr ? snap.atk : snap.rel);
+        wet = (dyn_env > snap.thr) ? x : x * (dyn_env / snap.thr_safe);
+        wet *= snap.makeup;
         break;
       }
       case DynMode::TRANSIENT: {
         /* Clamp output — transient onset can exceed ±1 without fx_clampf. */
         const float peak = a;
-        dyn_env += (peak - dyn_env) * dyn_rel;
+        dyn_env += (peak - dyn_env) * snap.rel;
         const float delta = peak - dyn_env;
-        wet = fx_clampf(x + delta * dyn_ratio * dyn_makeup);
+        wet = fx_clampf(x + delta * snap.ratio * snap.makeup);
         break;
       }
       case DynMode::LIMITER: {
-        /* Apply makeup then hard-limit at dyn_thr. */
-        const float lim = dyn_thr;
-        wet = x * dyn_makeup;
+        const float lim = snap.thr;
+        wet = x * snap.makeup;
         if (fabsf(wet) > lim)
           wet = (wet > 0.f ? 1.f : -1.f) * lim;
         break;
       }
       default: return;
     }
-    x = dry * (1.f - dyn_mix) + wet * dyn_mix;
+    x = dry * (1.f - snap.mix) + wet * snap.mix;
   }
-  inline void process_mono(float& x) {
-    fx.process_mono(x);   /* slot A */
-    process_dyn_mono(x);  /* slot B */
+  inline void process_mono(float& x, const InsertFxSnap& fxSnap, const InsertDynSnap& dynSnap) {
+    fx.process_mono(x, fxSnap);
+    process_dyn_mono(x, dynSnap);
   }
 };
 
@@ -724,22 +762,37 @@ public:
   }
 
   /* loadInsert — bank 0 = FX slot A, bank 1 = dynamics slot B.
-   * Shared aux globals are NOT stomped here (masterAux* atomics only). */
+   * Slot-A recall: insert DSP + per-engine sends; shared room only when
+   * linkAuxToInsertPreset is true (see loadAuxScene for explicit room recall). */
+  static inline void applyAuxPack(float dlyTime, float dlyFb, float revSize, float revDamp) {
+    masterAuxDlyTime.store(std::min(1.5f, std::max(0.f, dlyTime)), std::memory_order_relaxed);
+    masterAuxDlyFb.store(std::min(0.95f, std::max(0.f, dlyFb)), std::memory_order_relaxed);
+    masterAuxRevSize.store(std::min(0.95f, std::max(0.f, revSize)), std::memory_order_relaxed);
+    masterAuxRevDamp.store(std::min(1.f, std::max(0.f, revDamp)), std::memory_order_relaxed);
+  }
+
+  static inline void applyInsertPresetAux(const InsertFxPreset& p) {
+    applyAuxPack(p.dl_time, p.dl_fb, p.rv_size, p.rv_damp);
+  }
+
   void loadInsert(InsertSlot& slot, int bankSlot, int idx) {
     if (idx < 0 || idx >= 16) return;
+    InsertFxPreset insertPack;
+    DynPreset dynPack;
     portENTER_CRITICAL(&patchMux);
     if (bankSlot == 0) {
-      InsertFxPreset p;
-      memcpy_P(&p, &INSERT_FX_PRESETS[idx], sizeof(InsertFxPreset));
-      slot.fx.loadPreset(p);
-      slot.dly_send = p.dl_mix;
-      slot.rev_send = p.rv_mix;
+      memcpy_P(&insertPack, &INSERT_FX_PRESETS[idx], sizeof(InsertFxPreset));
+      slot.fx.loadPreset(insertPack);
+      slot.dly_send = insertPack.dl_mix;
+      slot.rev_send = insertPack.rv_mix;
     } else {
-      DynPreset p;
-      memcpy_P(&p, &DYNAMICS_PRESETS[idx], sizeof(DynPreset));
-      slot.loadDynPreset(p);
+      memcpy_P(&dynPack, &DYNAMICS_PRESETS[idx], sizeof(DynPreset));
+      slot.loadDynPreset(dynPack);
     }
     portEXIT_CRITICAL(&patchMux);
+    if (bankSlot == 0 &&
+        linkAuxToInsertPreset.load(std::memory_order_relaxed))
+      applyInsertPresetAux(insertPack);
   }
 
   void loadHarpInsert(int bankSlot, int idx) {
@@ -759,15 +812,18 @@ public:
     if (idx < 0 || idx >= 16) return;
     MasterFxPreset p;
     memcpy_P(&p, &MASTER_FX_PRESETS[idx], sizeof(MasterFxPreset));
-    tbDrive.store(p.tb_drive);
-    tbTone.store(p.tb_tone);
-    tbMix.store(p.tb_mix);
-    djFreq.store(p.dj_freq);
-    djRes.store(p.dj_res);
-    djMix.store(p.dj_mix);
-    masterEqLow.store(p.eq_low);
-    masterEqHigh.store(p.eq_high);
-    masterFxIndex.store(idx);
+    /* Pack-write all master scalars before the audio thread reads them. */
+    std::atomic_thread_fence(std::memory_order_release);
+    tbDrive.store(p.tb_drive, std::memory_order_relaxed);
+    tbTone.store(p.tb_tone, std::memory_order_relaxed);
+    tbMix.store(p.tb_mix, std::memory_order_relaxed);
+    djFreq.store(p.dj_freq, std::memory_order_relaxed);
+    djRes.store(p.dj_res, std::memory_order_relaxed);
+    djMix.store(p.dj_mix, std::memory_order_relaxed);
+    masterEqLow.store(p.eq_low, std::memory_order_relaxed);
+    masterEqHigh.store(p.eq_high, std::memory_order_relaxed);
+    masterFxIndex.store(idx, std::memory_order_relaxed);
+    std::atomic_thread_fence(std::memory_order_release);
     displayDirty.store(true, std::memory_order_relaxed);
   }
 };
@@ -793,6 +849,16 @@ inline void loadDrumFx(int i) {
 }
 inline void loadDrumFxB(int i) {
   fx.loadDrumInsert(1, i);
+}
+
+/* Pack-recall one shared-room scene into masterAux* atomics. */
+inline void loadAuxScene(int idx) {
+  if (idx < 0 || idx >= 16) return;
+  AuxScenePreset scene;
+  memcpy_P(&scene, &AUX_SCENES[idx], sizeof(AuxScenePreset));
+  FxChain::applyAuxPack(scene.dly_time, scene.dly_fb, scene.rev_size, scene.rev_damp);
+  auxSceneIndex.store(idx, std::memory_order_relaxed);
+  displayDirty.store(true, std::memory_order_relaxed);
 }
 
 /* loadDrumFxLive — user-initiated drum FX recall; also publishes preset sends

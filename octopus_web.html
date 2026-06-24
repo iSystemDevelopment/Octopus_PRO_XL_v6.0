@@ -1119,7 +1119,7 @@
             </div>
             <div class="feature-card">
                 <h4 class="text-white mb-2"><i class="fa-solid fa-shield-halved text-[#22c55e]"></i> Robust Two-Way Sync</h4>
-                <p class="text-sm text-gray-400">195 SysEx commands at 14-bit resolution. Auto-connect on USB; badge <strong class="text-gray-300">Octopus ON</strong> when linked. Hardware edits echo into the App; a sync supervisor re-asserts BPM/play/record if a message is dropped. App transport buttons are read-only reflectors.</p>
+                <p class="text-sm text-gray-400">196 SysEx commands at 14-bit resolution. Auto-connect on USB; badge <strong class="text-gray-300">Octopus ON</strong> when linked. Hardware edits echo into the App; a sync supervisor re-asserts BPM/play/record if a message is dropped. App transport buttons are read-only reflectors.</p>
             </div>
         </div>
 
@@ -1135,12 +1135,13 @@
     <!-- ════════════════════════ UNIVERSAL MIDI CONTROLLER MODE ════════════════════════ -->
     <section id="midi-mode" class="py-24 px-6 border-t border-[#111]">
         <div class="max-w-7xl mx-auto text-center mb-12">
-            <p class="text-xs uppercase tracking-[0.25em] text-[#06b6d4] mb-3 mono">New in OctopusApp v6.2.00</p>
+            <p class="text-xs uppercase tracking-[0.25em] text-[#06b6d4] mb-3 mono">OctopusApp v6.2.05</p>
             <h2 class="text-3xl md:text-4xl text-white mb-4"><span class="text-[#06b6d4]">07.</span> Universal MIDI Controller Mode</h2>
             <p class="max-w-3xl mx-auto text-gray-400 leading-relaxed">
                 OctopusApp is not only a mirror for Octopus PRO XL hardware. When <strong class="text-gray-300">no Octopus is connected</strong>,
                 the same browser App becomes a <strong class="text-[#06b6d4]">standalone MIDI controller</strong> — pick any USB MIDI interface from the port list
-                and drive external synths, drum machines, or a DAW with a <strong>64-step sequencer</strong>, <strong>Control Change</strong>, and <strong>Program Change</strong>.
+                and drive external synths, drum machines, or a DAW with a <strong>64-step sequencer</strong>, <strong>song chains</strong>, <strong>factory patterns</strong>,
+                <strong>Control Change</strong>, and <strong>Program Change</strong>.
                 <span class="block mt-3 text-sm text-gray-500">Browser-only feature — no firmware update required. Octopus linked mode stays identical to v6.1.</span>
             </p>
         </div>
@@ -1168,12 +1169,21 @@
         <div class="max-w-5xl mx-auto grid md:grid-cols-2 gap-8 mb-12">
             <div class="box-glow-green rounded-xl p-6 bg-[#050508]" style="--glow: #06b6d4">
                 <h4 class="text-[#06b6d4] font-bold mb-2"><i class="fa-solid fa-table-cells"></i> Sequencer tab</h4>
-                <p class="text-sm text-gray-400">Same 16&times;16 pad matrix, banks A–D, and P1–P4 pages (up to 64 steps). The App runs its own BPM clock and playhead on an isolated GPU layer — no glitching when the UI is busy. Outbound <strong>note on/off</strong> on each step for melody rows (scale-aware) and drum rows (GM-style mapping).</p>
+                <p class="text-sm text-gray-400">Same 16&times;16 pad matrix, banks <strong>A–D</strong>, and <strong>P1–P4</strong> step pages (up to 64 steps). Local BPM clock, stable GPU playhead, <strong>SONG</strong> chain editor (bank + repeats per step), <strong>🔗</strong> song-mode playback, and factory <strong>MELODY / DRUM</strong> pattern dropdowns. Outbound note on/off per step — scale-aware melody rows and GM-style drum mapping.</p>
             </div>
             <div class="box-glow-green rounded-xl p-6 bg-[#050508]" style="--glow: #06b6d4">
                 <h4 class="text-[#06b6d4] font-bold mb-2"><i class="fa-solid fa-sliders"></i> Instruments tab (MIDI)</h4>
-                <p class="text-sm text-gray-400">Trimmed layout: <strong>Seq synth</strong> panel (MIDI channel, program change, CC knobs, activity canvas) and <strong>drum machine</strong> panel with the beat-reactive scope canvas — not the full studio mixing console, laser show, or D-BEAM editors from Octopus mode.</p>
+                <p class="text-sm text-gray-400">Compact dual-panel layout: <strong>Seq synth</strong> (MIDI channel, program change, 8 CC knobs in a 2&times;4 grid, SEQ activity scope) and <strong>drum machine</strong> (per-voice note map, DRUM activity scope). No studio mixer, laser show, or D-BEAM — those stay Octopus-hardware only.</p>
             </div>
+        </div>
+
+        <div class="max-w-3xl mx-auto feature-card mb-10 border-[#06b6d4]/20">
+            <h4 class="text-white mb-2"><i class="fa-solid fa-wand-magic-sparkles text-[#06b6d4]"></i> Also in v6.2.x</h4>
+            <ul class="text-sm text-gray-400 space-y-2 list-disc pl-4 text-left">
+                <li><strong class="text-gray-300">Auto-reload on MIDI port connect</strong> — clean boot when you pick Octopus or a MIDI interface.</li>
+                <li><strong class="text-gray-300">Session EXP/IMP</strong> — backup patterns, chains, routing, and CC maps as JSON in the browser.</li>
+                <li><strong class="text-gray-300">Optional PayPal tip</strong> — <a href="https://www.paypal.com/donate?hosted_button_id=KX7B76V37PED8" class="text-[#06b6d4] hover:underline" target="_blank" rel="noopener noreferrer">hosted donate page</a> (TIP / DONATE chips in the App).</li>
+            </ul>
         </div>
 
         <div class="max-w-3xl mx-auto feature-card mb-10">
@@ -1259,7 +1269,7 @@
                class="feature-card resource-tile block hover:border-[#22c55e] text-left no-underline">
                 <div class="text-2xl mb-2 text-[#22c55e]"><i class="fa-solid fa-plug"></i></div>
                 <h3 class="text-white font-bold mb-1">OctopusApp</h3>
-                <p class="text-sm text-gray-400">Live Web MIDI console v6.2 — Octopus sync or standalone MIDI Controller (no hardware required).</p>
+                <p class="text-sm text-gray-400">Live Web MIDI console v6.2.05 — Octopus sync or standalone MIDI Controller (no hardware required).</p>
             </a>
             <a href="user_manual.md" class="feature-card resource-tile block hover:border-[#a855f7] text-left no-underline">
                 <div class="text-2xl mb-2 text-[#a855f7]"><i class="fa-solid fa-book"></i></div>
@@ -1333,7 +1343,7 @@
                         <div class="spec-row"><span>Processor</span><span>ESP32-P4 · dual-core DSP + laser task</span></div>
                         <div class="spec-row"><span>Audio</span><span>24 voices · <strong>44.1 kHz</strong> · <strong>24-bit</strong> I2S</span></div>
                         <div class="spec-row"><span>Laser</span><span>8-beam galvo RGB · top sensor · D-BEAM prox.</span></div>
-                        <div class="spec-row"><span>Software</span><span>Octopus v6.1.00 · 195 SysEx · NVS</span></div>
+                        <div class="spec-row"><span>Software</span><span>Octopus v6.1.00 · 196 SysEx · NVS</span></div>
                         <div class="spec-row spec-row-full"><span>Rear I/O</span><span>TRS L/R out &amp; in · USB-C (Web MIDI SysEx) · ILDA · MicroSD</span></div>
                     </div>
                 </div>
@@ -1450,7 +1460,7 @@
                     <p class="text-xs text-gray-600 mono mt-3 mb-4">Or email directly:
                         <a href="mailto:diodac.electronics@gmail.com" class="text-[#06b6d4] hover:underline">diodac.electronics@gmail.com</a>
                     </p>
-                    <a href="https://www.paypal.com/donate/?business=diodac.electronics%40gmail.com&amp;item_name=Octopus+PRO+XL"
+                    <a href="https://www.paypal.com/donate?hosted_button_id=KX7B76V37PED8"
                        class="inline-flex items-center justify-center gap-2 w-full py-3 px-4 rounded-lg border border-[#1a3a5c] bg-[#0a1420] text-[#7eb8e8] hover:border-[#0070ba] hover:text-white transition text-sm font-semibold"
                        target="_blank" rel="noopener noreferrer" title="Optional donation — opens PayPal">
                         <i class="fa-brands fa-paypal text-lg text-[#0070ba]"></i>
@@ -1483,7 +1493,7 @@
             &nbsp;&middot;&nbsp;
             <a href="#contact" class="text-[#06b6d4] hover:underline">Contact</a>
             &nbsp;&middot;&nbsp;
-            <a href="https://www.paypal.com/donate/?business=diodac.electronics%40gmail.com&amp;item_name=Octopus+PRO+XL" class="text-[#7eb8e8] hover:underline" target="_blank" rel="noopener noreferrer" title="Optional PayPal donation"><i class="fa-brands fa-paypal"></i> Donate</a>
+            <a href="https://www.paypal.com/donate?hosted_button_id=KX7B76V37PED8" class="text-[#7eb8e8] hover:underline" target="_blank" rel="noopener noreferrer" title="Optional PayPal donation"><i class="fa-brands fa-paypal"></i> Donate</a>
         </p>
         <p class="text-xs text-gray-700 mono max-w-xl mx-auto px-4">Proprietary and confidential. Unauthorized copying, distribution, modification, or use of this product, firmware, or OctopusApp software is strictly prohibited without prior written permission.</p>
     </footer>

@@ -63,7 +63,7 @@ inline const char* const kL1Names[16] = {
   "MIDI I/O",   /*  4 kL2MidiCount       =  5 */
   "SEQ SETUP",  /*  5 kL2SeqSetupCount   = 13 */
   "SEQ MATRIX", /*  6 kL2SeqMatrixCount  =  1 */
-  "AUX FX",     /*  7 kL2AuxFxCount      = 14 */
+  "AUX FX",     /*  7 kL2AuxFxCount      = 16 */
   "SEQ SYNTH",  /*  8 kL2SeqSynthCount   = 21 */
   "DRUM KIT",   /*  9 kL2DrumsCount      = 42 */
   "LASER SHOW", /* 10 kL2LaserShowCount  =  9 */
@@ -146,12 +146,21 @@ inline const char* const kL2SeqSetup[13] = {
 
 inline const char* const kL2SeqMatrix[1] = { "Open Grid" };
 
-/* AUX FX — delay/reverb bus + insert sends + FX slots */
-inline const char* const kL2AuxFx[14] = {
-  "Dly Time", "Dly FB", "Rev Size", "Rev Damp",
+/* AUX FX — shared room + sends + insert slots */
+inline const char* const kL2AuxFx[16] = {
+  "Room Time", "Room FB", "Room Size", "Room Dmp",
   "H.Dly Snd", "H.Rev Snd", "S.Dly Snd", "S.Rev Snd",
   "Harp FX-A", "Harp FX-B", "Seq FX-A", "Seq FX-B",
-  "Drum FX-A", "Drum FX-B"
+  "Drum FX-A", "Drum FX-B",
+  "Room Scn", "Link Aux"
+};
+
+/* 16 shared-room scene names — AUX_SCENES[] in effect.cpp (1:1 index). */
+inline const char* const kAuxSceneNames[16] = {
+  "Dry Room", "Tight Plate", "Studio Booth", "Live Hall",
+  "Cosmic Plate", "Tape Echo", "Slap Back", "Shimmer Hall",
+  "Dark Cave", "Nebula Wash", "Pulse Chamber", "Ambient Bloom",
+  "Drum Box", "Cathedral", "Lo-Fi Deck", "Void Infinite"
 };
 
 /* DRUM KIT — 5 params × 8 voices + kit selector (l2=40) + pitch (l2=41). */
@@ -304,6 +313,9 @@ static inline const char* safeDynName(int idx) {
 }
 static inline const char* safeMasterFxName(int idx) {
   return kMasterFxNames[std::max(0, std::min(15, idx))];
+}
+static inline const char* safeAuxSceneName(int idx) {
+  return kAuxSceneNames[std::max(0, std::min(15, idx))];
 }
 static inline const char* safeDbeamRouteName(int idx) {
   return kDbeamRouteNames[std::max(0, std::min(3, idx))];

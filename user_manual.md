@@ -475,7 +475,13 @@ Output
 
 ### 7.4 Effects architecture & character guide
 
-Each engine (harp, seq, drums) has **FX-A** (modulation/time) and **FX-B** (dynamics). All engines share a **global delay/reverb aux** (AUX FX menu) plus a **master bus** preset.
+Each engine (harp, seq, drums) has **FX-A** (modulation/time) and **FX-B** (dynamics). All engines share **one global delay/reverb return bus** (the shared room). Per-engine **send levels** route into that bus; **room character** (time, feedback, size, damping) is edited globally or recalled via **Room Scn** presets in the AUX FX menu.
+
+**Insert-A recall (default):** loads the insert effect (mode, params, mix) and **send amounts only** — it does **not** change the shared room unless **Link Aux** is ON.
+
+**Room Scn (AUX FX menu):** recalls one of 16 authored `AUX_SCENES[]` rows into the shared bus in a single pack write (`loadAuxScene()`).
+
+**Link Aux (default OFF):** when ON, recalling any FX-A insert preset also applies that preset’s authored delay/reverb character fields to the shared room (legacy “full scene” behaviour).
 
 #### Insert FX-A (UI names → DSP mode)
 
@@ -675,7 +681,20 @@ Melody engine parameters — **21 items** (synth core + preset/slots; no harp ar
 
 ### 8.8 AUX FX
 
-Shared delay/reverb and insert routing (14 items): Dly Time, Dly FB, Rev Size, Rev Damp, H/S harp+seq sends, Harp/Seq/Drum FX-A/B selectors.
+Shared **room** (one delay + one reverb return for the whole mix) and per-engine routing (16 items):
+
+| Item | Function |
+|------|----------|
+| Room Time | Shared delay time (0–1.5 s) — `CMD_H_FX_TIME` / `CMD_S_FX_TIME` alias the same bus |
+| Room FB | Shared delay feedback |
+| Room Size | Shared reverb size |
+| Room Dmp | Shared reverb damping |
+| H/S Dly·Rev Snd | Per-engine send levels into the shared bus |
+| Harp/Seq/Drum FX-A/B | Insert preset selectors (FX-A = modulation, FX-B = dynamics) |
+| **Room Scn** | Recall shared-room preset 0–15 (`AUX_SCENES[]`, wire `CMD_AUX_SCENE_IDX` 194) |
+| **Link Aux** | OFF (default): FX-A recall changes sends only. ON: FX-A recall also copies preset aux fields to the shared room (`CMD_LINK_AUX_PRESET` 195) |
+
+Preset recall uses **pack load** (one struct copy under `patchMux`; DSP reads a per-buffer snapshot). The shared aux engine is a **single** `SharedAux` instance — no per-engine duplicate delay/reverb chains (stable CPU/RAM budget).
 
 ---
 
@@ -777,7 +796,7 @@ When **no Octopus PRO XL** is connected, OctopusApp operates as a **universal MI
 | **Trigger** | ★ Octopus USB port + SysEx echo | Any other MIDI output, or no Octopus echo |
 | **Badge** | Octopus ON | MIDI OUT |
 | **Tabs** | INSTRUMENTS · MIXER · SEQUENCER | INSTRUMENTS · SEQUENCER only |
-| **Outbound** | Octopus SysEx (195 commands) | MIDI note on/off, CC, Program Change |
+| **Outbound** | Octopus SysEx (196 commands) | MIDI note on/off, CC, Program Change |
 | **Transport** | Hardware SCALE / OC / encoder | App play · stop · BPM |
 | **Persistence** | Device NVS (SAVE/LOAD) | Browser `localStorage` + EXP/IMP JSON |
 
@@ -895,7 +914,7 @@ Further reference: [docs/midi_controller_mode.md](./docs/midi_controller_mode.md
 
 #### 9.4.6 Support the project (optional)
 
-If OctopusApp or the hardware helps your music, you can leave an optional tip via **[PayPal](https://www.paypal.com/donate/?business=diodac.electronics%40gmail.com&item_name=Octopus+PRO+XL)** to **DIODAC ELECTRONICS** (`diodac.electronics@gmail.com`). The same link appears in OctopusApp (**TIP** / **DONATE** chips) and on the [product site contact section](https://octopus-info.isystem.app#contact). Donations are voluntary and do not unlock features.
+If OctopusApp or the hardware helps your music, you can leave an optional tip via **[PayPal](https://www.paypal.com/donate?hosted_button_id=KX7B76V37PED8)** to **DIODAC ELECTRONICS** (`diodac.electronics@gmail.com`). The same link appears in OctopusApp (**TIP** / **DONATE** chips) and on the [product site contact section](https://octopus-info.isystem.app#contact). Donations are voluntary and do not unlock features.
 
 ---
 
@@ -998,4 +1017,4 @@ Authoritative list: **`code_info.h` §9**. Targets for the next upgrade:
 
 *Octopus PRO XL v6.1 — © DIODAC ELECTRONICS / iSystem. Firmware labels: `display.h`. Protocol: `sysex.h`.*
 
-**Optional support:** [PayPal donate](https://www.paypal.com/donate/?business=diodac.electronics%40gmail.com&item_name=Octopus+PRO+XL) · `diodac.electronics@gmail.com`
+**Optional support:** [PayPal donate](https://www.paypal.com/donate?hosted_button_id=KX7B76V37PED8) · `diodac.electronics@gmail.com`

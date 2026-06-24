@@ -845,15 +845,21 @@ inline std::atomic<int> seqFxIndexB{ 0 };
 inline std::atomic<int> drumFxIndexA{ 0 };
 inline std::atomic<int> drumFxIndexB{ 0 };
 
-/* ── Shared aux bus parameters ─────────────────────────────────────────── */
-/* CMD_H_FX_TIME / CMD_S_FX_TIME → masterAuxDlyTime  (0.0–1.5 s)
- * CMD_H_FX_SIZE / CMD_S_FX_SIZE → masterAuxRevSize  (0.0–0.95)
+/* ── Shared aux bus parameters (one global return — all engines sum here) ── */
+/* CMD_H_FX_TIME / CMD_S_FX_TIME → masterAuxDlyTime  (0.0–1.5 s) — same bus
+ * CMD_H_FX_SIZE / CMD_S_FX_SIZE → masterAuxRevSize  (0.0–0.95) — same bus
  * CMD_AUX_DLY_FB  → masterAuxDlyFb    (0.0–0.95)
- * CMD_AUX_REV_DMP → masterAuxRevDamp  (0.0–1.0) */
+ * CMD_AUX_REV_DMP → masterAuxRevDamp  (0.0–1.0)
+ * CMD_AUX_SCENE_IDX → loadAuxScene(0–15)  |  CMD_LINK_AUX_PRESET → optional
+ *   copy of insert preset aux fields when recalling FX-A (default OFF).      */
 inline std::atomic<float> masterAuxDlyTime{ 0.35f };
 inline std::atomic<float> masterAuxDlyFb{ 0.45f };
 inline std::atomic<float> masterAuxRevSize{ 0.55f };
 inline std::atomic<float> masterAuxRevDamp{ 0.35f };
+/* Last selected AUX_SCENES[] row (UI only — live aux floats are SSOT in NVS). */
+inline std::atomic<int> auxSceneIndex{ 0 };
+/* When false (default), insert-A recall sets sends only; room params stay put. */
+inline std::atomic<bool> linkAuxToInsertPreset{ false };
 
 /* ═══════════════════════════════════════════════════════════════════════════
  * SECTION 13 — D-BEAM EXPRESSION STATE

@@ -7,7 +7,7 @@ Production hosting for the **browser App** and **product site**. Firmware is fla
 | **OctopusApp** | [octopus.isystem.app](https://octopus.isystem.app) | `OctopusApp.html` |
 | **Product site** | [octopus-info.isystem.app](https://octopus-info.isystem.app) | `octopus_web.html` → `index.html` |
 
-**Versions:** Firmware **6.1.00** · OctopusApp **6.2.03** (includes Universal MIDI Controller mode).
+**Versions:** Firmware **6.1.00** · OctopusApp **6.2.05** (includes Universal MIDI Controller mode).
 
 ---
 
@@ -166,9 +166,11 @@ sudo cp /var/www/octopus.isystem.app/index.html \
   /var/www/octopus.isystem.app/index.html.bak.$(date +%Y%m%d)
 ```
 
-**Confirm live version:** open `https://octopus.isystem.app` → log line or title must show **OctopusApp v6.2.03**. Hard refresh once (`Ctrl+Shift+R`) if the tab was already open.
+**Confirm live version:** open `https://octopus.isystem.app` → log line or title must show **OctopusApp v6.2.05**. Hard refresh once (`Ctrl+Shift+R`) if the tab was already open.
 
 **Cloudflare:** if you use edge cache, purge `octopus.isystem.app` after upload (or keep cache bypass rule from §0).
+
+**Social link preview (Facebook, etc.):** `OctopusApp.html` references share images on the product site — `https://octopus-info.isystem.app/octopus-app-hero.jpg` (card image) and `logo.jpg` (favicon). Those files **must** exist on `octopus-info` (see §2). After first share or an App update, refresh Facebook’s cache: [Sharing Debugger](https://developers.facebook.com/tools/debug/) → paste `https://octopus.isystem.app` → **Scrape Again**.
 
 ### First-time upload
 
@@ -197,17 +199,18 @@ Run in **Google Chrome** (or Edge) on **HTTPS**:
 
 | # | Test | Pass criteria |
 |---|------|----------------|
-| 1 | Page loads | Title shows **OctopusApp v6.2.03** |
+| 1 | Page loads | Title shows **OctopusApp v6.2.05** |
 | 2 | Octopus mode | With ★ port connected → badge **Octopus ON**; 3 tabs; transport read-only |
 | 3 | MIDI mode | Badge **MIDI OUT**; transport unlocked; **🔗** chain + pattern dropdowns |
 | 4 | Song mode | 🔗 ON → EDIT chain → Play cycles banks per chain row + repeats |
 | 5 | Patterns | MELODY / DRUM dropdown loads factory pattern → Play sends MIDI |
-| 6 | Sequencer | Grid edit, **Play** / **Stop**, playhead moves at BPM |
-| 7 | MIDI notes | External synth or loopback receives notes on step advance |
-| 8 | INSTRUMENTS | CC knob sends MIDI; PC on change; scopes animate |
-| 9 | Persistence | Reload → pattern + song chain restored; **EXP** includes `songData` |
-| 10 | Help | **HELP** → **MIDI CONTROLLER** tab documents song mode + patterns |
-| 11 | Regression | Reconnect ★ Octopus → full SysEx sync identical to v6.1 behaviour |
+| 6 | Share preview | [FB Debugger](https://developers.facebook.com/tools/debug/) on `https://octopus.isystem.app` shows **octopus-app-hero** image + title |
+| 7 | Sequencer | Grid edit, **Play** / **Stop**, playhead moves at BPM |
+| 8 | MIDI notes | External synth or loopback receives notes on step advance |
+| 9 | INSTRUMENTS | CC knob sends MIDI; PC on change; scopes animate |
+| 10 | Persistence | Reload → pattern + song chain restored; **EXP** includes `songData` |
+| 11 | Help | **HELP** → **MIDI CONTROLLER** tab documents song mode + patterns |
+| 12 | Regression | Reconnect ★ Octopus → full SysEx sync identical to v6.1 behaviour |
 
 ### MIDI Controller production notes
 
@@ -223,7 +226,7 @@ Run in **Google Chrome** (or Edge) on **HTTPS**:
 ### Upload
 
 1. `octopus_web.html` → `index.html` (or equivalent entry).
-2. Include static assets referenced by the page (`logo.jpg`, `octopus-app-hero.jpg`, etc.).
+2. Include static assets referenced by the page (`logo.jpg`, `octopus-app-hero.jpg`, etc.) — **required** for OctopusApp social share previews on `octopus.isystem.app`.
 3. HTTPS required.
 
 ### Post-deploy check
@@ -265,7 +268,7 @@ Keep the previous `OctopusApp.html` on the server (e.g. `OctopusApp.v6.1.00.html
 
 Octopus linked mode must remain safe — v6.2 does not change firmware protocol.
 
-**PayPal donate link** (optional tip widget): `https://www.paypal.com/donate/?business=diodac.electronics%40gmail.com&item_name=Octopus+PRO+XL` — present in `OctopusApp.html` and `octopus_web.html` after deploy.
+**PayPal donate link** (optional tip widget): `https://www.paypal.com/donate?hosted_button_id=KX7B76V37PED8` — present in `OctopusApp.html` and `octopus_web.html` after deploy.
 
 ---
 

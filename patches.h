@@ -215,6 +215,8 @@ static const ParamEntry PARAM_TABLE[] = {
   /* ── Aux bus feedback/damping (cmd 142–143) ───────────────────────────── */
   { CMD_AUX_DLY_FB,  PGroup::MASTER,  "Aux Dly Feedback",  11469,true,  true  },
   { CMD_AUX_REV_DMP, PGroup::MASTER,  "Aux Rev Damp",      3277, true,  true  },
+  { CMD_AUX_SCENE_IDX, PGroup::MASTER, "Aux Room Scene",  0,    false, true  },
+  { CMD_LINK_AUX_PRESET, PGroup::MASTER, "Link Aux Preset", 0,    false, true  },
 
   /* ── Drum body waveform (cmd 144) ─────────────────────────────────────── */
   /* v14 encoding: bits 7–5 = ch (0–7), bits 4–0 = wave_idx (0–24)          */
@@ -671,12 +673,12 @@ static inline void recallSeqPatch(int idx, ParamSource /*src*/) {
   portENTER_CRITICAL(&patchMux);
   memcpy(seqLivePatch, seqBank[idx], PARAMS_PER_PRESET * sizeof(uint16_t));
   sanitizePatch(seqLivePatch); /* clamp before atomics derive from it */
+  const uint8_t newVer = (seqLivePatchVersion.load(std::memory_order_relaxed) + 1u) & 0xFFu;
+  seqLivePatchVersion.store(newVer, std::memory_order_release);
   portEXIT_CRITICAL(&patchMux);
 
   syncSeqAtomicsFromLivePatch(); /* keep seq atomics aligned with live sound */
 
-  uint8_t newVer = (seqLivePatchVersion.load(std::memory_order_relaxed) + 1u) & 0xFFu;
-  seqLivePatchVersion.store(newVer, std::memory_order_release);
   std::atomic_thread_fence(std::memory_order_release);
   displayDirty.store(true, std::memory_order_relaxed);
 
@@ -1011,7 +1013,10 @@ static inline void echoFullSeqState() {
   txSysex(CMD_S_FX_IDX_B, (uint16_t)seqFxIndexB.load(std::memory_order_relaxed));
   txSysex(CMD_D_FX_IDX, (uint16_t)drumFxIndexA.load(std::memory_order_relaxed));
   txSysex(CMD_D_FX_IDX_B, (uint16_t)drumFxIndexB.load(std::memory_order_relaxed));
-  /* Aux FX parameters */
+  /* Aux FX parameters + room scene / link toggle */
+  txSysex(CMD_AUX_SCENE_IDX, (uint16_t)(auxSceneIndex.load(std::memory_order_relaxed) & 15));
+  txSysex(CMD_LINK_AUX_PRESET,
+          linkAuxToInsertPreset.load(std::memory_order_relaxed) ? 16383u : 0u);
   echoAuxParams();
   /* Drum body waveform selections */
   echoAllDrumWaves();
@@ -1078,11 +1083,13 @@ static inline void echoFullSeqState() {
  * ═════════════════════════════════════════════════════════════════════════════ */
 
 /* ═══════════════════════════════════════════════════════════════════════════
- * SECTION 10A — AUX FX BUS PARAMS (CMD 142–143, 64–67)
+ * SECTION 10A — AUX FX BUS PARAMS (CMD 142–143, 64–67, 194–195)
  *
  * masterAuxDlyFb / masterAuxRevDamp and the shared aux delay/reverb bus are
  * driven through applyAuxParam() + echoAuxParams() — hardware AUX FX menu,
  * App AUX_ENC, and midi.cpp RX all share this path (since v6.0 / WS11).
+ * Room scenes: loadAuxScene() + CMD_AUX_SCENE_IDX.  Optional insert coupling:
+ * linkAuxToInsertPreset + CMD_LINK_AUX_PRESET (default OFF).
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 /* applyAuxParam — set delay feedback or reverb damp with v14 input + echo */
@@ -1126,6 +1133,12 @@ static inline void echoAuxParams() {
   txSysex(CMD_H_FX_SIZE, norm_to_v14(masterAuxRevSize.load(std::memory_order_relaxed) / 0.95f));
   txSysex(CMD_AUX_DLY_FB, norm_to_v14(masterAuxDlyFb.load(std::memory_order_relaxed) / 0.95f));
   txSysex(CMD_AUX_REV_DMP, norm_to_v14(masterAuxRevDamp.load(std::memory_order_relaxed)));
+}
+
+/* After insert-A recall — echo shared room only when Link Aux is enabled. */
+static inline void maybeEchoAuxAfterInsertLoad() {
+  if (linkAuxToInsertPreset.load(std::memory_order_relaxed))
+    echoAuxParams();
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -1253,7 +1266,7 @@ static inline void applyDrumInsertParam(uint8_t cmd, uint16_t v14, Origin o) {
  *   seqBank[256][16]      RAM seq bank  — read/write, seq synth  (CMD_S_PATCH)
  *
  * Factory presets use the EXACT SynthParam/livePatch[] layout (memcpy'd with no
- * remap by recallHarpPatch / loadFactory{Harp,Seq}Preset).  Canonical order:
+ * remap by recallHarpPatch / recallSeqPatch).  Canonical order:
  *   [0]  P_WAVEFORM   (0-24)
  *   [1]  P_ATTACK
  *   [2]  P_DECAY
@@ -1305,90 +1318,6 @@ static inline void seedFactoryBanks() {
     sanitizePatch(seqBank[p]);
   }
   portEXIT_CRITICAL(&patchMux);
-}
-
-/* loadFactoryPreset — unified factory-bank loader for HARP (isHarp=true) or SEQ
- * (false).  Loads one PROGMEM SOUND_BANK row into the engine's livePatch + user
- * bank, syncs all named atomics, and echoes all 16 params to the WebApp.
- *
- * vs the old split pair: deduplicated into one function, and the browse index is
- * clamped to NUM_FACTORY_PATCHES (not NUM_PATCHES) so it can never land on a
- * zero-filled/silent slot.  Memory ordering is UNCHANGED — livePatch + bank are
- * swapped under ONE patchMux window so the DSP sees an all-old or all-new patch
- * (never a half-applied mix), and the seq version bump stays inside that lock.  */
-static inline void loadFactoryPreset(bool isHarp, int idx) {
-  idx = std::max(0, std::min(NUM_FACTORY_PATCHES - 1, idx)); /* clamp to real presets */
-  (isHarp ? harpPatchIndex : seqPatchIndex).store(idx, std::memory_order_relaxed);
-
-  uint16_t factory[PARAMS_PER_PRESET];
-  memcpy_P(factory, &SOUND_BANK[idx][0], PARAMS_PER_PRESET * sizeof(uint16_t));
-  sanitizePatch(factory); /* clamp once → livePatch, bank, atomics, echo all consistent */
-
-  /* Atomic swap of livePatch + user bank under ONE lock (DSP sees all-old/all-new). */
-  portENTER_CRITICAL(&patchMux);
-  if (isHarp) {
-    memcpy(harpLivePatch, factory, PARAMS_PER_PRESET * sizeof(uint16_t));
-    memcpy(userBank[idx], factory, PARAMS_PER_PRESET * sizeof(uint16_t));
-  } else {
-    memcpy(seqLivePatch, factory, PARAMS_PER_PRESET * sizeof(uint16_t));
-    memcpy(seqBank[idx], factory, PARAMS_PER_PRESET * sizeof(uint16_t));
-    /* Seq render gates on this version — bump it inside the lock with the patch. */
-    uint8_t newVer = (seqLivePatchVersion.load(std::memory_order_relaxed) + 1u) & 0xFFu;
-    seqLivePatchVersion.store(newVer, std::memory_order_release);
-  }
-  portEXIT_CRITICAL(&patchMux);
-
-  /* Sync all 14 named atomics — display / UI read these. */
-  if (isHarp) {
-    harpWaveform.store((float)(factory[(int)SynthParam::P_WAVEFORM] % 25u), std::memory_order_relaxed);
-    harpAttack.store(v14_to_norm(factory[(int)SynthParam::P_ATTACK]), std::memory_order_relaxed);
-    harpDecay.store(v14_to_norm(factory[(int)SynthParam::P_DECAY]), std::memory_order_relaxed);
-    harpSustain.store(v14_to_norm(factory[(int)SynthParam::P_SUSTAIN]), std::memory_order_relaxed);
-    harpRelease.store(v14_to_norm(factory[(int)SynthParam::P_RELEASE]), std::memory_order_relaxed);
-    harpCutoff.store(v14_to_norm(factory[(int)SynthParam::P_CUTOFF]), std::memory_order_relaxed);
-    harpResonance.store(v14_to_norm(factory[(int)SynthParam::P_RESONANCE]), std::memory_order_relaxed);
-    harpNoise.store(v14_to_norm(factory[(int)SynthParam::P_NOISE]), std::memory_order_relaxed);
-    harpDetune.store((factory[(int)SynthParam::P_DETUNE] / 16383.0f) * 2.0f - 1.0f, std::memory_order_relaxed);
-    harpLfoRate.store(v14_to_norm(factory[(int)SynthParam::P_LFO_RATE]), std::memory_order_relaxed);
-    harpLfoDepth.store(v14_to_norm(factory[(int)SynthParam::P_LFO_DEPTH]), std::memory_order_relaxed);
-    harpLfoRoute.store((int32_t)(factory[(int)SynthParam::P_LFO_ROUTE] & 7u), std::memory_order_relaxed);
-    harpOsc2Wave.store((float)(factory[(int)SynthParam::P_OSC2_WAVE] % 25u), std::memory_order_relaxed);
-    harpEnvCutAmount.store(v14_to_norm(factory[(int)SynthParam::P_ENV_CUT]), std::memory_order_relaxed);
-  } else {
-    seqWaveform.store((float)(factory[(int)SynthParam::P_WAVEFORM] % 25u), std::memory_order_relaxed);
-    seqAttack.store(v14_to_norm(factory[(int)SynthParam::P_ATTACK]), std::memory_order_relaxed);
-    seqDecay.store(v14_to_norm(factory[(int)SynthParam::P_DECAY]), std::memory_order_relaxed);
-    seqSustain.store(v14_to_norm(factory[(int)SynthParam::P_SUSTAIN]), std::memory_order_relaxed);
-    seqRelease.store(v14_to_norm(factory[(int)SynthParam::P_RELEASE]), std::memory_order_relaxed);
-    seqCutoff.store(v14_to_norm(factory[(int)SynthParam::P_CUTOFF]), std::memory_order_relaxed);
-    seqResonance.store(v14_to_norm(factory[(int)SynthParam::P_RESONANCE]), std::memory_order_relaxed);
-    seqNoise.store(v14_to_norm(factory[(int)SynthParam::P_NOISE]), std::memory_order_relaxed);
-    seqDetune.store((factory[(int)SynthParam::P_DETUNE] / 16383.0f) * 2.0f - 1.0f, std::memory_order_relaxed);
-    seqLfoRate.store(v14_to_norm(factory[(int)SynthParam::P_LFO_RATE]), std::memory_order_relaxed);
-    seqLfoDepth.store(v14_to_norm(factory[(int)SynthParam::P_LFO_DEPTH]), std::memory_order_relaxed);
-    seqLfoRoute.store((int32_t)(factory[(int)SynthParam::P_LFO_ROUTE] & 7u), std::memory_order_relaxed);
-    seqOsc2Wave.store((float)(factory[(int)SynthParam::P_OSC2_WAVE] % 25u), std::memory_order_relaxed);
-    seqEnvCutAmount.store(v14_to_norm(factory[(int)SynthParam::P_ENV_CUT]), std::memory_order_relaxed);
-  }
-
-  std::atomic_thread_fence(std::memory_order_release);
-
-  /* Echo all 16 params + patch-select so the WebApp display updates at once.
-   * LFO route uses base+11 (cmd 11/27), matching OctopusApp wire encoding. */
-  const uint8_t baseCmd = isHarp ? CMD_H_WAVE : CMD_S_WAVE;
-  const uint8_t selCmd = isHarp ? CMD_H_PATCH : CMD_S_PATCH;
-  for (int i = 0; i < PARAMS_PER_PRESET; ++i)
-    txSysex((uint8_t)(baseCmd + i), factory[i]);
-  txSysex(selCmd, (uint16_t)idx);
-  displayDirty.store(true, std::memory_order_relaxed);
-}
-
-/* Thin wrappers — every existing call site keeps compiling unchanged. */
-static inline void loadFactoryHarpPreset(int idx) {
-  loadFactoryPreset(true, idx);
-}
-static inline void loadFactorySeqPreset(int idx) {
-  loadFactoryPreset(false, idx);
 }
 
 /* saveCurrentHarpToUserBank — write harpLivePatch into userBank[slot].

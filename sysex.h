@@ -52,8 +52,8 @@
  * 128–137  Laser / wire       (laser show, hue ADSR, MIDI channel routing)
  * 138–147  Seq / mix / D-BEAM (chain, mutes, aux FX, drum wave, D-BEAM route)
  * 148–163  Song / transport / pan / grid bulk
- * 164–194  v6 extensions      (CPU load, play mode, scoped persist, user slots,
- *                               arp, drum insert FX, seq restart; 194 reserved)
+ * 164–195  v6 extensions      (CPU load, play mode, scoped persist, user slots,
+ *                               arp, drum insert FX, seq restart, aux scene/link)
  * ─────────────────────────────────────────────────────────────────────────────*/
 
 /* Patch blob sub-byte (variable-length full-preset transfer — see module header). */
@@ -248,8 +248,10 @@ static constexpr uint8_t CMD_D_FX_P1  = 191; /* v14 0–16383 → p1 0..30 (rate
 static constexpr uint8_t CMD_D_FX_P2  = 192; /* v14 0–16383 → p2 0..250 (depth/swing)   */
 /* App→device: reset step counter to 0 without stopping playback (post randomise). */
 static constexpr uint8_t CMD_SEQ_RESTART = 193;
-/* CMD_STEP_PHASE (194) — reserved; not emitted (sub-step PLL echo removed). */
-static constexpr uint8_t CMD_STEP_PHASE = 194;
-static constexpr uint8_t CMD_COUNT = 195; /* total command count              */
+/* Shared-room scene recall (0–15 → AUX_SCENES[] in effect.cpp). */
+static constexpr uint8_t CMD_AUX_SCENE_IDX = 194;
+/* Link insert-A preset aux fields to masterAux* on recall: 0=off 16383=on. */
+static constexpr uint8_t CMD_LINK_AUX_PRESET = 195;
+static constexpr uint8_t CMD_COUNT = 196; /* total command count              */
 
 #endif /* SYSEX_H */

@@ -98,6 +98,30 @@ const DynPreset DYNAMICS_PRESETS[16] PROGMEM = {
 #undef IFX
 #undef MFX
 #undef DYN
+
+/* Shared-room scenes — recall via loadAuxScene() / AUX FX → Room Scn menu. */
+#define AUX(nm, t, fb, sz, dm)                                                 \
+  { nm, (float)(t), (float)(fb), (float)(sz), (float)(dm) }
+
+const AuxScenePreset AUX_SCENES[16] PROGMEM = {
+  AUX("Dry Room",      0.12f, 0.00f, 0.15f, 0.55f),
+  AUX("Tight Plate",   0.22f, 0.25f, 0.35f, 0.45f),
+  AUX("Studio Booth",  0.30f, 0.30f, 0.50f, 0.48f),
+  AUX("Live Hall",     0.38f, 0.35f, 0.70f, 0.52f),
+  AUX("Cosmic Plate",  0.45f, 0.40f, 0.60f, 0.50f),
+  AUX("Tape Echo",     0.45f, 0.42f, 0.20f, 0.35f),
+  AUX("Slap Back",     0.28f, 0.55f, 0.25f, 0.40f),
+  AUX("Shimmer Hall",  0.37f, 0.30f, 0.85f, 0.61f),
+  AUX("Dark Cave",     0.55f, 0.50f, 0.95f, 0.67f),
+  AUX("Nebula Wash",   0.30f, 0.00f, 0.70f, 0.48f),
+  AUX("Pulse Chamber", 0.35f, 0.45f, 0.55f, 0.42f),
+  AUX("Ambient Bloom", 0.50f, 0.38f, 0.75f, 0.55f),
+  AUX("Drum Box",      0.18f, 0.20f, 0.32f, 0.65f),
+  AUX("Cathedral",     0.60f, 0.35f, 0.90f, 0.40f),
+  AUX("Lo-Fi Deck",    0.40f, 0.60f, 0.45f, 0.72f),
+  AUX("Void Infinite", 0.65f, 0.48f, 0.95f, 0.30f)
+};
+#undef AUX
 /* clang-format on */
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -336,13 +360,23 @@ void IRAM_ATTR fx_process_multi_buf_safe(
   /* ── Stage 3 setup: aux bus — ring while s_auxRingBuf > 0 (gate below) ──── */
   const bool runAux = sendUp && (s_auxRingBuf > 0);
 
-  /* [SNAPSHOT] Latch the six insert-send floats ONCE per buffer.  They are plain
-   * floats written under patchMux (patches.h applyFxSend / loadInsert); reading
-   * them per sample risked a cross-core mid-buffer tear AND forced 512× reloads
-   * through the fx pointer.  Locals = coherent for the buffer + held in registers. */
-  const float hDly = fx.harpInsert.dly_send, hRev = fx.harpInsert.rev_send;
-  const float sDly = fx.seqInsert .dly_send, sRev = fx.seqInsert .rev_send;
-  const float dDly = fx.drumInsert.dly_send, dRev = fx.drumInsert.rev_send;
+  /* [SNAPSHOT] Latch insert sends + slot A/B params ONCE per buffer under patchMux.
+   * Plain floats written from loadInsert / applyFxSend; per-sample reads risked a
+   * cross-core mid-buffer tear.  Delay/dynamics envelope state stays in the slots. */
+  InsertFxSnap hFxSnap, sFxSnap, dFxSnap;
+  InsertDynSnap hDynSnap, sDynSnap, dDynSnap;
+  float hDly, hRev, sDly, sRev, dDly, dRev;
+  portENTER_CRITICAL(&patchMux);
+  fx.harpInsert.captureSnap(hFxSnap, hDynSnap);
+  fx.seqInsert .captureSnap(sFxSnap, sDynSnap);
+  fx.drumInsert.captureSnap(dFxSnap, dDynSnap);
+  hDly = fx.harpInsert.dly_send;
+  hRev = fx.harpInsert.rev_send;
+  sDly = fx.seqInsert .dly_send;
+  sRev = fx.seqInsert .rev_send;
+  dDly = fx.drumInsert.dly_send;
+  dRev = fx.drumInsert.rev_send;
+  portEXIT_CRITICAL(&patchMux);
 
   const float dT = masterAuxDlyTime.load(std::memory_order_relaxed);
   const float dF = masterAuxDlyFb.load(std::memory_order_relaxed);
@@ -381,10 +415,10 @@ void IRAM_ATTR fx_process_multi_buf_safe(
     float harpMono = (float)h_buf[i] * hG;
     float seqMono  = (float)s_buf[i] * sG;
     float drumMono = (float)d_buf[i] * dG;
-    fx.harpInsert.process_mono(harpMono);
-    fx.seqInsert .process_mono(seqMono);
+    fx.harpInsert.process_mono(harpMono, hFxSnap, hDynSnap);
+    fx.seqInsert .process_mono(seqMono,  sFxSnap, sDynSnap);
     fx.drumFx    .process_mono(drumMono);
-    fx.drumInsert.process_mono(drumMono);
+    fx.drumInsert.process_mono(drumMono, dFxSnap, dDynSnap);
 
     /* Stage 3: aux send bus */
     float wetL = 0.0f, wetR = 0.0f;

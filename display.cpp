@@ -790,6 +790,8 @@ static void formatParamValueString(int l1, int l2, char* out, size_t maxB) {
     case 11: snprintf(out, maxB, "%s", safeDynName(seqFxIndexB.load()  & 15)); return;
     case 12: snprintf(out, maxB, "%s", safeFxName(drumFxIndexA.load() & 15)); return;
     case 13: snprintf(out, maxB, "%s", safeDynName(drumFxIndexB.load() & 15)); return;
+    case 14: snprintf(out, maxB, "%s", safeAuxSceneName(auxSceneIndex.load() & 15)); return;
+    case 15: snprintf(out, maxB, "%s", linkAuxToInsertPreset.load() ? "ON" : "OFF"); return;
     } break;
 
   /* ── 8: SEQ SYNTH ─────────────────────────────────────────────────────── */

@@ -18,9 +18,9 @@
  * SYSTEM_FW_VERSION "6.1.00"
  * SYSTEM_BUILD_DATE "2026-06-23"
  * SYSTEM_ARCH_TAG   "ESP32-S3-DUALCORE-IDF5-FREERTOS"
- * SETTINGS_VERSION  0x0615   (AllSettings wire-layout ID — not firmware semver)
+ * SETTINGS_VERSION  0x0616   (AllSettings wire-layout ID — not firmware semver)
  * NVS_NAMESPACE     "octopus" (legacy "octopus_v5" auto-migrated on first boot)
- * CMD_COUNT         195       (sysex indices 0-194; 194 reserved/unused)
+ * CMD_COUNT         196       (sysex indices 0-195; 194=AUX_SCENE 195=LINK_AUX)
  *
  * Release history: CHANGELOG.md.  Architecture below describes v6.1.00 as-shipped.
  *
@@ -147,7 +147,7 @@
  *         that writes seqLivePatch[] directly MUST immediately fan it back out via
  *         syncSeqAtomicsFromLivePatch() (patches.h) — else the audible sound and
  *         the saved sound diverge (seq synth sound silently fails to persist).
- *         Covered writers: recallSeqPatch, loadFactoryPreset, applySeqParam,
+ *         Covered writers: recallSeqPatch, applySeqParam,
  *         loadFactorySynthPattern (companion preset).
  *
  * ═══════════════════════════════════════════════════════════════════════════ 
@@ -158,7 +158,7 @@
  *   ID = 0x7C  device → App  (all firmware echoes — ignored by firmware RX so a
  *              looped MIDI stream can't fake an App heartbeat / re-toggle play)
  *   sub=0x00: cmd 0-127   (cmd_wire = cmd)
- *   sub=0x01: cmd 128-194 (cmd_wire = cmd - 128)
+ *   sub=0x01: cmd 128-195 (cmd_wire = cmd - 128)
  *   v14 = (hi7 << 7) | lo7  ∈ [0, 16383]
  *
  *   ── Harp synth (0–13) — SynthParam direct index ─────────────────────────
@@ -313,6 +313,8 @@
  *   141 D_MUTE       mixDrumsMute     bool
  *   142 AUX_DLY_FB   masterAuxDlyFb   0–16383 (→ 0.0–0.95)
  *   143 AUX_REV_DMP  masterAuxRevDamp 0–16383 (→ 0.0–1.0)
+ *   194 AUX_SCENE_IDX loadAuxScene(0–15) + echoAuxParams
+ *   195 LINK_AUX_PRESET linkAuxToInsertPreset 0=OFF 16383=ON (default OFF)
  *   144 DRUM_WAVE    drumWaveIdx[ch]  v14: [ch:3][widx:5] (ch<<5 | widx&31)
  *   145 DB_ROUTE     currentDbeamRoute 0=OFF 1=Mod 2=Vol 3=Cut
  *       (D-BEAM Route lives in the D-BEAM menu; Target = Harp/Melody synth is a

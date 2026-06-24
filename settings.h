@@ -9,7 +9,7 @@
  * settings.h — v6.1.00  NVS PERSISTENT STATE + FACTORY DEFAULTS
  *
  * Four NVS blobs in namespace "octopus" (legacy "octopus_v5" auto-migrated once):
- *   "settings"     — AllSettings struct (SETTINGS_VERSION 0x0615 = wire layout ID)
+ *   "settings"     — AllSettings struct (SETTINGS_VERSION 0x0616 = wire layout ID)
  *   "patterns"     — hwSeqData + per-pattern transpose
  *   "banks"        — sparse userBank/seqBank deltas vs factory ROM
  *   "motion"       — sparse P-lock lanes
@@ -55,7 +55,7 @@ static constexpr const char* NVS_NAMESPACE        = "octopus";
 static constexpr const char* NVS_NAMESPACE_LEGACY = "octopus_v5";
 
 /* Persisted AllSettings wire-layout version (independent of SYSTEM_FW_VERSION). */
-static constexpr uint16_t SETTINGS_VERSION = 0x0615;
+static constexpr uint16_t SETTINGS_VERSION = 0x0616;
 
 static inline bool nvs_migrate_legacy_namespace() {
   nvs_handle_t leg;
@@ -251,6 +251,9 @@ struct FxSettings {
   float harp_rev_send = 0.00f;
   float seq_dly_send = 0.00f;
   float seq_rev_send = 0.00f;
+  /* Aux scene + link toggle (SETTINGS_VERSION 0x0615→0x0616). */
+  int aux_scene_idx = 0;          /* last Room Scene row 0–15 (display index) */
+  bool link_aux_to_insert = false; /* apply insert preset aux fields when ON */
 };
 
 /* ── D-BEAM expression ─────────────────────────────────────────────────── */
@@ -528,6 +531,8 @@ static inline void settings_sync_to_ssot() {
   masterAuxDlyFb.store(clampf(g_settings.fx.aux_dly_fb, 0.f, 0.95f), std::memory_order_relaxed);
   masterAuxRevSize.store(clampf(g_settings.fx.aux_rev_size, 0.f, 0.95f), std::memory_order_relaxed);
   masterAuxRevDamp.store(clamp01(g_settings.fx.aux_rev_damp), std::memory_order_relaxed);
+  auxSceneIndex.store(std::max(0, std::min(15, g_settings.fx.aux_scene_idx)), std::memory_order_relaxed);
+  linkAuxToInsertPreset.store(g_settings.fx.link_aux_to_insert, std::memory_order_relaxed);
 
   /* FX slot indices → atomics, then load the matching FX chain presets */
   masterFxIndex.store(g_settings.fx.master_fx_idx, std::memory_order_relaxed);
@@ -539,11 +544,12 @@ static inline void settings_sync_to_ssot() {
   drumFxIndexB.store(g_settings.fx.drum_fx_idx_b, std::memory_order_relaxed);
   /* Load FX chain presets so runtime state matches saved slot indices */
   fx.loadMasterFx(g_settings.fx.master_fx_idx);
-  /* A-slot chains active at boot; B-slot indices stored and applied on demand. */
   loadHarpFx(g_settings.fx.harp_fx_idx_a);
+  loadHarpFxB(g_settings.fx.harp_fx_idx_b);
   loadSeqFx(g_settings.fx.seq_fx_idx_a);
+  loadSeqFxB(g_settings.fx.seq_fx_idx_b);
   loadDrumFx(g_settings.fx.drum_fx_idx_a);
-  /* B-slot indices already stored above (lines harpFxIndexB/seqFxIndexB/drumFxIndexB) */
+  loadDrumFxB(g_settings.fx.drum_fx_idx_b);
 
   /* Insert sends — non-atomic, guarded by patchMux */
   portENTER_CRITICAL(&patchMux);
@@ -722,6 +728,8 @@ static inline void settings_sync_from_ssot() {
   g_settings.fx.aux_dly_fb = masterAuxDlyFb.load(std::memory_order_relaxed);
   g_settings.fx.aux_rev_size = masterAuxRevSize.load(std::memory_order_relaxed);
   g_settings.fx.aux_rev_damp = masterAuxRevDamp.load(std::memory_order_relaxed);
+  g_settings.fx.aux_scene_idx = auxSceneIndex.load(std::memory_order_relaxed);
+  g_settings.fx.link_aux_to_insert = linkAuxToInsertPreset.load(std::memory_order_relaxed);
   g_settings.fx.master_fx_idx = masterFxIndex.load(std::memory_order_relaxed);
   g_settings.fx.harp_fx_idx_a = harpFxIndex.load(std::memory_order_relaxed);
   g_settings.fx.harp_fx_idx_b = harpFxIndexB.load(std::memory_order_relaxed);

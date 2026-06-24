@@ -335,7 +335,8 @@ void updateHardwareParameter(uint8_t l1, uint8_t l2, int16_t delta) {
     case 16: { int i = wrapIndex((int)drumFxIndexA.load(), (int)delta, 16);
                drumFxIndexA.store(i, std::memory_order_relaxed);
                loadDrumFx(i); txSysex(CMD_D_FX_IDX, (uint16_t)i);
-               echoDrumInsertParams(); break; }
+               echoDrumInsertParams();
+               maybeEchoAuxAfterInsertLoad(); break; }
     case 17: { int i = wrapIndex((int)drumFxIndexB.load(), (int)delta, 16);
                drumFxIndexB.store(i, std::memory_order_relaxed);
                loadDrumFxB(i); txSysex(CMD_D_FX_IDX_B, (uint16_t)i); break; }
@@ -363,7 +364,8 @@ void updateHardwareParameter(uint8_t l1, uint8_t l2, int16_t delta) {
     case 14: { int i = wrapIndex((int)harpFxIndex.load(),  (int)delta, 16);
                harpFxIndex.store(i, std::memory_order_relaxed);
                loadHarpFx(i);  txSysex(CMD_H_FX_IDX,   (uint16_t)i);
-               txInsertFxSends(0u); break; }
+               txInsertFxSends(0u);
+               maybeEchoAuxAfterInsertLoad(); break; }
     case 15: { int i = wrapIndex((int)harpFxIndexB.load(), (int)delta, 16);
                harpFxIndexB.store(i, std::memory_order_relaxed);
                loadHarpFxB(i); txSysex(CMD_H_FX_IDX_B, (uint16_t)i); break; }
@@ -510,24 +512,37 @@ void updateHardwareParameter(uint8_t l1, uint8_t l2, int16_t delta) {
     case 8:  { int i = wrapIndex((int)harpFxIndex.load(),  (int)delta,16);
                harpFxIndex.store(i, std::memory_order_relaxed);
                loadHarpFx(i);  txSysex(CMD_H_FX_IDX,   (uint16_t)i);
-               txInsertFxSends(0u); break; }
+               txInsertFxSends(0u);
+               maybeEchoAuxAfterInsertLoad(); break; }
     case 9:  { int i = wrapIndex((int)harpFxIndexB.load(), (int)delta,16);
                harpFxIndexB.store(i, std::memory_order_relaxed);
                loadHarpFxB(i); txSysex(CMD_H_FX_IDX_B, (uint16_t)i); break; }
     case 10: { int i = wrapIndex((int)seqFxIndex.load(),   (int)delta,16);
                seqFxIndex.store(i, std::memory_order_relaxed);
                loadSeqFx(i);   txSysex(CMD_S_FX_IDX,   (uint16_t)i);
-               txInsertFxSends(1u); break; }
+               txInsertFxSends(1u);
+               maybeEchoAuxAfterInsertLoad(); break; }
     case 11: { int i = wrapIndex((int)seqFxIndexB.load(),  (int)delta,16);
                seqFxIndexB.store(i, std::memory_order_relaxed);
                loadSeqFxB(i);  txSysex(CMD_S_FX_IDX_B, (uint16_t)i); break; }
     case 12: { int i = wrapIndex((int)drumFxIndexA.load(), (int)delta,16);
                drumFxIndexA.store(i, std::memory_order_relaxed);
                loadDrumFx(i); txSysex(CMD_D_FX_IDX, (uint16_t)i);
-               echoDrumInsertParams(); break; }
+               echoDrumInsertParams();
+               maybeEchoAuxAfterInsertLoad(); break; }
     case 13: { int i = wrapIndex((int)drumFxIndexB.load(), (int)delta,16);
                drumFxIndexB.store(i, std::memory_order_relaxed);
                loadDrumFxB(i); txSysex(CMD_D_FX_IDX_B, (uint16_t)i); break; }
+    case 14: { const int i = wrapIndex(auxSceneIndex.load(std::memory_order_relaxed) & 15,
+                                        (int)delta, 16);
+               loadAuxScene(i);
+               txSysex(CMD_AUX_SCENE_IDX, (uint16_t)i);
+               echoAuxParams(); break; }
+    case 15: { const bool en = delta > 0 ? true : (delta < 0 ? false
+                          : !linkAuxToInsertPreset.load(std::memory_order_relaxed));
+               linkAuxToInsertPreset.store(en, std::memory_order_relaxed);
+               txSysex(CMD_LINK_AUX_PRESET, en ? 16383u : 0u);
+               displayDirty.store(true, std::memory_order_relaxed); break; }
     }
     break;
 
@@ -541,7 +556,8 @@ void updateHardwareParameter(uint8_t l1, uint8_t l2, int16_t delta) {
     case 14: { int i = wrapIndex((int)seqFxIndex.load(),  (int)delta,16);
                seqFxIndex.store(i, std::memory_order_relaxed);
                loadSeqFx(i);  txSysex(CMD_S_FX_IDX,   (uint16_t)i);
-               txInsertFxSends(1u); break; }
+               txInsertFxSends(1u);
+               maybeEchoAuxAfterInsertLoad(); break; }
     case 15: { int i = wrapIndex((int)seqFxIndexB.load(), (int)delta,16);
                seqFxIndexB.store(i, std::memory_order_relaxed);
                loadSeqFxB(i); txSysex(CMD_S_FX_IDX_B, (uint16_t)i); break; }
