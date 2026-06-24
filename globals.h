@@ -1056,17 +1056,32 @@ static inline void recoverWedgedPersistFlags() {
 }
 
 /** Arm a scoped NVS save. scope: 0=FULL 1=BANKS_PATTERNS 2=MOTION 3=SETTINGS. */
-static inline void requestScopedSave(uint8_t scope) {
+static inline bool requestScopedSave(uint8_t scope) {
   recoverWedgedPersistFlags();
   if (g_saveRequest.load(std::memory_order_acquire) ||
       g_saveArmed.load(std::memory_order_acquire))
-    return;
+    return false;
   g_persistAckCmd.store(156, std::memory_order_relaxed);
   g_persistScope.store(scope & 3u, std::memory_order_release);
   /* Reboot after successful save — beam-detect hardware recovers cleanly on cold boot. */
   g_restartAfterSave.store(true, std::memory_order_release);
   g_saveRequest.store(true, std::memory_order_release);
   displayDirty.store(true, std::memory_order_relaxed);
+  return true;
+}
+
+/** Arm scoped reset persist (same NvsWorker path; ACK cmd 169, reboot on success). */
+static inline bool requestScopedReset(uint8_t scope) {
+  recoverWedgedPersistFlags();
+  if (g_saveRequest.load(std::memory_order_acquire) ||
+      g_saveArmed.load(std::memory_order_acquire))
+    return false;
+  g_persistAckCmd.store(169, std::memory_order_relaxed);
+  g_persistScope.store(scope & 3u, std::memory_order_release);
+  g_restartAfterSave.store(true, std::memory_order_release);
+  g_saveRequest.store(true, std::memory_order_release);
+  displayDirty.store(true, std::memory_order_relaxed);
+  return true;
 }
 
 /** Full session save (all four NVS blobs). */

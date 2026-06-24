@@ -343,6 +343,11 @@ void settings_save_task(void* pvParameters) {
     if (!ok) {
       g_saveFailFlashMs.store(millis() + 1500u, std::memory_order_relaxed);
       displayDirty.store(true, std::memory_order_relaxed);
+      if (isAppConnected()) {
+        const uint8_t ack = g_persistAckCmd.load(std::memory_order_relaxed);
+        if (ack == CMD_SCOPED_RESET || ack == CMD_SESSION_SAVE)
+          txSysex(ack, 0u);
+      }
     } else {
       g_saveFailFlashMs.store(0u, std::memory_order_relaxed);
       g_saveFlashMs.store(millis() + 1200u, std::memory_order_relaxed);

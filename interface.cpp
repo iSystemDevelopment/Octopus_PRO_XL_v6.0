@@ -1142,29 +1142,62 @@ static void oledStatusLines(const char* line1, const char* line2) {
 
 static ResetScope s_resetPersistScope = ResetScope::FULL;
 
-/* Runtime scoped reset: persist via NvsWorker (laser park + 16 KB stack) then
- * restart.  Runs off ControlPoll so the control surface stays responsive.     */
+/* Toast + optional App NACK — no full-screen OLED (App popup owns user feedback). */
+static void notifyPersistFail(uint8_t ackCmd) {
+  g_saveFailFlashMs.store(millis() + 1500u, std::memory_order_relaxed);
+  displayDirty.store(true, std::memory_order_relaxed);
+  if (isAppConnected() && ackCmd)
+    txSysex(ackCmd, 0u);
+}
+
+/* Wait for NvsWorker after arming a scoped reset.  Must not cancel g_restartAfterSave
+ * on timeout while a save is still in flight — that produced false "FAILED" in the App
+ * even though NVS committed and a manual reboot showed wiped flash.               */
 static void reset_persist_task(void*) {
-  while (saveInProgress()) vTaskDelay(pdMS_TO_TICKS(10));
+  const uint32_t waitPrior = millis() + 30000u;
+  while (saveInProgress() && (int32_t)(waitPrior - millis()) > 0)
+    vTaskDelay(pdMS_TO_TICKS(10));
+
+  if (saveInProgress()) {
+    notifyPersistFail(CMD_SCOPED_RESET);
+    vTaskDelete(nullptr);
+    return;
+  }
 
   if (g_saveDoneSem) xSemaphoreTake(g_saveDoneSem, 0);
 
-  g_persistScope.store((uint8_t)s_resetPersistScope, std::memory_order_release);
-  g_persistAckCmd.store(169, std::memory_order_relaxed);
-  g_restartAfterSave.store(true, std::memory_order_release);
-  g_saveRequest.store(true, std::memory_order_release);
-
-  const bool got =
-      g_saveDoneSem &&
-      (xSemaphoreTake(g_saveDoneSem, pdMS_TO_TICKS(20000)) == pdTRUE);
-
-  if (!got || !g_saveLastOk.load(std::memory_order_acquire)) {
-    g_restartAfterSave.store(false, std::memory_order_release);
-    if (isAppConnected()) txSysex(CMD_SCOPED_RESET, 0u);
-    oledStatusLines("RESET FAILED", nullptr);
-    delay(2000);
+  if (!requestScopedReset((uint8_t)s_resetPersistScope)) {
+    notifyPersistFail(CMD_SCOPED_RESET);
+    vTaskDelete(nullptr);
+    return;
   }
-  /* On success NvsWorker calls esp_restart() — this task never returns. */
+
+  const uint32_t deadline = millis() + 45000u;
+  bool done = false;
+  while ((int32_t)(deadline - millis()) > 0) {
+    if (g_saveDoneSem &&
+        xSemaphoreTake(g_saveDoneSem, pdMS_TO_TICKS(1000)) == pdTRUE) {
+      done = true;
+      break;
+    }
+    if (!g_saveRequest.load(std::memory_order_acquire) &&
+        !g_saveArmed.load(std::memory_order_acquire)) {
+      done = true;
+      break;
+    }
+    vTaskDelay(pdMS_TO_TICKS(1));
+  }
+
+  if (!done) {
+    /* Save still running — NvsWorker owns ACK + reboot; do not NACK or cancel. */
+    vTaskDelete(nullptr);
+    return;
+  }
+
+  if (!g_saveLastOk.load(std::memory_order_acquire)) {
+    g_restartAfterSave.store(false, std::memory_order_release);
+    notifyPersistFail(CMD_SCOPED_RESET);
+  }
   vTaskDelete(nullptr);
 }
 
@@ -1185,8 +1218,7 @@ void handleScopedReset(ResetScope scope) {
 
   if (!g_systemReady.load(std::memory_order_acquire)) {
     if (!settings_persist_blocking(scope)) {
-      oledStatusLines("RESET FAILED", nullptr);
-      delay(2000);
+      notifyPersistFail(CMD_SCOPED_RESET);
       return;
     }
     delay(300);
@@ -1197,8 +1229,7 @@ void handleScopedReset(ResetScope scope) {
   s_resetPersistScope = scope;
   if (xTaskCreatePinnedToCore(reset_persist_task, "RstSave", 8192, nullptr, 5,
                               nullptr, 1) != pdPASS) {
-    oledStatusLines("RESET FAILED", nullptr);
-    delay(2000);
+    notifyPersistFail(CMD_SCOPED_RESET);
   }
 }
 
