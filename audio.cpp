@@ -411,7 +411,7 @@ bool init_audio_system() {
   xTaskCreatePinnedToCore(laser_sweep_task,          "LaserSweep",  8192,  NULL, 24, &hLaserTask,  1);
   xTaskCreatePinnedToCore(sequencer_background_task, "SeqSysexOut", 4096,  NULL, 12, &hSeqBgTask,  1);
   xTaskCreatePinnedToCore(midi_usb_event_task,       "MidiUsbRx",   8192,  NULL, 6, &hMidiTask,    1);
-  xTaskCreatePinnedToCore(settings_save_task,        "NvsWorker",   16384, NULL, 3, &hNvsTask,     1);
+  xTaskCreatePinnedToCore(settings_save_task,        "NvsWorker",   16384, NULL, 4, &hNvsTask,     1);
   Serial.printf("[Audio] DSP online — %u Hz / %u frames / %u Hz PWM\n",
     SAMPLE_RATE, (unsigned)DMA_BUFFER_FRAMES, LASER_PWM_FREQ_HZ);
   return true;
