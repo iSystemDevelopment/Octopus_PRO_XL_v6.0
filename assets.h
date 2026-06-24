@@ -67,8 +67,8 @@ void wavetables_init_ram(); /* call once at boot before audio task starts */
  * FACTORY SOUNDBANK
  *
  * NUM_FACTORY_PATCHES = authored preset count.  SOUND_BANK dimension is
- * NUM_PATCHES (256) for NVS sparse store; slots above NUM_FACTORY_PATCHES are
- * zero-filled and unreachable from the browse UI.
+ * NUM_PATCHES (256) for NVS sparse store; slots 128..191 are the 64 user sound
+ * slots per engine; 192..255 are zero-padded (never recalled — clampRecallPatchIndex).
  * ═══════════════════════════════════════════════════════════════════════════ */
 static constexpr int NUM_FACTORY_PATCHES = 128;
 static_assert(NUM_FACTORY_PATCHES <= NUM_PATCHES,

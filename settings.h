@@ -469,8 +469,10 @@ static inline void settings_sync_to_ssot() {
   harpPitchMult.store(clampf(g_settings.seqr.harp_pitch, 0.5f, 2.0f),
                       std::memory_order_relaxed);
   harpScaleIndex.store(g_settings.seqr.harp_scale & (NUM_SCALES - 1), std::memory_order_relaxed);
-  harpPatchIndex.store(g_settings.seqr.harp_patch & (NUM_PATCHES - 1), std::memory_order_relaxed);
-  seqPatchIndex.store(g_settings.seqr.seq_patch & (NUM_PATCHES - 1), std::memory_order_relaxed);
+  harpPatchIndex.store((uint32_t)clampRecallPatchIndex((int)g_settings.seqr.harp_patch),
+                       std::memory_order_relaxed);
+  seqPatchIndex.store((uint32_t)clampRecallPatchIndex((int)g_settings.seqr.seq_patch),
+                      std::memory_order_relaxed);
   octaveShift[0].store(std::min<int32_t>(4, std::max<int32_t>(-4, (int32_t)g_settings.seqr.oct_harp)),
                        std::memory_order_relaxed);
   octaveShift[1].store(std::min<int32_t>(4, std::max<int32_t>(-4, (int32_t)g_settings.seqr.oct_seq)),

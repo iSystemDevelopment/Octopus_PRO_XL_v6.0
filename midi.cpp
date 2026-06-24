@@ -162,11 +162,29 @@ static void txUserPatNameBlob(uint8_t slot) {
   midiUnlock();
 }
 
+static bool userSoundSlotHasData(uint8_t engine, uint8_t slot) {
+  if (engine > 1u || slot >= NUM_USER_SLOTS) return false;
+  const int idx = USER_SLOT_BASE + (int)slot;
+  const uint16_t* row = (engine == 0u) ? userBank[idx] : seqBank[idx];
+  for (int i = 0; i < PARAMS_PER_PRESET; ++i)
+    if (row[i] != 0u) return true;
+  return false;
+}
+
+/* Push user-library metadata to the App after connect / FULL load.
+ * Pattern slot GRID content is intentionally omitted: the App SLOTS vault only
+ * shows names + occupied flags; loading a slot (CMD_USR_PAT_LOAD) pushes that
+ * pattern into the active bank and echoes the live grid. Full sync already
+ * carries the session grid (hwSeqData), not the 64-slot pattern library.      */
 void txUserLibraryNames() {
   if (!isAppConnected()) return;
-  for (uint8_t eng = 0; eng < 2u; ++eng)
-    for (uint8_t i = 0; i < NUM_USER_SLOTS; ++i)
+  for (uint8_t eng = 0; eng < 2u; ++eng) {
+    for (uint8_t i = 0; i < NUM_USER_SLOTS; ++i) {
       if (g_userSlotName[eng][i][0]) txUserSoundNameBlob(eng, i);
+      if (userSoundSlotHasData(eng, i))
+        txSysex(CMD_USR_SOUND_SAVE, (uint16_t)((eng << 13) | i));
+    }
+  }
   for (uint8_t i = 0; i < NUM_USER_PAT_SLOTS; ++i) {
     if (g_userPatName[i][0]) txUserPatNameBlob(i);
     if (g_userPat[i].flags & 1u) txSysex(CMD_USR_PAT_SAVE, (uint16_t)i);
@@ -359,7 +377,7 @@ static void IRAM_ATTR handlePitchBend(uint8_t channel, uint16_t pb) {
 static void IRAM_ATTR handleProgramChange(uint8_t channel, uint8_t patch,
                                            uint8_t bankMSB, uint8_t bankLSB) {
   const int bank = ((bankMSB << 7) | bankLSB) & 0x01;
-  const int pnum = std::min(std::max((bank << 7) | (patch & 0x7F), 0), NUM_PATCHES - 1);
+  const int pnum = clampRecallPatchIndex((bank << 7) | (patch & 0x7F));
   const uint8_t harpCh = wireHarpMidiChannel.load(std::memory_order_relaxed);
   const uint8_t seqCh  = wireSeqMidiChannel .load(std::memory_order_relaxed);
   if (channel == harpCh) recallHarpPatch(pnum, ParamSource::UI);      
@@ -841,8 +859,8 @@ void sendFullStateSync() {
   txSysex(CMD_DJ_MIX,  (uint16_t)(djMix  .load() * 16383.f));
 
   /* ── Patches / scale / FX-A slots ───────────────────────────────────── */
-  txSysex(CMD_H_PATCH,   (uint16_t)harpPatchIndex.load());
-  txSysex(CMD_S_PATCH,   (uint16_t)seqPatchIndex .load());
+  txSysex(CMD_H_PATCH,   (uint16_t)clampRecallPatchIndex((int)harpPatchIndex.load()));
+  txSysex(CMD_S_PATCH,   (uint16_t)clampRecallPatchIndex((int)seqPatchIndex .load()));
   txSysex(CMD_H_SCALE,   (uint16_t)harpScaleIndex.load());
   txSysex(CMD_M_FX_IDX,  (uint16_t)masterFxIndex .load());
   txSysex(CMD_H_FX_IDX,  (uint16_t)harpFxIndex   .load());

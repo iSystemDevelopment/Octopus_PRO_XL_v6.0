@@ -3355,6 +3355,7 @@
                      * Stay on-page so the inbound grid burst can drain (reload was
                      * aborting the queue mid-import). */
                     this._syncBurstExpected = true;
+                    this._resetSlotSavedFlagsForSync();
                     this._loadGridPending = true;
                     this.log('Load complete — updating matrix from device…');
                     return;
@@ -3407,6 +3408,7 @@
                     if (phStale) {
                         this.log('Playhead stale — requesting device resync…');
                         this._syncBurstExpected = true;
+                        this._resetSlotSavedFlagsForSync();
                         this.txSysex(CMD.APP_SYNC_REQ, 0);
                         this._linkDegradedUntil = now + 8000;
                     }
@@ -3417,6 +3419,7 @@
                 if (bpmStale || trStale) {
                     this.log('Link degraded — requesting device resync…');
                     this._syncBurstExpected = true;
+                    this._resetSlotSavedFlagsForSync();
                     this.txSysex(CMD.APP_SYNC_REQ, 0);
                     const t = Date.now();
                     this._lastBpmRxMs = t;
@@ -3631,6 +3634,7 @@
                         this._audioKeepAlive();
                         if (this.midiOut) {
                             this._syncBurstExpected = true;
+                            this._resetSlotSavedFlagsForSync();
                             this.txSysex(CMD.PING, 0);
                             this.txSysex(CMD.APP_SYNC_REQ, 0);
                         }
@@ -3915,6 +3919,7 @@
                 this._rxDrainScheduled = false;
                 this._syncBurstExpected = true;
                 this._syncBurstActive = false;
+                this._resetSlotSavedFlagsForSync();
                 this._gridModelDirty = false;
                 this._linkGraceUntil = Date.now() + 4000;
                 this.updateConnBadge(false);
@@ -4225,6 +4230,7 @@
                                 this._persistFinished(true, false);
                             else if (!this._persistBusy) {
                                 this._syncBurstExpected = true;
+                                this._resetSlotSavedFlagsForSync();
                                 this._loadGridPending = true;
                                 this.log('Hardware load — updating matrix from device…');
                             }
@@ -4545,6 +4551,7 @@
                 if (!confirm('LOAD ' + name + '\nReload from NVS?')) return;
                 if (!this._armPersist('load')) return;
                 this._syncBurstExpected = true;
+                this._resetSlotSavedFlagsForSync();
                 this._loadGridPending = true;
                 this._showPersistWait('load', scope);
                 this.sessionLoad(scope);
@@ -4582,6 +4589,10 @@
             },
             _slotMetaKey() {
                 return 'octopus_slots_' + (this.midiOut?.id || 'default');
+            },
+            _resetSlotSavedFlagsForSync() {
+                for (let e = 0; e < 2; e++) this.userSoundSaved[e].fill(false);
+                this.userPatSaved.fill(false);
             },
             _persistSlotMeta() {
                 try {

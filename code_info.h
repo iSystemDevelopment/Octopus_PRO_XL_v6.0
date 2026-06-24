@@ -228,8 +228,8 @@
  *   103 LOAD_PAT_D   load factory drum pattern index into current bank/chain
  *   104 TRIG_MODE    play/stop (>0=play, 0=stop)  [backward compat; use 153]
  *   105 STEP_SYNC    echo: current step index (0-based)
- *   106 H_PATCH      harpPatchIndex  recall from userBank[]
- *   107 S_PATCH      seqPatchIndex   recall from seqBank[]
+ *   106 H_PATCH      harpPatchIndex  recall userBank[] (clampRecallPatchIndex 0..191)
+ *   107 S_PATCH      seqPatchIndex   recall seqBank[]  (same; 192..255 unused padding)
  *   108 H_SCALE      harpScaleIndex  0–15
  *   109 S_SCALE      (reserved — seq uses same scale as harp)
  *   110 D_FX_IDX     drumFxIndexA
@@ -269,6 +269,8 @@
  *   175 USR_PAT_SAVE saveActivePatternToUserSlot v14=slot; active→user pat +persist
  *   176 USR_PAT_LOAD loadUserPatternToActive v14=slot; recall user pat→active bank
  *   177 USR_PAT_NAME setUserPatName       NAME BLOB (sub 0x04) slot,15 chars
+ *        App sync (txUserLibraryNames): names + occupied flags only — not the 64-slot
+ *        pattern library grids; load a slot to push its grid into the active bank.
  *   178 PB_RANGE     pbMapping up/downSemi 0..24 semitones (symmetric)
  *   179 PB_ENABLE    pbMapping.enabled     0=OFF 16383=ON
  *   180 DB_TARGET    currentDbeamTarget    0=Harp 1=Melody synth

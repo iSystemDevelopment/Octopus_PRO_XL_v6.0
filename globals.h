@@ -1180,9 +1180,19 @@ inline uint16_t seqBank[NUM_PATCHES][PARAMS_PER_PRESET];  /* seq user bank    */
  * an empty name falls back to the generic "USER NN" label.                    */
 static constexpr int USER_SLOT_BASE = 128;            /* first user slot index */
 static constexpr int NUM_USER_SLOTS = 64;             /* user slots per engine */
+static constexpr int MAX_RECALL_PATCH_INDEX =
+    USER_SLOT_BASE + NUM_USER_SLOTS - 1;                /* 191 — factory 0..127 + user 128..191 */
 static_assert(USER_SLOT_BASE >= NUM_NAMED_PRESETS &&
               USER_SLOT_BASE + NUM_USER_SLOTS <= NUM_PATCHES,
               "user-slot window must sit above the named presets and inside the bank");
+static_assert(MAX_RECALL_PATCH_INDEX < NUM_PATCHES,
+              "recall window must fit inside NUM_PATCHES RAM bank");
+
+/* Clamp patch recall (MIDI PC, CMD_H/S_PATCH, NVS restore) to authored slots only.
+ * Indices 192..255 are zero-padded bank rows — never valid recall targets.       */
+static inline int clampRecallPatchIndex(int idx) {
+  return std::max(0, std::min(idx, MAX_RECALL_PATCH_INDEX));
+}
 
 /* App-editable names, [engine 0=harp,1=seq][slot 0..63][15 chars + NUL].
  * BSS-zeroed at boot; empty first byte → generic "USER NN".                   */

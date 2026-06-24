@@ -598,7 +598,7 @@ static inline void syncPatchesToAudio() {
 
 /* recallHarpPatch — load from userBank[] or factory SOUND_BANK and apply. */
 static inline void recallHarpPatch(int idx, ParamSource src) {
-  idx = std::max(0, std::min((int)NUM_PATCHES - 1, idx));
+  idx = clampRecallPatchIndex(idx);
   harpPatchIndex.store(idx, std::memory_order_relaxed);
 
   portENTER_CRITICAL(&patchMux);
@@ -665,7 +665,7 @@ static inline void syncSeqAtomicsFromLivePatch() {
 
 /* recallSeqPatch — load seq patch from seqBank[]. */
 static inline void recallSeqPatch(int idx, ParamSource /*src*/) {
-  idx = std::max(0, std::min((int)NUM_PATCHES - 1, idx));
+  idx = clampRecallPatchIndex(idx);
   seqPatchIndex.store(idx, std::memory_order_relaxed);
 
   portENTER_CRITICAL(&patchMux);
