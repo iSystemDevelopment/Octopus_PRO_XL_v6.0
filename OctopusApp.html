@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <!--
-  OctopusApp v6.2.01 — Octopus PRO XL Web MIDI Console
+  OctopusApp v6.2.03 — Octopus PRO XL Web MIDI Console
   © 2026 DIODAC ELECTRONICS / iSystem. All Rights Reserved.
   PROPRIETARY AND CONFIDENTIAL. Unauthorized use prohibited.
 -->
@@ -9,7 +9,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>OctopusApp v6.2.01 — OCTOPUS PRO XL</title>
+    <title>OctopusApp v6.2.03 — OCTOPUS PRO XL</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
@@ -200,11 +200,13 @@
             gap: 8px;
             padding: 8px;
             max-width: 1280px;
-            width: 100%
+            width: 100%;
+            overflow-y: auto
         }
 
         .midi-inst-split {
             display: flex;
+            flex-direction: column;
             gap: 8px;
             width: 100%;
             flex: 1;
@@ -213,7 +215,8 @@
         }
 
         .midi-inst-panel {
-            flex: 1 1 0;
+            flex: 0 0 auto;
+            width: 100%;
             min-width: 0;
             display: flex;
             flex-direction: column;
@@ -222,6 +225,7 @@
 
         .midi-inst-panel-body {
             display: flex;
+            flex-direction: column;
             gap: 6px;
             flex: 1;
             min-height: 0;
@@ -229,14 +233,71 @@
         }
 
         .midi-knob-panel {
-            flex: 1 1 55%;
+            flex: 0 0 auto;
+            width: 100%;
             min-width: 0;
-            overflow-y: auto
+            max-height: none;
+            overflow: visible
+        }
+
+        #midi-seq-knobs.panel-container {
+            flex-direction: column;
+            flex-wrap: nowrap;
+            overflow-x: hidden;
+            overflow-y: visible;
+            padding-bottom: 0
+        }
+
+        #midi-seq-knobs .sub-panel {
+            flex: 0 0 auto;
+            width: 100%;
+            min-width: 0;
+            height: auto;
+            min-height: 0
+        }
+
+        #midi-seq-knobs .sub-panel-knobs {
+            flex-direction: column;
+            align-items: stretch;
+            gap: 3px;
+            overflow: visible;
+            padding: 2px 4px 4px
+        }
+
+        #midi-seq-knobs .knob-wrapper {
+            flex-direction: row;
+            justify-content: flex-start;
+            align-items: center;
+            gap: 8px;
+            height: auto;
+            min-height: 28px;
+            padding: 1px 6px;
+            border-radius: 3px;
+            background: rgba(0, 0, 0, 0.2)
+        }
+
+        #midi-seq-knobs .knob-label {
+            width: 36px;
+            text-align: left;
+            flex-shrink: 0
+        }
+
+        #midi-seq-knobs .knob-hitbox {
+            flex-shrink: 0
+        }
+
+        #midi-seq-knobs .knob-val {
+            margin-left: auto;
+            min-width: 28px;
+            text-align: right
         }
 
         .midi-seq-scope-toy {
-            flex: 1 1 45%;
-            min-width: 88px;
+            flex: 0 0 auto;
+            width: 100%;
+            min-width: 0;
+            min-height: 72px;
+            max-height: 100px;
             background: linear-gradient(180deg, #08040c 0%, #040208 100%);
             border: 1px solid #2a1428;
             border-radius: 4px;
@@ -262,9 +323,9 @@
         }
 
         .midi-drum-notes {
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 4px;
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
             margin-bottom: 6px;
             flex-shrink: 0
         }
@@ -293,8 +354,10 @@
         }
 
         #midi-drum-knobs.drum-grid {
-            flex: 1;
+            flex: 0 0 auto;
+            width: 100%;
             min-height: 72px;
+            max-height: 100px;
             grid-template-columns: 1fr
         }
 
@@ -1000,14 +1063,24 @@
             position: relative
         }
 
-        #seq-grid-wrap {
+        .seq-grid-stage {
+            width: 100%;
+            height: 100%;
+            max-width: 1280px;
+            position: relative;
             isolation: isolate;
+            transform: translateZ(0)
+        }
+
+        #seq-grid-wrap {
+            width: 100%;
+            height: 100%;
             overflow: hidden;
             contain: layout style paint;
             transform: translateZ(0)
         }
 
-        /* Playhead = dedicated compositor layer; never shares paint with grid cells. */
+        /* Playhead = sibling overlay outside grid paint containment — compositor only. */
         #seq-playhead {
             position: absolute;
             top: 0;
@@ -1022,8 +1095,9 @@
             background: linear-gradient(180deg, rgba(120, 224, 255, 0.34), rgba(6, 182, 212, 0.10));
             box-sizing: border-box;
             will-change: transform;
-            transform: translateZ(0);
-            contain: strict
+            transform: translate3d(0, 0, 0);
+            contain: strict;
+            backface-visibility: hidden
         }
 
         #seq-playhead.ph-visible {
@@ -1063,7 +1137,9 @@
 
         .seq-step:hover {
             border-color: #2a2a3a;
-            box-shadow: inset 0 1px 1px rgba(255,255,255,0.10), 0 1px 1px rgba(0,0,0,0.6)
+            box-shadow: inset 0 1px 1px rgba(255,255,255,0.10), 0 1px 1px rgba(0,0,0,0.6);
+            /* Hover stays on the cell layer — playhead is outside #seq-grid-wrap paint tree. */
+            z-index: 1
         }
 
         .seq-step.active {
@@ -1276,7 +1352,59 @@
             align-items: center;
             gap: 3px;
             border: 1px solid #1a1a26;
-            white-space: nowrap
+        }
+
+        /* Optional tip — opens PayPal donate (DIODAC ELECTRONICS). */
+        .donate-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            height: 22px;
+            padding: 0 8px;
+            border-radius: 4px;
+            border: 1px solid #1a2840;
+            background: linear-gradient(180deg, #0a1420, #060a10);
+            color: #7eb8e8;
+            font-family: 'Orbitron', sans-serif;
+            font-size: 8px;
+            font-weight: bold;
+            letter-spacing: 0.4px;
+            text-decoration: none;
+            white-space: nowrap;
+            flex-shrink: 0;
+            transition: border-color .15s, color .15s, box-shadow .15s
+        }
+
+        .donate-chip:hover {
+            color: #b8dcff;
+            border-color: #0070ba;
+            box-shadow: 0 0 8px rgba(0, 112, 186, 0.25)
+        }
+
+        .donate-chip i {
+            font-size: 11px;
+            color: #0070ba
+        }
+
+        .app-donate-bar {
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            height: 22px;
+            border-top: 1px solid #101018;
+            background: #020204;
+            font-size: 7px;
+            color: #444;
+            font-family: 'Orbitron', sans-serif;
+            letter-spacing: 0.3px
+        }
+
+        .app-donate-bar .donate-chip {
+            height: 18px;
+            font-size: 7px;
+            padding: 0 7px
         }
     </style>
 </head>
@@ -1342,7 +1470,7 @@
             <div class="btn" id="btnBankB" onclick="app.setBank(1)">B</div>
             <div class="btn" id="btnBankC" onclick="app.setBank(2)">C</div>
             <div class="btn" id="btnBankD" onclick="app.setBank(3)">D</div>
-            <button class="btn octopus-only" id="btnBankChain" onclick="app.toggleChainLoop()" title="Chain loop — play banks A→D in order (song mode)"><i class="fa-solid fa-link"></i></button>
+            <button class="btn" id="btnBankChain" onclick="app.toggleChainLoop()" title="Chain loop — play banks in song order (🔗 song mode)"><i class="fa-solid fa-link"></i></button>
             <!-- Step pages P1–P4: each page edits 16 of up to 64 steps (matches firmware hwSeqData) -->
             <div class="btn" id="btnPage1" onclick="app.setGridPage(0)" title="Steps 1–16">P1</div>
             <div class="btn" id="btnPage2" onclick="app.setGridPage(1)" title="Steps 17–32">P2</div>
@@ -1356,12 +1484,12 @@
                 <div class="head-led" id="led-3"></div>
             </div>
             <!-- View: PAT grid editor ↔ chain step editor (playback loop = 🔗 next to banks) -->
-            <button class="btn octopus-only" id="btnSeqMode" onclick="app.toggleSongView()" style="color:var(--cyan);border-color:var(--cyan);min-width:76px;justify-content:center" title="Switch pattern grid ↔ chain step editor"><i class="fa-solid fa-table-cells"></i>PAT</button>
-            <!-- Chain slot selector -->
-            <select class="display-box octopus-only" style="border-color:var(--green);color:var(--green);width:96px" id="songSlotSelect" onchange="app.setSongSlot(this.value)"></select>
-            <!-- Pattern loaders -->
+            <button class="btn" id="btnSeqMode" onclick="app.toggleSongView()" style="color:var(--cyan);border-color:var(--cyan);min-width:76px;justify-content:center" title="Switch pattern grid ↔ chain step editor"><i class="fa-solid fa-table-cells"></i>PAT</button>
+            <select class="display-box" style="border-color:var(--green);color:var(--green);width:96px" id="songSlotSelect" onchange="app.setSongSlot(this.value)"></select>
             <select class="display-box pink-txt octopus-only" id="synthPat" onchange="app.loadSynthPat(this.value)" style="width:150px"></select>
             <select class="display-box orange-txt octopus-only" id="drumPat" onchange="app.loadDrumPat(this.value)" style="width:150px"></select>
+            <select class="display-box pink-txt midi-only" id="midiSynthPat" onchange="app.loadSynthPat(this.value)" style="width:150px" title="Factory melody pattern → active bank (rows 1–8, steps 1–16)"></select>
+            <select class="display-box orange-txt midi-only" id="midiDrumPat" onchange="app.loadDrumPat(this.value)" style="width:150px" title="Factory drum pattern → active bank (rows 9–16, steps 1–16)"></select>
             <!-- Transport params -->
             <span style="color:#555;font-size:9px;white-space:nowrap">BPM</span>
             <!-- [CLOCK-AUTHORITY] Display-only echo of the ESP tempo.  BPM is owned by the
@@ -1441,6 +1569,7 @@
         </div>
         <div style="display:flex;gap:8px;align-items:center;margin-left:auto">
             <div id="cpuLoad" class="cpu-box octopus-only" title="Audio-core CPU load (device)"><i class="fa-solid fa-microchip"></i><span id="cpuLoadVal">--</span></div>
+            <a class="donate-chip" href="https://www.paypal.com/donate/?business=diodac.electronics%40gmail.com&amp;item_name=Octopus+PRO+XL" target="_blank" rel="noopener noreferrer" title="Optional tip for DIODAC ELECTRONICS — opens PayPal in a new tab"><i class="fa-brands fa-paypal"></i> TIP</a>
             <button class="btn octopus-only" onclick="app.toggleMonitor()" title="Sysex monitor"><i class="fa-solid fa-terminal"></i>MON</button>
             <button class="btn" onclick="app.toggleHelp()" title="Help"><i class="fa-solid fa-circle-question"></i>HELP</button>
         </div>
@@ -1652,8 +1781,10 @@
         <!-- SEQUENCER VIEW -->
         <div id="view-seq" class="view-content">
             <!-- Normal grid -->
-            <div id="seq-grid-wrap" style="width:100%;height:100%;max-width:1280px;position:relative">
-                <div class="seq-grid" id="seq-grid"></div>
+            <div id="seq-grid-stage" class="seq-grid-stage">
+                <div id="seq-grid-wrap">
+                    <div class="seq-grid" id="seq-grid"></div>
+                </div>
             </div>
             <!-- Song editor (shown when song mode active) -->
             <div id="song-editor">
@@ -1668,6 +1799,11 @@
             </div>
         </div>
     </main>
+
+    <footer class="app-donate-bar" aria-label="Support">
+        <span>&copy; 2026 DIODAC ELECTRONICS / iSystem</span>
+        <a class="donate-chip" href="https://www.paypal.com/donate/?business=diodac.electronics%40gmail.com&amp;item_name=Octopus+PRO+XL" target="_blank" rel="noopener noreferrer" title="Enjoying OctopusApp? Optional donation via PayPal"><i class="fa-brands fa-paypal"></i> DONATE</a>
+    </footer>
 
     <!-- ═══════════════════════════════════════════════════════════════════════════
      MODALS
@@ -1759,7 +1895,8 @@
                 <p style="margin-top:10px;color:#666;font-size:9px">
                     <a href="https://octopus-info.isystem.app" target="_blank" rel="noopener" style="color:var(--purple)">octopus-info.isystem.app</a> — product info &amp; specs<br>
                     <a href="https://github.com/iSystemDevelopment/Octopus_PRO_XL_v6.0" target="_blank" rel="noopener" style="color:#888">github.com/iSystemDevelopment/Octopus_PRO_XL_v6.0</a> — firmware, manual, changelog<br>
-                    <a href="https://www.facebook.com/diodac.co.uk/" target="_blank" rel="noopener" style="color:#1877f2">facebook.com/diodac.co.uk</a> — DIODAC news &amp; support
+                    <a href="https://www.facebook.com/diodac.co.uk/" target="_blank" rel="noopener" style="color:#1877f2">facebook.com/diodac.co.uk</a> — DIODAC news &amp; support<br>
+                    <a href="https://www.paypal.com/donate/?business=diodac.electronics%40gmail.com&amp;item_name=Octopus+PRO+XL" target="_blank" rel="noopener noreferrer" style="color:#7eb8e8"><i class="fa-brands fa-paypal"></i> Optional PayPal tip</a> — helps fund OctopusApp &amp; firmware (thank you!)
                 </p>
             </div>
             <div id="helpBodyMidi" style="display:none;font-size:10px;color:#aaa;overflow-y:auto;flex:1;line-height:1.65;padding-right:4px">
@@ -1811,14 +1948,23 @@
                 • <b>MIDI OUT</b> — this guide. 2 tabs only. App play/stop/BPM. No SAVE/LOAD to device flash.</p>
 
                 <p style="margin-top:10px"><b style="color:var(--green)">TABS IN MIDI MODE</b><br>
-                • <b>SEQUENCER</b> — 64 steps (P1–P4), banks A–D, CPY/PST/RND/CLR.<br>
+                • <b>SEQUENCER</b> — 64 steps (P1–P4), banks A–D, CPY/PST/RND/CLR, <b>🔗 song chain</b>, factory melody/drum patterns.<br>
                 • <b>INSTRUMENTS</b> — seq synth MIDI (Ch, PC, 8× CC, scope) + drum MIDI (notes per row, scope).</p>
+
+                <p style="margin-top:10px"><b style="color:var(--cyan)">SONG MODE &amp; PATTERNS (v6.2.03)</b><br>
+                • <b>🔗</b> next to banks — <b>song mode</b>: plays chain rows in order (bank + repeats), same idea as hardware.<br>
+                • <b>PAT / EDIT</b> — pattern grid ↔ chain editor. Pick <b>Chain 01–16</b>, set steps, bank per row, repeats ×.<br>
+                • <b>MELODY PATTERNS</b> / <b>DRUM PATTERNS</b> dropdowns — load factory ROM into active bank (steps 1–16); MIDI fires on Play.<br>
+                • Song chains + patterns save in browser / <b>EXP</b> JSON with the grid.</p>
 
                 <p style="margin-top:10px"><b style="color:var(--orange)">TROUBLESHOOTING</b><br>
                 • No ports listed → Allow MIDI · refresh · replug USB · Windows: check driver.<br>
                 • DAW silent → same virtual port on App + track input · matching MIDI channel · plugin armed.<br>
                 • Stuck notes → press Stop in App (sends all notes off).<br>
                 • Lost pattern → cleared browser data wipes localStorage — use EXP first.</p>
+
+                <p style="margin-top:10px"><b style="color:#7eb8e8">SUPPORT THE PROJECT</b><br>
+                OctopusApp &amp; firmware are free to use. If they help your music, an optional <a href="https://www.paypal.com/donate/?business=diodac.electronics%40gmail.com&amp;item_name=Octopus+PRO+XL" target="_blank" rel="noopener noreferrer" style="color:#7eb8e8">PayPal donation</a> to <b>DIODAC ELECTRONICS</b> is appreciated — also via the <b>TIP</b> chip in the routing bar.</p>
 
                 <p style="margin-top:10px"><b style="color:var(--purple)">BACK TO OCTOPUS HARDWARE</b><br>
                 Plug in USB → select ★ Octopus port → badge <b>Octopus ON</b>. MIDI-mode patterns stay in browser storage separately.</p>
@@ -1950,7 +2096,7 @@
      JAVASCRIPT
 ═══════════════════════════════════════════════════════════════════════════ -->
     <script>
-        const APP_VERSION = '6.2.01';
+        const APP_VERSION = '6.2.03';
         const MIDI_SESSION_KEY = 'octopusapp_midi_session_v1';
         const PORT_BOOT_KEY = 'octopusapp_port_boot_v1';
 
@@ -3472,7 +3618,7 @@
             seqLen: 16,
             gridPageIdx: 0, // 0–3 → steps gridPage*16 .. gridPage*16+15
             songSlotIdx: 0,
-            songPlayStep: -1, // currently-playing song step (from CMD.SONG_POS)
+            songPlayStep: -1, // song chain step highlighted (device SONG_POS or local MIDI song clock)
             songData: Array.from({
                 length: 16
             }, () => ({
@@ -3519,7 +3665,8 @@
             _playAbsStep: -1, // absolute step index for wrap detection
             _playheadEl: null, // single grid overlay — zero per-cell class toggles
             _phPendingStep: -1,     // deferred paint when sequencer tab hidden
-            _phRectPage: -1,        // grid page cached in _phRect
+            _phRectPage: -1,        // grid page cached in _phGeom
+            _phGeom: null,          // cached column geometry — remeasure on resize/page only
             // [v6.0.01 PLL] phase-locked local tick clock — hardware anchors, App interpolates
             _pllAnchorStep: -1,  // hardware step received on last STEP_SYNC
             _pllAnchorTime: -1,  // performance.now() at that STEP_SYNC
@@ -3552,6 +3699,8 @@
             _plockStealWarned: false,
             _lastRingDrops: 0,
             _loadGridPending: false,
+            _midiSongChainIdx: 0,
+            _midiSongRepeatLeft: 1,
             _reloadAfterReconnect: false,
             _reloadTimer: null,
 
@@ -3946,27 +4095,61 @@
             },
             _schedulePlayheadRemeasure() {
                 if (!this._seqGridVisible()) return;
-                this._paintPlayhead(this.visStep | 0);
+                this._phGeom = null;
+                this._paintPlayhead(this.visStep | 0, true);
             },
             _scheduleWindowPhResize() {
                 if (this._phResizeTimer) clearTimeout(this._phResizeTimer);
                 this._phResizeTimer = setTimeout(() => {
                     this._phResizeTimer = null;
-                    this._phRect = null;
+                    this._phGeom = null;
                     this._phRectPage = -1;
                     this._paintPlayhead(this.visStep | 0, true);
                 }, 250);
+            },
+            _phStageEl() {
+                return document.getElementById('seq-grid-stage') ||
+                    document.getElementById('seq-grid-wrap');
+            },
+            /** Measure column positions once per page/resize — not on every step or hover. */
+            _remeasurePhGeometry() {
+                const stage = this._phStageEl();
+                const wrap = document.getElementById('seq-grid-wrap');
+                if (!stage || !wrap) return false;
+                const sr = stage.getBoundingClientRect();
+                if (!(sr.width > 0 && sr.height > 0)) return false;
+                const cols = new Array(16);
+                let y = 0, w = 0, h = sr.height;
+                for (let c = 0; c < 16; c++) {
+                    const cell = this._domGridCache[0]?.[c];
+                    if (!cell) return false;
+                    const cr = cell.getBoundingClientRect();
+                    cols[c] = cr.left - sr.left;
+                    if (c === 0) {
+                        y = cr.top - sr.top;
+                        w = cr.width;
+                    }
+                }
+                this._phGeom = { cols, y, w, h, page: this.gridPageIdx | 0 };
+                this._phRectPage = this._phGeom.page;
+                this._phRect = { x: cols[0], y, w, h };
+                return true;
+            },
+            _applyPhTransform(ph, x, y) {
+                ph.style.transform = 'translate3d(' + x + 'px,' + y + 'px,0)';
             },
             /** True when the pattern grid is on-screen (SEQUENCER tab, not song editor). */
             _seqGridVisible() {
                 const v = document.getElementById('view-seq');
                 if (!v || !v.classList.contains('active')) return false;
                 if (this.showSongEditor) return false;
+                const stage = this._phStageEl();
+                if (!stage || stage.style.display === 'none') return false;
                 const wrap = document.getElementById('seq-grid-wrap');
-                if (!wrap || wrap.style.display === 'none') return false;
+                if (!wrap) return false;
                 return true;
             },
-            /** Single playhead paint — absolute overlay; skip DOM measure when idle. */
+            /** Single playhead paint — compositor transform only; geometry cached per page. */
             _paintPlayhead(s, force) {
                 const ph = this._playheadEl;
                 const len = Math.max(1, this.seqLen | 0);
@@ -3974,7 +4157,8 @@
                 const page = (s >> 4) & 3;
                 const col = s & 15;
                 const stepChanged = s !== this._playLast || page !== this._playPage || col !== this._playCol;
-                const hasCache = !!(this._phRect && this._phRect.w > 0 && this._phRectPage === page);
+                const geom = this._phGeom;
+                const hasGeom = !!(geom && geom.w > 0 && geom.page === (this.gridPageIdx | 0));
 
                 if (!ph) {
                     this._playCol = col;
@@ -3995,10 +4179,10 @@
                     return;
                 }
 
-                if (!force && !stepChanged && hasCache && ph.classList.contains('ph-visible')) {
+                if (!force && !stepChanged && hasGeom && ph.classList.contains('ph-visible')) {
                     if (this.isPlaying) {
                         ph.classList.add('ph-playing');
-                        this._updateBeatLeds(col);   // [DISCRETE] same cell — bar already in place (transform 0)
+                        this._updateBeatLeds(col);
                     }
                     return;
                 }
@@ -4008,52 +4192,28 @@
                 this._playAbsStep = s;
                 this._playLast = s;
 
-                const cell = this._domGridCache?.[0]?.[col];
-                const wrap = document.getElementById('seq-grid-wrap');
-                if (!cell || !wrap) return;
-
-                if (!force && hasCache && !stepChanged) {
-                    ph.classList.add('ph-visible');
-                    this._phPendingStep = -1;
-                    if (this.isPlaying) {
-                        ph.classList.add('ph-playing');
-                        ph.style.transform = 'translate3d(0,0,0)';   // [DISCRETE] sit on the cell
-                        this._updateBeatLeds(col);
-                    } else {
-                        ph.classList.remove('ph-playing');
-                        ph.style.transform = 'translate3d(0,0,0)';
+                if (force || !hasGeom) {
+                    if (!this._remeasurePhGeometry()) {
+                        this._phPendingStep = s;
+                        return;
                     }
-                    return;
                 }
 
-                const wr = wrap.getBoundingClientRect();
-                const cr = cell.getBoundingClientRect();
-                if (!(cr.width > 0) || !(wr.height > 0)) {
-                    this._phPendingStep = s;
-                    return;
-                }
-
-                this._phRect = {
-                    x: cr.left - wr.left,
-                    y: cr.top - wr.top,
-                    w: cr.width,
-                    h: wr.height
-                };
-                this._phRectPage = page;
-                ph.style.left = this._phRect.x + 'px';
-                ph.style.top = this._phRect.y + 'px';
-                ph.style.width = this._phRect.w + 'px';
-                ph.style.height = this._phRect.h + 'px';
+                const g = this._phGeom;
+                const x = g.cols[col];
+                ph.style.width = g.w + 'px';
+                ph.style.height = g.h + 'px';
+                ph.style.left = '0';
+                ph.style.top = '0';
+                this._applyPhTransform(ph, x, g.y);
                 ph.classList.add('ph-visible');
                 this._phPendingStep = -1;
 
                 if (this.isPlaying) {
                     ph.classList.add('ph-playing');
-                    ph.style.transform = 'translate3d(0,0,0)';   // [DISCRETE] sit exactly on the hardware step's cell
                     this._updateBeatLeds(col);
                 } else {
                     ph.classList.remove('ph-playing');
-                    ph.style.transform = 'translate3d(0,0,0)';
                 }
             },
             async init() {
@@ -4155,6 +4315,8 @@
                 fill('drumKit', DRUM_KIT_NAMES);
                 fill('synthPat', SYNTH_PATTERNS.map(p => p.name), 'MELODY PATTERNS');
                 fill('drumPat', DRUM_PATTERNS.map(p => p.name), 'DRUM PATTERNS');
+                fill('midiSynthPat', SYNTH_PATTERNS.map(p => p.name), 'MELODY PATTERNS');
+                fill('midiDrumPat', DRUM_PATTERNS.map(p => p.name), 'DRUM PATTERNS');
                 // Patch selectors
                 ['harpPatch', 'seqPatch'].forEach(id => {
                     const el = document.getElementById(id);
@@ -4763,7 +4925,18 @@
                         drumNotes: this.midiMap.drumNotes.slice(),
                         cc: { ...this.midiMap.cc }
                     },
-                    midiClockOut: !!this.midiClockOut
+                    midiClockOut: !!this.midiClockOut,
+                    isSongMode: !!this.isSongMode,
+                    showSongEditor: !!this.showSongEditor,
+                    songSlotIdx: this.songSlotIdx | 0,
+                    songData: this.songData.map(sl => ({
+                        numSteps: sl.numSteps | 0,
+                        steps: sl.steps.map(s => ({
+                            bank: s.bank & 3,
+                            chain: s.chain & 3,
+                            repeats: Math.max(1, Math.min(15, s.repeats | 0))
+                        }))
+                    }))
                 };
             },
             _persistMidiSession() {
@@ -4820,6 +4993,37 @@
                     this._refreshMidiKnobsFromMap();
                 }
                 if (o.midiClockOut != null) this.setMidiClockOut(!!o.midiClockOut, false);
+                if (Array.isArray(o.songData) && o.songData.length === 16) {
+                    for (let i = 0; i < 16; i++) {
+                        const src = o.songData[i];
+                        if (!src) continue;
+                        const dst = this.songData[i];
+                        if (src.numSteps != null)
+                            dst.numSteps = Math.min(16, Math.max(1, +src.numSteps));
+                        if (Array.isArray(src.steps))
+                            for (let j = 0; j < 16 && j < src.steps.length; j++) {
+                                const st = src.steps[j];
+                                if (!st) continue;
+                                dst.steps[j].bank = st.bank & 3;
+                                dst.steps[j].chain = st.chain & 3;
+                                dst.steps[j].repeats = Math.max(1, Math.min(15, st.repeats | 0));
+                            }
+                    }
+                }
+                if (o.songSlotIdx != null) {
+                    this.songSlotIdx = (+o.songSlotIdx) & 15;
+                    const sel = document.getElementById('songSlotSelect');
+                    const edit = document.getElementById('songSlotEdit');
+                    if (sel) sel.value = String(this.songSlotIdx);
+                    if (edit) edit.value = String(this.songSlotIdx);
+                }
+                if (o.isSongMode != null) {
+                    this.isSongMode = !!o.isSongMode;
+                    this._updateChainBtn();
+                }
+                if (o.showSongEditor != null)
+                    this._setSongView(!!o.showSongEditor, false);
+                this._songEditorDirty = true;
                 if (o.bankIdx != null) this.setBank(o.bankIdx, false);
                 if (o.gridPageIdx != null) this.setGridPage(o.gridPageIdx, false);
                 else this.repaintGrid();
@@ -4931,6 +5135,71 @@
                 const idx = ((row | 0) - 8) & 7;
                 const notes = this.midiMap?.drumNotes;
                 return (notes && notes[idx] != null) ? (notes[idx] & 127) : (GM_DRUM_MAP[idx] || 36);
+            },
+            /** MIDI song mode — arm chain step 0 when play starts or 🔗 toggled on. */
+            _midiResetSongPlayback() {
+                if (!this.isSongMode) {
+                    this.songPlayStep = -1;
+                    this._highlightSongStep();
+                    return;
+                }
+                const sl = this.songData[this.songSlotIdx];
+                if (!sl) return;
+                this._midiSongChainIdx = 0;
+                const step = sl.steps[0] || { bank: 0, repeats: 1 };
+                this._midiSongRepeatLeft = Math.max(1, step.repeats | 0);
+                const bank = step.bank & 3;
+                if (bank !== this.bankIdx) this.setBank(bank, false);
+                this.visStep = 0;
+                this.songPlayStep = 0;
+                const num = document.getElementById('songNumSteps');
+                if (num) num.value = String(sl.numSteps);
+                this._highlightSongStep();
+            },
+            /** After one full LEN cycle in song mode — consume repeat or advance chain row. */
+            _midiAdvanceSongChain() {
+                const sl = this.songData[this.songSlotIdx];
+                if (!sl || !this.isSongMode) return;
+                let repLeft = (this._midiSongRepeatLeft | 0) - 1;
+                if (repLeft > 0) {
+                    this._midiSongRepeatLeft = repLeft;
+                    return;
+                }
+                let ci = (this._midiSongChainIdx | 0) + 1;
+                if (ci >= sl.numSteps) ci = 0;
+                this._midiSongChainIdx = ci;
+                const step = sl.steps[ci] || { bank: 0, repeats: 1 };
+                this._midiSongRepeatLeft = Math.max(1, step.repeats | 0);
+                const bank = step.bank & 3;
+                if (bank !== this.bankIdx) this.setBank(bank, false);
+                this.songPlayStep = ci;
+                this._highlightSongStep();
+            },
+            _applySynthPatternGrid(pat, bankIdx) {
+                bankIdx = bankIdx | 0;
+                for (let r = 0; r < 8; r++)
+                    for (let c = 0; c < 64; c++) this.gridData[bankIdx][r][c] = false;
+                for (let step = 0; step < 16; step++) {
+                    if (!pat.gate[step]) continue;
+                    const p = Math.max(-12, Math.min(12, pat.pitch[step]));
+                    let bestRow = 7, bestDst = 999;
+                    for (let r = 0; r < 8; r++) {
+                        const d = Math.abs(p - this.ROW_SEMITONE[r]);
+                        if (d < bestDst) { bestDst = d; bestRow = r; }
+                    }
+                    this.gridData[bankIdx][bestRow][step] = true;
+                }
+            },
+            _applyDrumPatternGrid(pat, bankIdx) {
+                bankIdx = bankIdx | 0;
+                for (let r = 8; r < 16; r++)
+                    for (let c = 0; c < 64; c++) this.gridData[bankIdx][r][c] = false;
+                if (!pat.tracks) return;
+                pat.tracks.forEach((mask, ti) => {
+                    const gr = 8 + ti;
+                    for (let c = 0; c < 16; c++)
+                        this.gridData[bankIdx][gr][c] = !!((mask >> c) & 1);
+                });
             },
             /** Fire note-ons for one pattern step; 50% gate note-offs (groovebox default). */
             _midiPlayStep(step) {
@@ -5313,7 +5582,7 @@
                     this._playCol = -1;
                     this._playPage = -1;
                     this._playAbsStep = -1;
-                    this._phRect = null;
+                    this._phGeom = null;
                     this._phRectPage = -1;
                     this._pllAnchorStep = -1;
                     this._pllAnchorTime = -1;
@@ -5323,6 +5592,7 @@
                         this._midiPpqnAccumMs = 0;
                         if (playing) {
                             this._midiSendRealtime(0xFA);
+                            if (this.isSongMode) this._midiResetSongPlayback();
                             this._paintPlayhead(this.visStep | 0, true);
                             this._updateBeatLeds((this.visStep | 0) & 15);
                             this._midiPlayStep(this.visStep | 0);
@@ -5404,7 +5674,12 @@
                 let advanced = false;
                 while (this._midiClockAccumMs >= stepMs) {
                     this._midiClockAccumMs -= stepMs;
-                    const s = ((this.visStep | 0) + 1) % len;
+                    const prev = this.visStep | 0;
+                    let s = prev + 1;
+                    if (s >= len) {
+                        s = 0;
+                        if (this.isSongMode) this._midiAdvanceSongChain();
+                    }
                     this.visStep = s;
                     this._updateBeatLeds(s & 15);
                     this._paintPlayhead(s);
@@ -5807,7 +6082,11 @@
             setGridPage(p, repaint = true) {
                 this.gridPageIdx = (+p) & 3;
                 [1, 2, 3, 4].forEach(i => document.getElementById('btnPage' + i) ?.classList.toggle('active-green', (i - 1) === this.gridPageIdx));
-                if (repaint) this.repaintGrid();
+                if (repaint) {
+                    this.repaintGrid();
+                    this._phGeom = null;
+                    requestAnimationFrame(() => this._paintPlayhead(this.visStep | 0, true));
+                }
                 if (this._appMode === 'midi') this._midiPersistSoon();
             },
             _updatePageButtons() {
@@ -5855,6 +6134,23 @@
             /* Chain loop (🔗 next to banks): enable firmware song mode — banks play in order */
             toggleChainLoop() {
                 this.isSongMode = !this.isSongMode;
+                if (this._appMode === 'midi') {
+                    this._updateChainBtn();
+                    if (this.isSongMode) {
+                        this.switchView(3);
+                        this._setSongView(true, false);
+                        this._songEditorDirty = true;
+                        if (this.isPlaying) this._midiResetSongPlayback();
+                        this.log('Song mode ON — chain plays banks A–D in order (local MIDI clock).');
+                    } else {
+                        this._setSongView(false, false);
+                        this.songPlayStep = -1;
+                        this._highlightSongStep();
+                        this.log('Song mode OFF — active bank loops.');
+                    }
+                    this._midiPersistSoon();
+                    return;
+                }
                 this.txSysex(CMD.SONG_MODE, this.isSongMode ? 16383 : 0);
                 this._updateChainBtn();
                 if (this.isSongMode) {
@@ -5871,8 +6167,8 @@
             _setSongView(show, autoSwitchTab) {
                 this.showSongEditor = !!show;
                 document.getElementById('song-editor') ?.classList.toggle('visible', this.showSongEditor);
-                const wrap = document.getElementById('seq-grid-wrap');
-                if (wrap) wrap.style.display = this.showSongEditor ? 'none' : '';
+                const stage = this._phStageEl();
+                if (stage) stage.style.display = this.showSongEditor ? 'none' : '';
                 if (!this.showSongEditor) {
                     requestAnimationFrame(() => this._paintPlayhead(this.visStep | 0));
                 }
@@ -5890,9 +6186,17 @@
             },
             setSongSlot(idx) {
                 this.songSlotIdx = +idx & 15;
+                const edit = document.getElementById('songSlotEdit');
+                const sel = document.getElementById('songSlotSelect');
+                if (edit) edit.value = this.songSlotIdx;
+                if (sel) sel.value = String(this.songSlotIdx);
+                this._songEditorDirty = true;
+                if (this._appMode === 'midi') {
+                    if (this.isPlaying && this.isSongMode) this._midiResetSongPlayback();
+                    this._midiPersistSoon();
+                    return;
+                }
                 this.txSysex(CMD.SONG_SLOT, this.songSlotIdx);
-                document.getElementById('songSlotEdit').value = this.songSlotIdx;
-                this._songEditorDirty = true; // deferred to rAF — never blocks playhead frame
             },
             editSongSlot(idx) {
                 this.setSongSlot(idx);
@@ -5900,8 +6204,12 @@
             setSongNumSteps(n) {
                 n = Math.min(16, Math.max(1, +n));
                 this.songData[this.songSlotIdx].numSteps = n;
+                this._songEditorDirty = true;
+                if (this._appMode === 'midi') {
+                    this._midiPersistSoon();
+                    return;
+                }
                 this.txSysex(CMD.SONG_STEPS_N, n);
-                this._songEditorDirty = true; // deferred to rAF — never blocks playhead frame
             },
             sendSongStep(stepIdx) {
                 const sl = this.songData[this.songSlotIdx];
@@ -5954,6 +6262,10 @@
                 const sl = this.songData[this.songSlotIdx];
                 if (!sl || stepIdx >= sl.numSteps) return;
                 sl.steps[stepIdx][key] = +val;
+                if (this._appMode === 'midi') {
+                    this._midiPersistSoon();
+                    return;
+                }
                 this.sendSongStep(stepIdx);
             },
 
@@ -6050,11 +6362,23 @@
             // Firmware loads its own ROM via LOAD_PAT_S/D; we mirror the grid + knobs locally
             // using the SAME mapping as patterns.h so App and hardware stay identical.
             loadSynthPat(idx) {
-                if (this._appMode === 'midi') return;
                 if (idx === "" || !SYNTH_PATTERNS[idx]) return;
                 const pat = SYNTH_PATTERNS[idx];
-                this.log('Loading synth pattern: ' + pat.name + ' → bank ' + 'ABCD' [this.bankIdx]);
-                this._suppressTx = true; // suppress per-cell GRID_TOG; firmware loads ROM itself
+                const bank = 'ABCD'[this.bankIdx];
+                if (this._appMode === 'midi') {
+                    this._applySynthPatternGrid(pat, this.bankIdx);
+                    this.repaintGrid();
+                    if (this.isPlaying) {
+                        this.visStep = 0;
+                        this._paintPlayhead(0, true);
+                        this._midiPlayStep(0);
+                    }
+                    this.log('MIDI melody pattern: ' + pat.name + ' → bank ' + bank + ' (steps 1–16)');
+                    this._midiPersistSoon();
+                    return;
+                }
+                this.log('Loading synth pattern: ' + pat.name + ' → bank ' + bank);
+                this._suppressTx = true;
                 for (let r = 0; r < 8; r++)
                     for (let c = 0; c < 16; c++) this.setCell(r, c, false);
                 for (let step = 0; step < 16; step++) {
@@ -6083,10 +6407,22 @@
                 this.txSysex(CMD.LOAD_PAT_S, +idx);
             },
             loadDrumPat(idx) {
-                if (this._appMode === 'midi') return;
                 if (idx === "" || !DRUM_PATTERNS[idx]) return;
                 const pat = DRUM_PATTERNS[idx];
-                this.log('Loading drum pattern: ' + pat.name + ' → bank ' + 'ABCD' [this.bankIdx]);
+                const bank = 'ABCD'[this.bankIdx];
+                if (this._appMode === 'midi') {
+                    this._applyDrumPatternGrid(pat, this.bankIdx);
+                    this.repaintGrid();
+                    if (this.isPlaying) {
+                        this.visStep = 0;
+                        this._paintPlayhead(0, true);
+                        this._midiPlayStep(0);
+                    }
+                    this.log('MIDI drum pattern: ' + pat.name + ' → bank ' + bank + ' (steps 1–16)');
+                    this._midiPersistSoon();
+                    return;
+                }
+                this.log('Loading drum pattern: ' + pat.name + ' → bank ' + bank);
                 this._suppressTx = true;
                 // ROM track mask: bit c = step c (LSB = step 0), matching the firmware sequencer.
                 if (pat.tracks) pat.tracks.forEach((mask, ti) => {
@@ -6129,14 +6465,19 @@
             // ── Build sequencer grid ──────────────────────────────────────────────────
             buildSequencer() {
                 const g = document.getElementById('seq-grid');
-                const wrap = document.getElementById('seq-grid-wrap');
-                if (!g || !wrap) return;
+                const stage = this._phStageEl();
+                if (!g || !stage) return;
+
+                if (this._phResizeOb) {
+                    try { this._phResizeOb.disconnect(); } catch (e) {}
+                    this._phResizeOb = null;
+                }
 
                 const savedPh = this._playheadEl;
                 if (savedPh && savedPh.parentNode) savedPh.parentNode.removeChild(savedPh);
 
                 g.innerHTML = '';
-                this._phRect = null;
+                this._phGeom = null;
                 this._phRectPage = -1;
                 this._playCol = -1;
                 this._playPage = -1;
@@ -6146,11 +6487,7 @@
                 // Row 0 = top = highest note (firmware row0 = +12 st via kRowSemitone), row7 = root.
                 const synthLabels = ['C5', 'B4', 'A4', 'G4', 'F4', 'E4', 'D4', 'C4'];
                 const drumLabels = ['KICK', 'SNARE', 'CLAP', 'HH-C', 'HH-O', 'TOM-H', 'TOM-L', 'PERC'];
-                // Explicit grid placement for every label/cell.  The playhead overlay is
-                // an explicitly-placed grid child spanning column 2 over all 16 rows; if
-                // labels/cells were auto-flowed they would skip that blocked column and
-                // cascade one step right per row.  Pinning each item's row/column keeps
-                // the layout deterministic and lets the playhead overlap its cell.
+                // Explicit grid placement for every label/cell — keeps columns aligned for playhead geometry.
                 for (let r = 0; r < 16; r++) {
                     const lbl = document.createElement('div');
                     lbl.className = 'seq-row-label ' + (r < 8 ? 'lbl-synth' : 'lbl-drum');
@@ -6169,7 +6506,7 @@
                     }
                 }
 
-                // Re-attach or create the playhead — always last child so it layers above cells.
+                // Playhead on the stage shell — outside #seq-grid-wrap paint containment.
                 let ph = savedPh;
                 if (!ph) {
                     ph = document.createElement('div');
@@ -6177,7 +6514,11 @@
                     ph.setAttribute('aria-hidden', 'true');
                     this._playheadEl = ph;
                 }
-                wrap.appendChild(ph);
+                stage.appendChild(ph);
+                if (typeof ResizeObserver !== 'undefined') {
+                    this._phResizeOb = new ResizeObserver(() => this._scheduleWindowPhResize());
+                    this._phResizeOb.observe(stage);
+                }
                 this.repaintGrid();
                 this._paintPlayhead(this.visStep | 0, true);
             },

@@ -6,7 +6,7 @@
 |-------|-------|
 | Document type | End-user & integrator reference |
 | Firmware | `6.1.00` · NVS namespace `octopus` · `SETTINGS_VERSION 0x0615` (struct layout) |
-| Companion app | [octopus.isystem.app](https://octopus.isystem.app) (Web MIDI / SysEx · **v6.2.00** MIDI Controller mode) |
+| Companion app | [octopus.isystem.app](https://octopus.isystem.app) (Web MIDI / SysEx · **v6.2.03** MIDI Controller mode) |
 | Hardware UI | SH1106 OLED · rotary encoder · SCALE · OC |
 
 This manual describes the Octopus PRO XL from initial setup through complete operation of the hardware menu system, companion application, signal routing, and musical tools (sequencer topology, arpeggiator layouts, D-BEAM response curves, and effects character). Menu labels and category order match the on-device OLED display exactly (`display.h`).
@@ -768,7 +768,7 @@ Header **PLAY / STOP / REC** and **BPM** field are **read-only reflectors**. Har
 
 SAVE · LOAD · RESET · SLOTS · CPY/PST · RND-H/RND-D · CLR · mutes · DBEAM · MIDI routing · MON · HELP
 
-### 9.4 Universal MIDI Controller mode *(OctopusApp v6.2.00 — shipped)*
+### 9.4 Universal MIDI Controller mode *(OctopusApp v6.2.03 — shipped)*
 
 When **no Octopus PRO XL** is connected, OctopusApp operates as a **universal MIDI controller** in the browser — **no firmware update** required. Open **[octopus.isystem.app](https://octopus.isystem.app)** in **Google Chrome** (or Microsoft Edge) over **HTTPS**.
 
@@ -783,7 +783,7 @@ When **no Octopus PRO XL** is connected, OctopusApp operates as a **universal MI
 
 **INSTRUMENTS (MIDI mode)** — seq synth panel (channel, program change, 8 CC knobs, activity canvas) and drum machine panel (per-row GM notes, scope canvas). No laser, D-BEAM, or studio mixer.
 
-**SEQUENCER (MIDI mode)** — same 64-step grid (banks A–D, pages P1–P4). The App runs its own BPM clock, playhead, and fires MIDI notes each step (melody rows 1–8 scale-aware; drum rows 9–16 GM-style).
+**SEQUENCER (MIDI mode)** — same 64-step grid (banks A–D, pages P1–P4). The App runs its own BPM clock, playhead, and fires MIDI notes each step (melody rows 1–8 scale-aware; drum rows 9–16 GM-style). **Song mode** (🔗 chain toggle) plays up to 16 chain steps per slot (bank + repeats), matching hardware behaviour. **MELODY PATTERNS** and **DRUM PATTERNS** dropdowns load factory patterns into the active bank; notes go out on Play.
 
 Octopus-only actions (SAVE, LOAD, RESET, SLOTS, CPU telemetry) are hidden in MIDI mode.
 
@@ -804,8 +804,9 @@ Octopus-only actions (SAVE, LOAD, RESET, SLOTS, CPU telemetry) are hidden in MID
 4. Confirm the badge shows **MIDI OUT** (cyan).
 5. **INSTRUMENTS** tab → set melody channel (default Ch 1), drum channel (default Ch 10), Program Change if needed, CC knobs.
 6. **SEQUENCER** tab → click cells to enter notes (rows 1–8 melody, 9–16 drums). Use banks **A–D** and pages **P1–P4** for up to 64 steps.
-7. Set **BPM** in the header (editable in MIDI mode), press **▶ Play**. External gear receives notes; optional **CLK** sends MIDI clock (24 PPQN).
-8. Press **■ Stop** — all notes off. Patterns auto-save in the browser; use **EXP** / **IMP** in the routing bar to back up JSON.
+7. Optional: **🔗** song mode → **PAT/EDIT** chain editor → program bank order + repeats. **MELODY PATTERNS** / **DRUM PATTERNS** load factory grooves into the active bank.
+8. Set **BPM** in the header (editable in MIDI mode), press **▶ Play**. External gear receives notes; optional **CLK** sends MIDI clock (24 PPQN).
+9. Press **■ Stop** — all notes off. Patterns auto-save in the browser; use **EXP** / **IMP** in the routing bar to back up JSON (includes song chains).
 
 #### 9.4.3 macOS + Google Chrome
 
@@ -892,6 +893,10 @@ OctopusApp is a **browser tab**, not a VST/AU plugin. You do **not** “open” 
 
 Further reference: [docs/midi_controller_mode.md](./docs/midi_controller_mode.md) · [octopus-info.isystem.app → MIDI Mode](https://octopus-info.isystem.app#midi-mode) · in-app **Help → MIDI CONTROLLER**.
 
+#### 9.4.6 Support the project (optional)
+
+If OctopusApp or the hardware helps your music, you can leave an optional tip via **[PayPal](https://www.paypal.com/donate/?business=diodac.electronics%40gmail.com&item_name=Octopus+PRO+XL)** to **DIODAC ELECTRONICS** (`diodac.electronics@gmail.com`). The same link appears in OctopusApp (**TIP** / **DONATE** chips) and on the [product site contact section](https://octopus-info.isystem.app#contact). Donations are voluntary and do not unlock features.
+
 ---
 
 ### 9.5 OctopusApp version note
@@ -930,9 +935,9 @@ Octopus **linked** mode behaviour matches firmware **6.1.00**. MIDI Controller m
 1. **Chrome** → [octopus.isystem.app](https://octopus.isystem.app) → allow MIDI.
 2. **Mac:** enable **IAC Driver** in Audio MIDI Setup · **Windows:** install **loopMIDI** if routing into a DAW.
 3. App MIDI dropdown → virtual bus or USB interface; badge **MIDI OUT**.
-4. **INSTRUMENTS** → channels, PC, CC · **SEQUENCER** → pattern · **▶ Play**.
+4. **INSTRUMENTS** → channels, PC, CC · **SEQUENCER** → pattern · optional **🔗** song chain · **MELODY/DRUM PATTERNS** · **▶ Play**.
 5. DAW: instrument track MIDI input = same bus as App output; match MIDI channels.
-6. **EXP** JSON backup before clearing browser data. Full guide: [§9.4](#94-universal-midi-controller-mode-octopusapp-v6200--shipped).
+6. **EXP** JSON backup before clearing browser data. Full guide: [§9.4](#94-universal-midi-controller-mode-octopusapp-v6203--shipped).
 
 ---
 
@@ -992,3 +997,5 @@ Authoritative list: **`code_info.h` §9**. Targets for the next upgrade:
 ---
 
 *Octopus PRO XL v6.1 — © DIODAC ELECTRONICS / iSystem. Firmware labels: `display.h`. Protocol: `sysex.h`.*
+
+**Optional support:** [PayPal donate](https://www.paypal.com/donate/?business=diodac.electronics%40gmail.com&item_name=Octopus+PRO+XL) · `diodac.electronics@gmail.com`

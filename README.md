@@ -25,8 +25,15 @@
 | **Product / info site** | [https://octopus-info.isystem.app](https://octopus-info.isystem.app) |
 | **GitHub repository** | [github.com/iSystemDevelopment/Octopus_PRO_XL_v6.0](https://github.com/iSystemDevelopment/Octopus_PRO_XL_v6.0) |
 | **Facebook** | [facebook.com/diodac.co.uk](https://www.facebook.com/diodac.co.uk/) |
+| **Support (optional)** | [PayPal donate](https://www.paypal.com/donate/?business=diodac.electronics%40gmail.com&item_name=Octopus+PRO+XL) → DIODAC ELECTRONICS |
 
 Production OctopusApp and product site are hosted on VPS subdomains (`octopus.isystem.app` and `octopus-info.isystem.app`).
+
+---
+
+## Support the project
+
+Octopus PRO XL firmware and **OctopusApp** are free to use. If they help your workflow, you can leave an optional tip via **[PayPal](https://www.paypal.com/donate/?business=diodac.electronics%40gmail.com&item_name=Octopus+PRO+XL)** (`diodac.electronics@gmail.com`). Links also appear in OctopusApp (**TIP** chip, footer) and on [octopus-info.isystem.app](https://octopus-info.isystem.app#contact).
 
 ---
 

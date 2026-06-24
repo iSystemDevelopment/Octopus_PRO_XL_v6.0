@@ -7,7 +7,7 @@ Production hosting for the **browser App** and **product site**. Firmware is fla
 | **OctopusApp** | [octopus.isystem.app](https://octopus.isystem.app) | `OctopusApp.html` |
 | **Product site** | [octopus-info.isystem.app](https://octopus-info.isystem.app) | `octopus_web.html` → `index.html` |
 
-**Versions:** Firmware **6.1.00** · OctopusApp **6.2.01** (includes Universal MIDI Controller mode).
+**Versions:** Firmware **6.1.00** · OctopusApp **6.2.03** (includes Universal MIDI Controller mode).
 
 ---
 
@@ -115,6 +115,18 @@ Selecting or auto-detecting a port does a **short full page reload**, then opens
 
 MIDI patterns are saved to `localStorage` before reload; Octopus state comes from the device after sync.
 
+**Song mode + patterns (v6.2.03+, MIDI OUT only)**
+
+| Control | Action |
+|---------|--------|
+| **🔗** (banks row) | Toggle song mode — chain plays banks in order via local clock |
+| **PAT / EDIT** | Pattern grid ↔ chain step editor |
+| **Chain 01–16** | Select song slot (16 independent chains) |
+| **MELODY PATTERNS** | Load factory melody into active bank (steps 1–16) |
+| **DRUM PATTERNS** | Load factory drums into active bank (steps 1–16) |
+
+Song chains persist in `localStorage` and **EXP** JSON (`songData`, `isSongMode`).
+
 **When Octopus is unplugged**
 
 - App re-scans ports. If ★ is gone, it reloads into **MIDI OUT** on the next available output.
@@ -154,7 +166,7 @@ sudo cp /var/www/octopus.isystem.app/index.html \
   /var/www/octopus.isystem.app/index.html.bak.$(date +%Y%m%d)
 ```
 
-**Confirm live version:** open `https://octopus.isystem.app` → log line or title must show **OctopusApp v6.2.01**. Hard refresh once (`Ctrl+Shift+R`) if the tab was already open.
+**Confirm live version:** open `https://octopus.isystem.app` → log line or title must show **OctopusApp v6.2.03**. Hard refresh once (`Ctrl+Shift+R`) if the tab was already open.
 
 **Cloudflare:** if you use edge cache, purge `octopus.isystem.app` after upload (or keep cache bypass rule from §0).
 
@@ -185,22 +197,24 @@ Run in **Google Chrome** (or Edge) on **HTTPS**:
 
 | # | Test | Pass criteria |
 |---|------|----------------|
-| 1 | Page loads | Title shows **OctopusApp v6.2.01**; header badge **v6.2.01** |
+| 1 | Page loads | Title shows **OctopusApp v6.2.03** |
 | 2 | Octopus mode | With ★ port connected → badge **Octopus ON**; 3 tabs; transport read-only |
-| 3 | MIDI mode | No ★ Octopus → auto **MIDI OUT** (or pick non-★ port); transport **unlocked** |
-| 4 | Sequencer | Grid edit, **Play** / **Stop**, playhead moves at BPM |
-| 5 | MIDI notes | External synth or loopback receives notes on step advance |
-| 6 | INSTRUMENTS | CC knob sends MIDI; PC on change; scopes animate |
-| 7 | Persistence | Reload page → pattern restored; **EXP** downloads JSON |
-| 8 | Help | **HELP** → **MIDI CONTROLLER** tab shows beginner Mac/Windows/DAW guide |
-| 9 | Regression | Reconnect ★ Octopus → full SysEx sync identical to v6.1 behaviour |
+| 3 | MIDI mode | Badge **MIDI OUT**; transport unlocked; **🔗** chain + pattern dropdowns |
+| 4 | Song mode | 🔗 ON → EDIT chain → Play cycles banks per chain row + repeats |
+| 5 | Patterns | MELODY / DRUM dropdown loads factory pattern → Play sends MIDI |
+| 6 | Sequencer | Grid edit, **Play** / **Stop**, playhead moves at BPM |
+| 7 | MIDI notes | External synth or loopback receives notes on step advance |
+| 8 | INSTRUMENTS | CC knob sends MIDI; PC on change; scopes animate |
+| 9 | Persistence | Reload → pattern + song chain restored; **EXP** includes `songData` |
+| 10 | Help | **HELP** → **MIDI CONTROLLER** tab documents song mode + patterns |
+| 11 | Regression | Reconnect ★ Octopus → full SysEx sync identical to v6.1 behaviour |
 
 ### MIDI Controller production notes
 
 - **No server-side code** — all MIDI runs in the browser via Web MIDI API.
 - **No firmware flash** required for v6.2 App features.
-- Patterns persist in browser `localStorage` key `octopusapp_midi_session_v1` (not on device NVS).
-- Document for users: [User Manual §9.4](./user_manual.md#94-universal-midi-controller-mode-octopusapp-v6200--shipped).
+- Patterns + **song chains** persist in browser `localStorage` key `octopusapp_midi_session_v1` (not on device NVS).
+- Document for users: [User Manual §9.4](./user_manual.md#94-universal-midi-controller-mode-octopusapp-v6203--shipped).
 
 ---
 
@@ -250,6 +264,8 @@ None of these block MIDI Controller mode production.
 Keep the previous `OctopusApp.html` on the server (e.g. `OctopusApp.v6.1.00.html.bak`). To roll back, restore the file and clear CDN/cache if used.
 
 Octopus linked mode must remain safe — v6.2 does not change firmware protocol.
+
+**PayPal donate link** (optional tip widget): `https://www.paypal.com/donate/?business=diodac.electronics%40gmail.com&item_name=Octopus+PRO+XL` — present in `OctopusApp.html` and `octopus_web.html` after deploy.
 
 ---
 

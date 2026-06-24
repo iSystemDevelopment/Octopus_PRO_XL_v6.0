@@ -291,6 +291,8 @@ Each phase ends with a **verification checklist** before starting the next.
 | GitHub | This file + README + user manual §9.4 |
 | Product site | [octopus-info.isystem.app](https://octopus-info.isystem.app) → **MIDI Mode** nav → `#midi-mode` |
 
+**Optional support:** [PayPal donate](https://www.paypal.com/donate/?business=diodac.electronics%40gmail.com&item_name=Octopus+PRO+XL) → `diodac.electronics@gmail.com`
+
 ---
 
-*© DIODAC ELECTRONICS / iSystem — OctopusApp v6.2.00 MIDI Controller mode (shipped)*
+*© DIODAC ELECTRONICS / iSystem — OctopusApp v6.2.03 MIDI Controller mode (shipped)*
