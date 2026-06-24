@@ -475,26 +475,28 @@ Each engine (harp, seq, drums) has **FX-A** (modulation/time) and **FX-B** (dyna
 
 #### Insert FX-A (UI names → DSP mode)
 
+Names are the abbreviated form of `INSERT_FX_PRESETS[]` in `effect.cpp` (1:1 with `kInsertFxNames[]` on the OLED and `INSERT_FX_NAMES` in OctopusApp); the index is the wire value, so the DSP mode below is fixed per row.
+
 | # | Name | Engine type | Character |
 |---|------|-------------|-----------|
-| 0 | AcidRoom | Bypass + wet sends | Delay/reverb wash; neutral insert |
-| 1 | HiChorus | Chorus | Wide stereo swell, moderate depth |
-| 2 | AcpBell | Ring mod | Metallic sideband bell tones |
-| 3 | Stigmata | Phaser | Notched sweep + subtle reverb tail |
-| 4 | TrnDelay | Bypass | Tempo-agnostic echo emphasis |
-| 5 | Sandstrm | Distortion | Aggressive tube-style saturation |
-| 6 | Kernflng | Flanger | Jet comb filtering |
-| 7 | ChldShim | Chorus | Shimmer verb blend |
-| 8 | Insomnia | Bypass | Large dark reverb room |
-| 9 | BlueEcho | Bypass | Tape-style echo |
-| 10 | FeelShim | Ring mod | Higher carrier shimmer |
-| 11 | Popcorn | Phaser | Comb swirl, moderate mix |
-| 12 | **OrgDrive** | Distortion | **Organic drum/melody drive** — warm even harmonics, strong on transients |
-| 13 | Crystal | Bypass + verb | Bright shimmer gate |
-| 14 | Faded | Distortion | Heavy saturation + room |
-| 15 | Phuture | Ring mod | Extreme carrier/detune |
+| 0 | Nebula Taps | Bypass + wet sends | Delay/reverb wash; neutral insert |
+| 1 | Snova Chorus | Chorus | Wide stereo swell, moderate depth |
+| 2 | Pulsar Mod | Ring mod | Metallic sideband bell tones |
+| 3 | Quasar Phase | Phaser | Notched sweep + reverb tail |
+| 4 | Chronos Echo | Bypass + delay | Tempo-agnostic echo emphasis |
+| 5 | Singul Tube | Distortion | Aggressive tube-style saturation |
+| 6 | Jet Flange | Flanger | Jet comb filtering |
+| 7 | Astral Shmr | Chorus | Shimmer verb blend |
+| 8 | Dark SubRoom | Bypass + verb | Large dark reverb room |
+| 9 | Cosmos Tape | Bypass + delay | Tape-style echo |
+| 10 | Hyper ResMod | Ring mod | Higher carrier shimmer |
+| 11 | Vortex Swirl | Phaser | Comb swirl, moderate mix |
+| 12 | **Organic Drive** | Distortion | **Organic drum/melody drive** — warm even harmonics, strong on transients |
+| 13 | Aether Gate | Bypass + verb | Bright shimmer gate |
+| 14 | Void Satur | Distortion | Heavy saturation + room |
+| 15 | Zero Quantum | Ring mod | Extreme carrier/detune |
 
-**OrgDrive** (index 12) replaces the former “OnRun” preset: optimised for **musical saturation** on drums and melodic sources (drive ~2.6, tone ~0.68, mix ~0.44 in preset table).
+**Organic Drive** (index 12): optimised for **musical saturation** on drums and melodic sources (drive ~2.6, tone ~0.68, mix ~0.44 in the preset table).
 
 #### Insert FX-B — dynamics
 

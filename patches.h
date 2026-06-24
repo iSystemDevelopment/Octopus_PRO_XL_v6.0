@@ -1109,7 +1109,11 @@ static inline void applyAuxParam(uint8_t cmd, uint16_t v14) {
       break;
     case CMD_H_FX_SIZE:
     case CMD_S_FX_SIZE:
-      masterAuxRevSize.store(std::min(0.95f, f), std::memory_order_relaxed);
+      /* App AUX_ENC + echoAuxParams encode size as (size/0.95)·16383, so the
+       * inverse is size = f·0.95 (same as CMD_AUX_DLY_FB).  The old min(0.95,f)
+       * dropped the ·0.95 → size read ~5% high and the top ~5% of the knob was a
+       * dead zone (everything ≥0.9025 clamped to 0.95). */
+      masterAuxRevSize.store(std::min(0.95f, f * 0.95f), std::memory_order_relaxed);
       txSysex(cmd, v14);
       break;
     default: break;
@@ -1174,10 +1178,11 @@ static inline void applyMasterParam(uint8_t cmd, uint16_t v14, Origin o) {
      * App's AUX knobs send the H_ variants (113/114); accept both.            */
     case CMD_H_FX_TIME:
     case CMD_S_FX_TIME: masterAuxDlyTime.store(n * 1.5f); break;
+    /* App encodes both rev-size and dly-fb as v14 = (val/0.95)*16383; decode back
+     * with *0.95.  min(0.95,n) stored n≈val/0.95 instead of val, drifting ~5% high
+     * (and the top of the knob clamped to a dead zone).  Same fix as AUX_DLY_FB. */
     case CMD_H_FX_SIZE:
-    case CMD_S_FX_SIZE: masterAuxRevSize.store(std::min(0.95f, n)); break;
-    /* App encodes as v14 = (f/0.95)*16383; decode back with *0.95.
-     * Previously min(0.95,n) stored n≈f/0.95 instead of f, drifting ~5% high. */
+    case CMD_S_FX_SIZE: masterAuxRevSize.store(n * 0.95f); break;
     case CMD_AUX_DLY_FB: masterAuxDlyFb.store(n * 0.95f); break;
     case CMD_AUX_REV_DMP: masterAuxRevDamp.store(n); break;
     case CMD_H_MUTE: mixHarpMute.store(v14 > 0u); break;

@@ -634,7 +634,11 @@
             overflow: hidden;
             min-height: 72px;
             height: 100%;
-            box-shadow: inset 0 0 18px rgba(6, 182, 212, 0.05), inset 0 -1px 2px rgba(0, 0, 0, 0.6)
+            box-shadow: inset 0 0 18px rgba(6, 182, 212, 0.05), inset 0 -1px 2px rgba(0, 0, 0, 0.6);
+            /* Isolate the scope as its own compositing context so its per-frame
+             * canvas repaints never invalidate / reflow the surrounding mixer UI. */
+            contain: layout paint style;
+            isolation: isolate
         }
 
         .drum-scope-toy::after {
@@ -654,7 +658,12 @@
             width: 100%;
             height: 100%;
             display: block;
-            transform: translateZ(0)
+            /* Definitive dedicated GPU layer: promoted + kept on the compositor so
+             * the waveform animates on the GPU, decoupled from document paints. */
+            transform: translateZ(0);
+            will-change: transform;
+            backface-visibility: hidden;
+            contain: paint
         }
 
         .arp-on-btn {
@@ -1495,8 +1504,8 @@
                 • <b>Song mode</b> — 16 chain slots × up to 16 steps (bank A–D + repeats); 🔗 toggle + PAT/EDIT chain editor.<br>
                 • <b>Seq arpeggiator</b> — 8 patterns / 8 rates / gate; single-note steps expand through the active scale motif.<br>
                 • <b>Harp arpeggiator</b> — 4 patterns / 4 rates; POLY8 / STRINGS / SOLO play modes; scale motif expansion.<br>
-                • <b>OrgDrive</b> insert FX (FX-A index 12) — organic saturation for melody and drums.<br>
-                • <b>Drum engine</b> — global D.PITCH, fog-reject gate, 4 kits (TR-909 / TR-808 / Trap / House), live drum scope on MIXER + INSTRUMENTS tabs.<br>
+                • <b>Organic Drive</b> insert FX (FX-A index 12) — organic saturation for melody and drums.<br>
+                • <b>Drum engine</b> — global D.PITCH, fog-reject gate, 4 kits (TR-909 / TR-808 / Trap / House), and a live <b>beat-reactive drum scope</b> (MIXER tab) that pulses on the actual pattern hits at the device playhead.<br>
                 • <b>128 factory presets</b> + 64 user sound slots per engine + 64 user pattern slots (header SLOTS).<br>
                 • <b>D-BEAM</b> — local DSP only; route + target (harp or melody) in the D-BEAM panel; 5 response curves.<br>
                 • <b>Transport authority</b> — hardware always owns play / stop / record / BPM; App buttons are read-only reflectors.<br>
@@ -1891,11 +1900,12 @@
             "HPF Prism", "Spectral Scoop", "Cosmos Echo", "Nova OD",
             "Quantum Tube", "Lofi Singulr", "Interstellar", "Centauri Mstr"
         ];
-        // kInsertFxNames[] in display.h — exact match firmware
+        // kInsertFxNames[] in display.h — exact match firmware (abbreviated
+        // INSERT_FX_PRESETS[] in effect.cpp; order = index → DSP mapping).
         const INSERT_FX_NAMES = [
-            "AcidRoom", "HiChorus", "AcpBell", "Stigmata", "TrnDelay", "Sandstrm",
-            "Kernflng", "ChldShim", "Insomnia", "BlueEcho", "FeelShim", "Popcorn",
-            "OrgDrive", "Crystal", "Faded", "Phuture"
+            "Nebula Taps", "Snova Chorus", "Pulsar Mod", "Quasar Phase", "Chronos Echo", "Singul Tube",
+            "Jet Flange", "Astral Shmr", "Dark SubRoom", "Cosmos Tape", "Hyper ResMod", "Vortex Swirl",
+            "Organic Drive", "Aether Gate", "Void Satur", "Zero Quantum"
         ];
         /* [P2] Dynamics bank — DYNAMICS_PRESETS[] in effect.cpp */
         const DYNAMICS_NAMES = [
@@ -5459,10 +5469,12 @@
                 this._drumScope = {
                     host,
                     canvas,
+                    ctx: null,             // cached 2D context (avoid per-frame getContext)
                     resize,
                     phase: Math.random() * Math.PI * 2,
                     amp: 0,
-                    targetAmp: 0,
+                    hits: 0,               // simultaneous-hit density → trace brightness/timbre
+                    lastStep: -1,          // last playhead step a transient was fired for
                     histLen: 128,
                     history: new Float32Array(128),
                     histIdx: 0,
@@ -5473,35 +5485,70 @@
             _tickDrumScope(ts) {
                 const s = this._drumScope;
                 if (!s) return;
-                const synthsOn = document.getElementById('view-synths')?.classList.contains('active');
-                const mixerOn = document.getElementById('view-mixer')?.classList.contains('active');
-                if ((!synthsOn && !mixerOn) || document.hidden) return;
+                // Tick only while the scope is actually on-screen (its host has a
+                // layout box). offsetParent is null when any ancestor is display:none,
+                // so this auto-tracks the active tab without hard-coding view ids.
+                if (document.hidden || !s.host.offsetParent) return;
 
                 if (!s.lastTs) s.lastTs = ts;
                 const dt = Math.min(0.05, Math.max(0.001, (ts - s.lastTs) * 0.001));
                 s.lastTs = ts;
 
-                const ctx = s.canvas.getContext('2d');
+                const ctx = s.ctx || (s.ctx = s.canvas.getContext('2d'));
                 const w = s.canvas.width, h = s.canvas.height;
                 if (w < 8 || h < 8) return;
 
+                // D.VOL knob scales the whole trace (louder drums → taller wave).
                 let drumNorm = 0.55;
                 const dKnob = this.knobStates?.[CMD.D_VOL]?.[0];
                 if (dKnob?.node) {
                     const v = parseFloat(dKnob.node.style.getPropertyValue('--val'));
                     if (!Number.isNaN(v)) drumNorm = Math.max(0.08, Math.min(1, v));
                 }
-                const burst = this.isPlaying ? (0.22 + Math.random() * 0.55) * drumNorm : 0.035;
-                s.targetAmp = burst;
-                s.amp += (s.targetAmp - s.amp) * (1 - Math.pow(0.04, dt * 60));
 
-                const omega = 4.8 + s.amp * 9.5;
+                // [SOUND-REACTIVE] Fire a transient on the ACTUAL drum hits at the live
+                // playhead step (device-driven via STEP_SYNC), not free-running noise.
+                // Drum rows are 8-15 of the playing bank's grid; kick/snare punch harder
+                // than hats/perc, downbeats accent. The trace now mirrors the pattern the
+                // device is really playing — it pulses on every drum hit and decays on
+                // empty steps, idling to a faint wiggle when stopped.
+                const step = this.isPlaying ? (this.visStep | 0) : -1;
+                if (step !== s.lastStep) {
+                    s.lastStep = step;
+                    if (step >= 0) {
+                        let hits = 0, energy = 0;
+                        const grid = this.gridData?.[this.bankIdx];
+                        if (grid) {
+                            for (let r = 8; r < 16; r++) {
+                                if (grid[r] && grid[r][step]) {
+                                    hits++;
+                                    energy += (r <= 9) ? 1.0 : (r >= 12 ? 0.5 : 0.72);
+                                }
+                            }
+                        }
+                        if (energy > 0) {
+                            const accent = (step % 4 === 0) ? 1.15 : 1.0;
+                            const hitAmp = Math.min(1.25, energy * 0.36 * accent) * drumNorm;
+                            if (hitAmp > s.amp) s.amp = hitAmp;   // instant attack on the hit
+                            s.hits = Math.max(s.hits, hits);
+                        }
+                    }
+                }
+
+                // Envelope: decay toward a faint idle floor; brightness eases with density.
+                const floor = this.isPlaying ? 0.03 : 0.02;
+                s.amp += (floor - s.amp) * (1 - Math.exp(-(this.isPlaying ? 5.0 : 2.0) * dt));
+                if (s.amp < floor) s.amp = floor;
+                s.hits *= 0.90;
+                const amp = s.amp;
+
+                const omega = 5.0 + s.hits * 2.6 + amp * 7.5;
                 s.phase += omega * dt;
                 const n1 = Math.sin(s.phase);
                 const n2 = Math.sin(s.phase * 2.13 + 0.55) * 0.32;
                 const n3 = Math.sin(s.phase * 0.51 + 1.1) * 0.16;
-                const noise = (Math.random() - 0.5) * 0.08 * s.amp;
-                s.history[s.histIdx] = (n1 + n2 + n3 + noise) * s.amp;
+                const noise = (Math.random() - 0.5) * 0.10 * amp;
+                s.history[s.histIdx] = (n1 + n2 + n3 + noise) * amp;
                 s.histIdx = (s.histIdx + 1) % s.histLen;
 
                 ctx.fillStyle = 'rgba(2, 2, 6, 0.28)';

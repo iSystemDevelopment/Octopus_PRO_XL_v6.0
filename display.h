@@ -243,12 +243,14 @@ inline const char* const kMasterFxNames[16] = {
   "Quantum Tube", "Lofi Singulr", "Interstellar", "Centauri Mstr"
 };
 
-/* 16 insert FX preset names */
+/* 16 insert FX (slot A) preset names — abbreviated form of INSERT_FX_PRESETS[]
+ * in effect.cpp.  Order MUST match that table and INSERT_FX_NAMES[] in
+ * OctopusApp.html so index→DSP→label is identical on hw, device, and app. */
 inline const char* const kInsertFxNames[16] = {
-  "AcidRoom", "HiChorus", "AcpBell", "Stigmata",
-  "TrnDelay", "Sandstrm", "Kernflng", "ChldShim",
-  "Insomnia", "BlueEcho", "FeelShim", "Popcorn",
-  "OrgDrive", "Crystal", "Faded", "Phuture"
+  "Nebula Taps",   "Snova Chorus", "Pulsar Mod",    "Quasar Phase",
+  "Chronos Echo",  "Singul Tube",  "Jet Flange",    "Astral Shmr",
+  "Dark SubRoom",  "Cosmos Tape",  "Hyper ResMod",  "Vortex Swirl",
+  "Organic Drive", "Aether Gate",  "Void Satur",    "Zero Quantum"
 };
 
 /* 16 dynamics (insert slot B) preset names.
