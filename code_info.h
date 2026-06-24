@@ -261,7 +261,7 @@
  *   134 HUE_REL      hueRelease         0..16383 → 0..4 s
  *   167 LSR_ANIM     laserShowAnim      0..3: Pulse/Chase/Strobe/Wave  [v2]
  *   168 LSR_DRUMFLASH laserDrumFlash    0..1 drum-flash depth          [v2]
- *   169 SCOPED_RESET handleScopedReset  v14=ResetScope+1; RAM wipe+persist+reboot; ACK 16383
+ *   169 SCOPED_RESET handleScopedReset  v14=ResetScope+1; RAM wipe→commit NVS→reboot
  *   170 SEQ_CLEAR    seqClearActive…    clear active grid+P-locks+sounds→preset0
  *   172 USR_SND_SAVE saveLiveToUserSlot v14=(eng<<13)|slot; live→slot 128+slot +persist
  *   173 USR_SND_LOAD loadUserSlotToLive v14=(eng<<13)|slot; recall user slot→live

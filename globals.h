@@ -1012,13 +1012,16 @@ inline std::atomic<uint32_t> g_saveFlashMs{ 0 };
 /** millis() until which the OLED shows a "SAVE FAIL" toast after a failed commit. */
 inline std::atomic<uint32_t> g_saveFailFlashMs{ 0 };
 
+/** True while a scoped reset is committing wiped RAM to NVS (not a user SAVE). */
+inline std::atomic<bool> g_resetInProgress{ false };
+
 /** NVS blob target for the in-flight save (ResetScope values 0–3). */
 inline std::atomic<uint8_t> g_persistScope{ 0 };
 
 /** Signalled by NvsWorker after each save completes (binary sem, created in setup). */
 inline SemaphoreHandle_t g_saveDoneSem{ nullptr };
 
-/** Set by handleScopedReset; NvsWorker calls esp_restart() after a successful save. */
+/** Set by requestScopedSave; NvsWorker calls esp_restart() after a successful save. */
 inline std::atomic<bool> g_restartAfterSave{ false };
 
 /** Result of the last NvsWorker save (for reset-persist task error UI). */
@@ -1043,6 +1046,20 @@ static inline void saveForceUnlock() {
   if (g_saveDoneSem) xSemaphoreGive(g_saveDoneSem);
 }
 
+/** Wait for NvsWorker to finish (or force-unlock a stuck request). Reset uses this
+ * so it never queues behind the SAVE handshake.                                    */
+static inline void waitNvsWorkerIdle(uint32_t timeoutMs = 4000u) {
+  const uint32_t deadline = millis() + timeoutMs;
+  while ((g_saveRequest.load(std::memory_order_acquire) ||
+          g_saveArmed.load(std::memory_order_acquire)) &&
+         (int32_t)(deadline - millis()) > 0) {
+    vTaskDelay(pdMS_TO_TICKS(5));
+  }
+  if (g_saveRequest.load(std::memory_order_acquire) ||
+      g_saveArmed.load(std::memory_order_acquire))
+    saveForceUnlock();
+}
+
 /** Clear a wedged save handshake (stale g_saveRequest without NvsWorker progress). */
 static inline void recoverWedgedPersistFlags() {
   if (!g_saveRequest.load(std::memory_order_acquire)) return;
@@ -1064,20 +1081,6 @@ static inline bool requestScopedSave(uint8_t scope) {
   g_persistAckCmd.store(156, std::memory_order_relaxed);
   g_persistScope.store(scope & 3u, std::memory_order_release);
   /* Reboot after successful save — beam-detect hardware recovers cleanly on cold boot. */
-  g_restartAfterSave.store(true, std::memory_order_release);
-  g_saveRequest.store(true, std::memory_order_release);
-  displayDirty.store(true, std::memory_order_relaxed);
-  return true;
-}
-
-/** Arm scoped reset persist (same NvsWorker path; ACK cmd 169, reboot on success). */
-static inline bool requestScopedReset(uint8_t scope) {
-  recoverWedgedPersistFlags();
-  if (g_saveRequest.load(std::memory_order_acquire) ||
-      g_saveArmed.load(std::memory_order_acquire))
-    return false;
-  g_persistAckCmd.store(169, std::memory_order_relaxed);
-  g_persistScope.store(scope & 3u, std::memory_order_release);
   g_restartAfterSave.store(true, std::memory_order_release);
   g_saveRequest.store(true, std::memory_order_release);
   displayDirty.store(true, std::memory_order_relaxed);

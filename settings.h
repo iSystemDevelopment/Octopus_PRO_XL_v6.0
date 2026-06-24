@@ -1379,8 +1379,10 @@ static inline void persisted_extras_load() {
  * settings blob (it is an arrangement of settings/state, not raw step data).
  * LOAD mirrors each scope exactly via settings_load_scoped().
  *
- * applyResetScope() is RAM-only; persistence + restart is the caller's job
- * (interface.cpp handleScopedReset()).  setupToFactoryDefaults() == FULL.
+ * applyResetScope() wipes RAM to factory/empty per scope.  handleScopedReset()
+ * then commits that image to NVS (so reboot cannot reload old flash) and restarts.
+ * This is NOT "save user data then clear" — RAM is cleared first, then flash is
+ * overwritten with the cleared/factory state.  setupToFactoryDefaults() == FULL.
  * ═══════════════════════════════════════════════════════════════════════════ */
 enum class ResetScope : uint8_t {
   FULL = 0,

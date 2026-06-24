@@ -1144,67 +1144,38 @@ static ResetScope s_resetPersistScope = ResetScope::FULL;
 
 /* Toast + optional App NACK — no full-screen OLED (App popup owns user feedback). */
 static void notifyPersistFail(uint8_t ackCmd) {
+  g_resetInProgress.store(false, std::memory_order_release);
   g_saveFailFlashMs.store(millis() + 1500u, std::memory_order_relaxed);
   displayDirty.store(true, std::memory_order_relaxed);
   if (isAppConnected() && ackCmd)
     txSysex(ackCmd, 0u);
 }
 
-/* Wait for NvsWorker after arming a scoped reset.  Must not cancel g_restartAfterSave
- * on timeout while a save is still in flight — that produced false "FAILED" in the App
- * even though NVS committed and a manual reboot showed wiped flash.               */
-static void reset_persist_task(void*) {
-  const uint32_t waitPrior = millis() + 30000u;
-  while (saveInProgress() && (int32_t)(waitPrior - millis()) > 0)
-    vTaskDelay(pdMS_TO_TICKS(10));
-
-  if (saveInProgress()) {
-    notifyPersistFail(CMD_SCOPED_RESET);
-    vTaskDelete(nullptr);
-    return;
-  }
-
-  if (g_saveDoneSem) xSemaphoreTake(g_saveDoneSem, 0);
-
-  if (!requestScopedReset((uint8_t)s_resetPersistScope)) {
-    notifyPersistFail(CMD_SCOPED_RESET);
-    vTaskDelete(nullptr);
-    return;
-  }
-
-  const uint32_t deadline = millis() + 45000u;
-  bool done = false;
-  while ((int32_t)(deadline - millis()) > 0) {
-    if (g_saveDoneSem &&
-        xSemaphoreTake(g_saveDoneSem, pdMS_TO_TICKS(1000)) == pdTRUE) {
-      done = true;
-      break;
-    }
-    if (!g_saveRequest.load(std::memory_order_acquire) &&
-        !g_saveArmed.load(std::memory_order_acquire)) {
-      done = true;
-      break;
-    }
-    vTaskDelay(pdMS_TO_TICKS(1));
-  }
-
-  if (!done) {
-    /* Save still running — NvsWorker owns ACK + reboot; do not NACK or cancel. */
-    vTaskDelete(nullptr);
-    return;
-  }
-
-  if (!g_saveLastOk.load(std::memory_order_acquire)) {
-    g_restartAfterSave.store(false, std::memory_order_release);
+/* Commit wiped RAM to NVS on a dedicated task (16 KB NvsBlk stack), ACK, reboot.
+ * Does NOT use the SAVE/NvsWorker handshake — reset clears RAM first, then writes
+ * that factory/empty image to flash so the next boot cannot reload old data.      */
+static void reset_commit_task(void*) {
+  waitNvsWorkerIdle(4000u);
+  const bool ok = settings_persist_blocking(s_resetPersistScope, 8000u);
+  if (ok) {
+    if (isAppConnected()) txSysex(CMD_SCOPED_RESET, 16383u);
+    delay(400);
+    esp_restart();
+  } else {
     notifyPersistFail(CMD_SCOPED_RESET);
   }
   vTaskDelete(nullptr);
 }
 
-/* handleScopedReset — apply RAM wipe, persist, restart.
- * Boot OC+SCALE combo: blocking 16 KB save task (NvsWorker not running yet). */
+/* handleScopedReset — wipe RAM (applyResetScope), commit to NVS, restart.
+ * Boot OC+SCALE combo: blocking persist (NvsWorker not running yet).            */
 void handleScopedReset(ResetScope scope) {
+  if (g_resetInProgress.exchange(true, std::memory_order_acq_rel))
+    return;
+
   recoverWedgedPersistFlags();
+  saveForceUnlock();
+
   const char* line1 = "RESET";
   switch (scope) {
     case ResetScope::FULL:           line1 = "FULL RESET";    break;
@@ -1217,7 +1188,7 @@ void handleScopedReset(ResetScope scope) {
   applyResetScope(scope);
 
   if (!g_systemReady.load(std::memory_order_acquire)) {
-    if (!settings_persist_blocking(scope)) {
+    if (!settings_persist_blocking(scope, 8000u)) {
       notifyPersistFail(CMD_SCOPED_RESET);
       return;
     }
@@ -1227,7 +1198,7 @@ void handleScopedReset(ResetScope scope) {
   }
 
   s_resetPersistScope = scope;
-  if (xTaskCreatePinnedToCore(reset_persist_task, "RstSave", 8192, nullptr, 5,
+  if (xTaskCreatePinnedToCore(reset_commit_task, "RstCommit", 4096, nullptr, 5,
                               nullptr, 1) != pdPASS) {
     notifyPersistFail(CMD_SCOPED_RESET);
   }

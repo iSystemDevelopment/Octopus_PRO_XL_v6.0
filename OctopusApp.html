@@ -3302,9 +3302,8 @@
                 this._persistBusy = true;
                 this._persistKind = kind;
                 this._persistSince = Date.now();
-                /* Safety timeout: FULL reset can take 15–40 s (prior save drain +
-                 * multi-blob NVS). ACK precedes reboot; USB may drop before App sees it. */
-                const persistMs = (kind === 'reset' || kind === 'save') ? 60000 : 10000;
+                /* NVS commit target < 4.5 s; ACK precedes reboot. */
+                const persistMs = (kind === 'reset' || kind === 'save') ? 5000 : 10000;
                 if (this._persistTimeoutId) clearTimeout(this._persistTimeoutId);
                 this._persistTimeoutId = setTimeout(() => {
                     if (this._persistBusy && !this._persistAwaitReboot)

@@ -210,7 +210,8 @@ static constexpr uint8_t CMD_LSR_DRUMFLASH = 168;
 /* Scoped persistence (App↔device parity for SAVE / LOAD / RESET menus).
  *   CMD_SESSION_SAVE / CMD_SESSION_LOAD / CMD_SCOPED_RESET: v14 = ResetScope + 1
  *     (FULL=1 … SETTINGS=4).  v14=0 NACK; v14=16383 ACK echo (ignored on RX).
- *   CMD_SCOPED_RESET — RAM wipe + persist + reboot.
+ *   CMD_SCOPED_RESET — RAM wipe (applyResetScope) then commit factory/empty image
+ *     to NVS + reboot.  Does not use the SAVE/NvsWorker handshake (g_saveRequest).
  *   CMD_SEQ_CLEAR    — clear active pattern + reset companion sounds (mirror hardware).
  *   CMD_SOFT_RESET (171) — retired v6.1; ignored on RX. */
 static constexpr uint8_t CMD_SCOPED_RESET = 169;

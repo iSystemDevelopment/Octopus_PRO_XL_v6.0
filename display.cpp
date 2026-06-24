@@ -76,23 +76,24 @@ void displayFlushDiff() {
   s_oledShadowValid = true;
 }
 
-/* drawSaveToastIfActive — SAVING / SAVED / FAIL pill overlay after NVS persist. */
+/* drawSaveToastIfActive — SAVING / RESETTING / SAVED / FAIL pill after NVS. */
 void drawSaveToastIfActive() {
-  /* SAVING (g_saveRequest) → FAIL (g_saveFailFlashMs) → SAVED (g_saveFlashMs). */
-  const bool saving = g_saveRequest.load(std::memory_order_acquire);
-  const bool failed = !saving &&
+  const bool resetting = g_resetInProgress.load(std::memory_order_acquire);
+  const bool saving = !resetting &&
+      g_saveRequest.load(std::memory_order_acquire);
+  const bool failed = !resetting && !saving &&
       (int32_t)(g_saveFailFlashMs.load(std::memory_order_relaxed) - millis()) > 0;
-  const bool saved  = !saving && !failed &&
+  const bool saved  = !resetting && !saving && !failed &&
       (int32_t)(g_saveFlashMs.load(std::memory_order_relaxed) - millis()) > 0;
-  if (!saving && !saved && !failed) return;
+  if (!resetting && !saving && !saved && !failed) return;
 
-  const int16_t w = saving ? 54 : (failed ? 40 : 46), h = 13;
+  const int16_t w = resetting ? 52 : (saving ? 54 : (failed ? 40 : 46)), h = 13;
   const int16_t x = (SCREEN_W - w) / 2, y = 1;
   display.fillRoundRect(x, y, w, h, 3, SH110X_WHITE);
   display.setTextColor(SH110X_BLACK);
   display.setTextSize(1);
-  display.setCursor(x + (failed ? 8 : 6), y + 3);
-  display.print(saving ? F("SAVING") : (failed ? F("FAIL!") : F("SAVED")));
+  display.setCursor(x + (failed ? 8 : (resetting ? 4 : 6)), y + 3);
+  display.print(resetting ? F("RESET") : (saving ? F("SAVING") : (failed ? F("FAIL!") : F("SAVED"))));
   display.setTextColor(SH110X_WHITE);
 }
 
