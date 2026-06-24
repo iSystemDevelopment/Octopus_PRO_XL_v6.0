@@ -690,21 +690,59 @@ void IRAM_ATTR routeDbeamExpression(float norm01) {
      * sensor (rest) and rises toward 1 as the hand approaches.  We want the bus
      * to SIT at the user's normal level at rest and DIP toward silence as the
      * hand nears, returning on lift:  vol = base × (1 − norm01).
-     *   • Hand OFF (norm01 ≤ EPS): don't drive the bus — instead ADOPT the live
-     *     bus level as the new baseline, so MASTER H.Vol/S.Vol still set the rest
+     *   • PRESS edge (rest→engaged): capture the live bus as the baseline — the
+     *     true rest level the knob owns, BEFORE the pedal dips it.
+     *   • Engaged: drive vol = base × (1 − norm01).  base is frozen.
+     *   • LIFT edge (engaged→rest): restore the bus fully to base.
+     *   • At rest: keep base synced to the bus so MASTER H.Vol/S.Vol set the rest
      *     level and the pedal never fights the knob.
-     *   • Hand ON : drive vol = base × (1 − norm01).                            */
+     * [DBEAM-VOL-DRIFT FIX] The follower's RELEASE is gradual, so norm01 crosses
+     * the rest threshold while the bus is still a hair below base.  The old code
+     * adopted that still-dipped value as the new baseline EVERY rest tick, so each
+     * gesture shrank the level ~1 % (and a route/enable change mid-gesture left the
+     * bus stuck low).  Edge-tracking captures the baseline once on PRESS and fully
+     * restores it on LIFT — no cumulative drift, no stuck-low bus.
+     * routeDbeamExpression() runs on Core 1 (laser task) only, so the per-target
+     * engaged flags are single-threaded and need no atomics.                     */
     constexpr float kRestEps = 0.01f;   /* (name avoids the Xtensa EPS macro) */
+    static bool s_volEngagedHarp = false;
+    static bool s_volEngagedSeq  = false;
     if (toSeq) {
-      if (norm01 <= kRestEps) dbeamVolBaseSeq.store(mixSeqVol.load(std::memory_order_relaxed),
-                                                    std::memory_order_relaxed);
-      else mixSeqVol.store(dbeamVolBaseSeq.load(std::memory_order_relaxed) * (1.0f - norm01),
-                           std::memory_order_release);
+      if (norm01 <= kRestEps) {
+        if (s_volEngagedSeq) {   /* lift edge → restore the full user level */
+          mixSeqVol.store(dbeamVolBaseSeq.load(std::memory_order_relaxed),
+                          std::memory_order_release);
+          s_volEngagedSeq = false;
+        }
+        dbeamVolBaseSeq.store(mixSeqVol.load(std::memory_order_relaxed),
+                              std::memory_order_relaxed);  /* knob owns rest level */
+      } else {
+        if (!s_volEngagedSeq) {  /* press edge → capture true (un-dipped) rest level */
+          dbeamVolBaseSeq.store(mixSeqVol.load(std::memory_order_relaxed),
+                                std::memory_order_relaxed);
+          s_volEngagedSeq = true;
+        }
+        mixSeqVol.store(dbeamVolBaseSeq.load(std::memory_order_relaxed) * (1.0f - norm01),
+                        std::memory_order_release);
+      }
     } else {
-      if (norm01 <= kRestEps) dbeamVolBaseHarp.store(mixHarpVol.load(std::memory_order_relaxed),
-                                                     std::memory_order_relaxed);
-      else mixHarpVol.store(dbeamVolBaseHarp.load(std::memory_order_relaxed) * (1.0f - norm01),
-                            std::memory_order_release);
+      if (norm01 <= kRestEps) {
+        if (s_volEngagedHarp) {  /* lift edge → restore the full user level */
+          mixHarpVol.store(dbeamVolBaseHarp.load(std::memory_order_relaxed),
+                           std::memory_order_release);
+          s_volEngagedHarp = false;
+        }
+        dbeamVolBaseHarp.store(mixHarpVol.load(std::memory_order_relaxed),
+                               std::memory_order_relaxed); /* knob owns rest level */
+      } else {
+        if (!s_volEngagedHarp) { /* press edge → capture true (un-dipped) rest level */
+          dbeamVolBaseHarp.store(mixHarpVol.load(std::memory_order_relaxed),
+                                 std::memory_order_relaxed);
+          s_volEngagedHarp = true;
+        }
+        mixHarpVol.store(dbeamVolBaseHarp.load(std::memory_order_relaxed) * (1.0f - norm01),
+                         std::memory_order_release);
+      }
     }
     /* OLED dashboard bargraph reflects live D-BEAM volume (local display only). */
     displayDirty.store(true, std::memory_order_relaxed);

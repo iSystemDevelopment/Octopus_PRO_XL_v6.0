@@ -12,6 +12,9 @@ Versioning aligns with firmware `SYSTEM_FW_VERSION` in `code_info.h`.
 
 ### Fixed
 
+- **D-BEAM VOLUME pedal — cumulative volume drift** — the inverted volume pedal adopted the *live* bus level as its baseline every rest tick, but the follower's release is gradual so the bus is still slightly dipped when it crosses the rest threshold. Each hand gesture therefore shrank the harp/seq baseline (~1 %+, more on a fast lift), so the level crept down over a set. Also left the bus **stuck low** if D-BEAM was disabled or re-routed mid-gesture. Reworked `routeDbeamExpression()` (`dbeam.cpp`) to capture the baseline once on the **press edge** and fully restore the bus on the **lift edge** — no drift, no stuck-low bus.
+- **App "RND" (randomize) did not restart playback** — OctopusApp sent `CMD_SEQ_RESTART` (193) after RND-H / RND-D so a freshly randomised pattern plays from beat 1, but the firmware had **no handler** for it, so the sequencer kept running from its current step. Added `seq_restart_rt()` (`groovebox.cpp`) + dispatch case (`midi.cpp`): the step counter is zeroed without stopping playback (no-op when stopped).
+- **CPU-load telemetry mismatch (dead App warnings)** — OctopusApp's `CMD_CPU_LOAD` handler decoded an out-ring drop count (bits 7–13) and a P-lock "steal" flag from **bit 14**, but the firmware sent only the raw load %, and bit 14 is unaddressable in a 14-bit SysEx value, so both warnings could never fire. Firmware now packs **load % (bits 0–6) · drop count (bits 7–12, saturating 0–63) · lanes-full flag (bit 13)**; the App decode and the (previously incorrect) "oldest lane replaced" message were corrected — the firmware *drops* new automation when all 4 P-lock lanes are full, it never steals.
 - **Reset Settings (and all scoped SAVE/LOAD/RESET from App)** — App encodes persist scope as `v14 = ResetScope + 1` (1–4) but firmware decoded `v14 & 3`, so SETTINGS (4) became FULL (0) and FULL (1) became BANKS_PATTERNS. Fixed `decodePersistScopeV14()` in `midi.cpp`.
 - **Reset/Save always FAILED in App** — scoped RESET never echoed `CMD_SCOPED_RESET` ACK before reboot (only `CMD_SESSION_SAVE` ACK was sent). `g_persistAckCmd` routes the correct ACK command.
 - **Hardware LOAD while App connected** — `handleScopedLoad()` now calls `sendFullStateSync()` + `CMD_SESSION_LOAD` ACK so the App reloads and mirrors NVS state.
@@ -19,6 +22,7 @@ Versioning aligns with firmware `SYSTEM_FW_VERSION` in `code_info.h`.
 
 ### Changed
 
+- **Legacy grid-row SysEx retired** — the numeric `CMD_GRID_ROW_LO/HI` (162/163) handler is removed (firmware) and no longer sent (App). Its old v14 packing overlapped the 8 step bits with the page field, corrupting steps 4–5 on pages 1–3. Bulk grid sync runs **both directions** through the lossless `SX_SUB_GRID_ROW` (sub 0x05) blob. The wire IDs stay **reserved** (never renumbered); docs in `sysex.h` / `code_info.h` / OctopusApp updated.
 - **Soft Reset removed** — `CMD_SOFT_RESET` (171) ignored on RX; SEQ SETUP menu entry removed; `seqSoftResetWorkingImage()` deleted. Use **RESET → Settings** for factory knob/mixer defaults (persisted + reboot).
 - **OctopusApp v6.1.00** — auto-connect on USB; Connect/Disconnect buttons removed; badge **Octopus ON / Octopus Off**; full browser reload after SAVE/LOAD/RESET (and hardware-initiated persist) then re-import via `APP_SYNC_REQ`.
 - **Playhead compositor layer** — `#seq-playhead` uses dedicated GPU layer (`will-change`, `contain`) separated from grid cell repaints.

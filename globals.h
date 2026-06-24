@@ -1077,6 +1077,14 @@ static inline void requestSessionSave() {
 /* Audio load monitoring (written by audio_synthesis_task, read by display) */
 inline std::atomic<uint8_t> g_audio_load_pct{ 0 };
 
+/* [CPU-TELEMETRY] Health counters folded into the CMD_CPU_LOAD device→App frame.
+ *   g_seqExtDrops    — cumulative out-ring (STEP_SYNC/SONG_POS) drops under flood.
+ *                      Saturating 6-bit field; producer is the audio task.
+ *   g_motionLanesFull — sticky: a P-lock record was dropped because all 4 lanes
+ *                      of the active pattern were already allocated. */
+inline std::atomic<uint16_t> g_seqExtDrops{ 0 };
+inline std::atomic<bool>     g_motionLanesFull{ false };
+
 /* DSP quality / capacity controls */
 /* SVF oversampling: ×1 default (constant filter character under load). */
 inline std::atomic<int> g_svf_oversample{ 1 };            /* 1=working default, 2=idle luxury */
@@ -1430,6 +1438,10 @@ static inline void recordMotionParam(uint8_t cmd, uint16_t val) {
   }
   if (tgt < 0) {
     if (emp < 0) {
+      /* All 4 lanes already allocated — new automation is dropped (lanes are
+       * never stolen).  Flag it so the App can surface a one-shot warning via
+       * the CMD_CPU_LOAD telemetry frame. */
+      g_motionLanesFull.store(true, std::memory_order_relaxed);
       portEXIT_CRITICAL(&motionMux);
       return;
     }

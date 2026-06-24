@@ -198,7 +198,10 @@ std::atomic<uint16_t> seq_ext_tail{ 0 };
 inline void IRAM_ATTR seq_ext_push(uint8_t cmd, uint16_t v14) {
   const uint16_t h  = seq_ext_head.load(std::memory_order_relaxed);
   const uint16_t nh = (uint16_t)((h + 1u) & (SEQ_EXT_QUEUE_SIZE - 1u));
-  if (nh == seq_ext_tail.load(std::memory_order_acquire)) return; /* full → drop */
+  if (nh == seq_ext_tail.load(std::memory_order_acquire)) {       /* full → drop */
+    g_seqExtDrops.fetch_add(1u, std::memory_order_relaxed);       /* [CPU-TELEMETRY] */
+    return;
+  }
   seq_ext_queue[h] = SeqExtEvt{ cmd, v14 };
   seq_ext_head.store(nh, std::memory_order_release);
 }
@@ -731,6 +734,21 @@ void IRAM_ATTR song_rewind_rt() {
   seq_ext_push(CMD_SONG_POS, 0u);
 }
 
+/* [RND-RESTART] Restart the step counter from 0 WITHOUT stopping playback.
+ * Driven by OctopusApp's CMD_SEQ_RESTART after RND-H / RND-D so a freshly
+ * randomised pattern is heard from beat 1 immediately.  No-op when stopped —
+ * seq_start() already zeroes the counter on the next play.  The step engine
+ * re-fires step 0 on its next render (step != lastStep), which re-pushes
+ * STEP_SYNC and re-triggers the downbeat; the prime below snaps the App
+ * playhead with no audible gap.                                              */
+void IRAM_ATTR seq_restart_rt() {
+  if (!seqPlaying.load(std::memory_order_relaxed)) return;
+  master_tick_counter.store(0u, std::memory_order_release);
+  std::atomic_thread_fence(std::memory_order_release);
+  seq_ext_push(CMD_STEP_SYNC, 0u);   /* snap the App playhead to step 0 */
+  displayDirty.store(true, std::memory_order_relaxed);
+}
+
 /* Tempo + step timing are owned entirely by the DMA-locked step engine
  * (sequencer_render_block): it accumulates musical ticks from esp_timer deltas
  * scaled by seqBpm, paced by the audio task's per-buffer cadence.  No external
@@ -1021,8 +1039,15 @@ void sequencer_background_task(void* pvParameters) {
         txSysex(CMD_BPM, (uint16_t)seqBpm.load(std::memory_order_relaxed));
       txSysex(CMD_TRANSPORT, seqPlaying.load(std::memory_order_relaxed) ? 1u : 0u);
       txSysex(CMD_TRANSPORT, seqRecording.load(std::memory_order_relaxed) ? 3u : 4u);
-      /* [v6.0] Live CPU-load telemetry for the App header (raw 0–100 %). */
-      txSysex(CMD_CPU_LOAD, (uint16_t)g_audio_load_pct.load(std::memory_order_relaxed));
+      /* [v6.1] Live CPU-load telemetry for the App header.  14-bit-safe packing:
+       *   bits 0-6  : load %  (0–100)
+       *   bits 7-12 : out-ring drops, saturating 0–63
+       *   bit  13   : P-lock lanes-full flag (one-shot warning in the App)
+       * (bit 14 is NOT addressable in a 14-bit SysEx value — must stay ≤13.)     */
+      const uint16_t loadPct = (uint16_t)(g_audio_load_pct.load(std::memory_order_relaxed) & 0x7Fu);
+      const uint16_t drops   = std::min<uint16_t>(63u, g_seqExtDrops.load(std::memory_order_relaxed));
+      const uint16_t lanesFull = g_motionLanesFull.load(std::memory_order_relaxed) ? (uint16_t)(1u << 13) : 0u;
+      txSysex(CMD_CPU_LOAD, (uint16_t)(loadPct | (uint16_t)(drops << 7) | lanesFull));
     }
     vTaskDelay(pdMS_TO_TICKS(2));
   }

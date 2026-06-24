@@ -509,22 +509,15 @@ void handleSysexCommand(uint8_t cmd, uint16_t v14) {
       }
       break;
     }
-                                            
-    case CMD_GRID_ROW_LO:
-    case CMD_GRID_ROW_HI: {
-      const uint8_t bank = (uint8_t)((v14 >> 12) & 3u);
-      const uint8_t row  = (uint8_t)((v14 >> 8)  & 15u);
-      const uint8_t page = (uint8_t)((v14 >> 4)  & 3u);
-      const uint8_t byte = (uint8_t)(v14 & 0xFFu);
-      const int     shift = (int)(page * 16 + (cmd == CMD_GRID_ROW_LO ? 0 : 8));
-      portENTER_CRITICAL(&patchMux);
-      uint64_t m = hwSeqData[bank][0][row];
-      m = (m & ~(0xFFull << shift)) | ((uint64_t)byte << shift);
-      hwSeqData[bank][0][row] = m;
-      portEXIT_CRITICAL(&patchMux);
-      displayDirty.store(true, std::memory_order_release);
-      break;
-    }
+
+    /* CMD_GRID_ROW_LO / CMD_GRID_ROW_HI (162/163) — RETIRED v6.1.  The old v14
+     * packing folded the 8 step bits (bits 0-7) over the page field (bits 4-5),
+     * so steps 4-5 of pages 1-3 were corrupted.  Bulk grid writes (both
+     * directions) now use the lossless SX_SUB_GRID_ROW (sub 0x05) blob parsed in
+     * parseMidiByte().  The numeric IDs stay RESERVED (never renumber wire IDs);
+     * no device sends them any more, so they fall through to default and are
+     * ignored.  Do not re-add a handler here — use the sub-0x05 frame.          */
+
     case CMD_CLR_PLOCKS: {
       const uint8_t bank  = seqActiveBank .load(std::memory_order_relaxed);
       const uint8_t chain = seqActiveChain.load(std::memory_order_relaxed);
@@ -534,6 +527,7 @@ void handleSysexCommand(uint8_t cmd, uint16_t v14) {
         for (int s = 0; s < 16; ++s) hwMotionData[bank][chain][l].steps[s] = 0xFFFFu;
       }
       portEXIT_CRITICAL(&motionMux);
+      g_motionLanesFull.store(false, std::memory_order_relaxed); /* lanes freed — clear telemetry flag */
       break;
     }
     case CMD_LOAD_PAT_S: {
@@ -679,6 +673,11 @@ void handleSysexCommand(uint8_t cmd, uint16_t v14) {
     case CMD_D_FX_P1:
     case CMD_D_FX_P2:
       applyDrumInsertParam(cmd, v14, Origin::APP); break;
+
+    /* App→device: restart the step counter to 0 without stopping playback
+     * (sent after RND-H / RND-D so the new random pattern plays from beat 1). */
+    case CMD_SEQ_RESTART:
+      seq_restart_rt(); break;
 
     default: break;
   }

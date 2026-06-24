@@ -1795,10 +1795,13 @@
             H_PAN: 159,
             S_PAN: 160,
             D_PAN: 161,
-            // [G2] Grid bulk sync — absolute half-row: v14=(bank<<12)|(row<<8)|byte
+            // RETIRED v6.1 — IDs reserved. Old v14 packing overlapped step bits 4-5
+            // with the page field; bulk grid sync (both directions) now uses the
+            // lossless sub-0x05 blob (_txGridRow / _parseDeviceSysex). Kept only so
+            // the wire IDs never renumber; the App neither sends nor receives these.
             GRID_ROW_LO: 162,
             GRID_ROW_HI: 163,
-            // [v6.0] Device→App audio-core CPU load telemetry (raw 0-100 %)
+            // [v6.1] Device→App telemetry: load% (b0-6) | ring-drops (b7-12) | lanes-full (b13)
             CPU_LOAD: 164,
             // [v6.0] Harp play mode: 0=POLY8 1=STRINGS 2=SOLO (bidirectional echo)
             PLAY_MODE: 165,
@@ -3434,6 +3437,11 @@
                     || cmd === CMD.SESSION_SAVE || cmd === CMD.SESSION_LOAD
                     || cmd === CMD.SCOPED_RESET;
             },
+            // Vestigial: the retired GRID_ROW_LO/HI (162/163) were the only
+            // low-priority queue items. Grid rows now arrive as sub-0x05 blobs
+            // applied directly in _parseDeviceSysex (they never enter _rxQueue), so
+            // nothing matches here today — kept as the evict-preference hook in case
+            // a future bulk/low-priority echo is added.
             _rxIsLowPriority(cmd) {
                 return cmd === CMD.GRID_ROW_LO || cmd === CMD.GRID_ROW_HI;
             },
@@ -4366,9 +4374,12 @@
                     // glides smoothly within it, lagging only by the constant USB latency —
                     // no jitter.  Constant 194 stays RESERVED so wire IDs never renumber.
                     [CMD.CPU_LOAD]: v14 => {
+                        // [CPU-ENC] 14-bit-safe packing (mirrors groovebox.cpp):
+                        //   bits 0-6  load %  ·  bits 7-12 out-ring drops (0-63 sat)
+                        //   bit  13   P-lock lanes-full flag
                         const pct = Math.max(0, Math.min(100, v14 & 0x7F));
-                        const drops = (v14 >> 7) & 0x7F;
-                        const plockSteal = !!(v14 & (1 << 14));
+                        const drops = (v14 >> 7) & 0x3F;
+                        const lanesFull = !!(v14 & (1 << 13));
                         const v = document.getElementById('cpuLoadVal'), box = document.getElementById('cpuLoad');
                         if (v) v.innerText = pct + '%' + (drops ? ' ⚠' : '');
                         if (box) {
@@ -4382,14 +4393,16 @@
                                 this.log('MIDI out-ring drops: ' + drops + ' (motion echoes trimmed — transport uses priority path)');
                             }
                         }
-                        if (plockSteal && !this._plockStealWarned) {
+                        if (lanesFull && !this._plockStealWarned) {
                             this._plockStealWarned = true;
-                            this.log('P-lock lanes full — oldest lane replaced to record new automation');
+                            this.log('P-lock lanes full — new automation not recorded (max 4 lanes per pattern)');
                         }
                     },
-                    // Grid rows arrive as lossless sub-0x05 blobs from sendFullStateSync /
-                    // echoFullGrid (device→App).  Legacy CMD.GRID_ROW_LO/HI are still used
-                    // App→device via handleSysexCommand on the firmware side.
+                    // Grid rows are exchanged BOTH directions as lossless sub-0x05
+                    // blobs (device→App via sendFullStateSync / echoFullGrid; App→device
+                    // via _txGridRow). The legacy numeric CMD.GRID_ROW_LO/HI (162/163)
+                    // are retired — neither sent nor handled — so they have no dispatch
+                    // entry here.
                 };
             },
             applyIncoming(cmd, v14) {
@@ -4986,10 +4999,10 @@
             pasteGrid() {
                 if (!this.clipboardGrid) { this.log('Nothing in clipboard'); return; }
                 const bank = this.bankIdx;
-                // [USB-OPT] Use GRID_ROW_LO/HI (8 bits per message) instead of per-cell
-                // GRID_TOG — worst case 16 rows × 4 pages × 2 (lo+hi) = 128 messages
-                // instead of up to 1024 individual GRID_TOG calls. The firmware applies
-                // each half-row absolutely (set, not toggle), so no state mismatch risk.
+                // [USB-OPT] Use lossless grid-row blobs (sub 0x05, one per half-row)
+                // instead of per-cell GRID_TOG — worst case 16 rows × 4 pages = 64
+                // messages instead of up to 1024 individual GRID_TOG calls. The firmware
+                // applies each half-row absolutely (set, not toggle), so no mismatch risk.
                 for (let r = 0; r < 16; r++) {
                     const src = this.clipboardGrid[r];
                     const dst = this.gridData[bank][r];

@@ -378,6 +378,7 @@ void seq_toggle();
 void setSequencerBpm(int32_t bpm);
 void initSequencer();
 void song_rewind_rt();   /* reset song chain to step 0 + load its bank */
+void seq_restart_rt();   /* restart step counter from 0 while playing (CMD_SEQ_RESTART) */
 
 void seqUI_moveUp();
 void seqUI_moveDown();

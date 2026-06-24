@@ -20,7 +20,7 @@
  * SYSTEM_ARCH_TAG   "ESP32-S3-DUALCORE-IDF5-FREERTOS"
  * SETTINGS_VERSION  0x0615   (AllSettings wire-layout ID — not firmware semver)
  * NVS_NAMESPACE     "octopus" (legacy "octopus_v5" auto-migrated on first boot)
- * CMD_COUNT         190       (sysex indices 0-189)
+ * CMD_COUNT         195       (sysex indices 0-194; 194 reserved/unused)
  *
  * Release history: CHANGELOG.md.  Architecture below describes v6.1.00 as-shipped.
  *
@@ -140,7 +140,7 @@
  *   ID = 0x7C  device → App  (all firmware echoes — ignored by firmware RX so a
  *              looped MIDI stream can't fake an App heartbeat / re-toggle play)
  *   sub=0x00: cmd 0-127   (cmd_wire = cmd)
- *   sub=0x01: cmd 128-164 (cmd_wire = cmd - 128)
+ *   sub=0x01: cmd 128-194 (cmd_wire = cmd - 128)
  *   v14 = (hi7 << 7) | lo7  ∈ [0, 16383]
  *
  *   ── Harp synth (0–13) — SynthParam direct index ─────────────────────────
@@ -329,12 +329,16 @@
  *   159 H_PAN        mixHarpPan   v14: 0=full L, 8192=centre, 16383=full R
  *   160 S_PAN        mixSeqPan    (same encoding)
  *   161 D_PAN        mixDrumsPan  (same encoding)
- *   162 GRID_ROW_LO  absolute half-row state, steps page*16+0..7  (bulk, not toggle)
- *                    v14 = (bank<<12)|(row<<8)|(page<<4)|byteMask
- *   163 GRID_ROW_HI  absolute half-row state, steps page*16+8..15 (same packing)
- *   164 CPU_LOAD     [v6.0] device→App ONLY: audio-core load, raw 0–100 % (not
- *                    14-bit scaled).  Pushed by the sync supervisor (~600 ms) while
- *                    the App is connected; drives the header CPU readout. Never RX.
+ *   162 GRID_ROW_LO  RETIRED v6.1 (ID reserved).  Old v14 packing overlapped the
+ *                    8 step bits with the page field (steps 4-5 corrupted on
+ *                    pages 1-3).  Superseded BOTH directions by the lossless
+ *                    SX_SUB_GRID_ROW blob (sub 0x05).  No RX handler / no sender.
+ *   163 GRID_ROW_HI  RETIRED v6.1 (ID reserved) — see CMD_GRID_ROW_LO.
+ *   164 CPU_LOAD     device→App ONLY.  Pushed by the sync supervisor (~600 ms)
+ *                    while connected; drives the header CPU readout. Never RX.
+ *                    [v6.1] 14-bit-safe packing: bits 0-6 = load % (0–100),
+ *                    bits 7-12 = out-ring drop count (saturating 0–63), bit 13 =
+ *                    P-lock lanes-full flag.  (bit 14 is unaddressable in 14 bits.)
  *
  * ═══════════════════════════════════════════════════════════════════════════
  * 4. ADDING A NEW GLOBAL PARAMETER (step-by-step)
@@ -405,7 +409,9 @@
  *   • App must set the desired bank/chain BEFORE sending LOAD_PAT_*.
  *   • Manual step editing in App affects ONLY the current bank/chain.
  *   • RND (randomize notes) is App-side only; it edits the app grid then sends
- *     individual GRID_TOG commands for changed cells.
+ *     individual GRID_TOG commands for changed cells.  While playing it then
+ *     sends CMD_SEQ_RESTART=193 so the new pattern is heard from beat 1
+ *     (firmware seq_restart_rt() zeroes the step counter without stopping).
  *
  *   APP CONNECTED DISPLAY:
  *   • When isAppConnected()==true, ESP OLED shows "APP CONNECTED" splash.

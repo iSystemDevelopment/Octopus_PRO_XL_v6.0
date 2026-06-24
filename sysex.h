@@ -183,17 +183,21 @@ static constexpr uint8_t CMD_DRUM_KIT = 158;  /* drum kit select: 0=909 1=808 2=
 static constexpr uint8_t CMD_H_PAN = 159;
 static constexpr uint8_t CMD_S_PAN = 160;
 static constexpr uint8_t CMD_D_PAN = 161;
-/* Grid bulk sync — absolute half-row state (not a toggle like GRID_TOG).
- *   v14 = (bank<<12) | (row<<8) | (page<<4) | byteMask
- *     bank 0-3 (bits 13-12), row 0-15 (bits 11-8), page 0-3 (bits 5-4),
- *     byteMask = 8 step bits within that page's half-row.
- *   CMD_GRID_ROW_LO carries steps page*16+0..7, HI carries page*16+8..15.
- *   Used both directions: ESP→App full dump on connect + live hardware-edit
- *   echo; App→ESP optional bulk row write.                                    */
+/* Grid bulk sync — RETIRED v6.1, IDs RESERVED (never renumber).
+ *   The old v14 packing (bank<<12 | row<<8 | page<<4 | byteMask) overlapped the
+ *   8 step bits (0-7) with the page field (bits 4-5), corrupting steps 4-5 on
+ *   pages 1-3.  Replaced — BOTH directions — by the lossless SX_SUB_GRID_ROW
+ *   blob (sub 0x05, see frame below): ESP→App full dump on connect + live
+ *   hardware-edit echo, and App→ESP bulk row writes.  No firmware RX handler and
+ *   no sender remains; the constants persist only to keep the wire IDs stable.  */
 static constexpr uint8_t CMD_GRID_ROW_LO = 162;
 static constexpr uint8_t CMD_GRID_ROW_HI = 163;
-/* Device→App telemetry: audio-core CPU load 0–100 (%). Pushed ~600 ms while
- * App connected. App-only display. */
+/* Device→App telemetry, pushed ~600 ms while App connected (App-only display).
+ * 14-bit-safe packing:
+ *   bits 0-6  : audio-core load %  (0–100)
+ *   bits 7-12 : out-ring drop count, saturating 0–63
+ *   bit  13   : P-lock lanes-full flag (active pattern's 4 lanes all allocated)
+ * (bit 14 is unaddressable in a 14-bit SysEx value — fields must stay ≤ bit 13.) */
 static constexpr uint8_t CMD_CPU_LOAD = 164;
 /* Harp play-mode (bidirectional): 0=POLY8 1=STRINGS 2=SOLO. Device echoes on
  * hardware OC-cycle so the App mirrors currentPlayMode. */
