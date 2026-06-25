@@ -67,11 +67,6 @@ static constexpr float    DRUM_ENV_MAGIC   = (float)0x7FFFFFFFu / (float)SAMPLE_
 static constexpr int32_t  DRUM_SAT_LIMIT   = 24576;
 static constexpr int      DRUM_SINE_IDX    = 8;
 
-static constexpr uint32_t KIT_KICK_SWEEP[(int)DrumKitId::COUNT]  = { 14u, 6u, 4u, 12u };
-static constexpr float    KIT_HAT_BASE_HZ[(int)DrumKitId::COUNT] = {
-  4150.0f, 3700.0f, 4400.0f, 4200.0f
-};
-
 static inline int32_t IRAM_ATTR drum_clip(int32_t s) {
   return s > 32767 ? 32767 : (s < -32768 ? -32768 : s);
 }
@@ -115,6 +110,11 @@ static inline void IRAM_ATTR fire_tuned_drum(int ch, float velocity) {
 
   const float    pMult = drumPitchMult.load(std::memory_order_relaxed);
   const float    pm    = pMult * DRUM_PITCH_MAGIC;
+  /* Hats/clap/snare body: normalize to factory Drm Pitch so default ×0.60 stays
+   * classic; kick/toms/perc still track the global knob directly. */
+  const float    hatRel = pMult / DRUM_PITCH_FACTORY;
+  const float    hatPm  = hatRel * DRUM_PITCH_MAGIC;
+  const float    snarePm = hatPm;
   const float    vTune = (float)drumSnap[0] / 16383.0f;
   const float    vDec  = (float)drumSnap[1] / 16383.0f;
   const uint16_t vVol  = drumSnap[2];
@@ -130,9 +130,14 @@ static inline void IRAM_ATTR fire_tuned_drum(int ch, float velocity) {
       d->env_decay_step = (uint32_t)(DRUM_ENV_MAGIC / std::max(0.05f, vDec * 1.5f));
       break;
     case 1: /* SNARE */
-      d->step1          = (uint32_t)((130.0f + vTune * 140.0f) * pm);
-      d->env_decay_step = (uint32_t)(DRUM_ENV_MAGIC / std::max(0.05f, vDec * 0.75f));
-      break;
+      {
+        const float lo = KIT_SNARE_BODY_LO[kit];
+        const float hi = KIT_SNARE_BODY_HI[kit];
+        d->step1 = (uint32_t)((lo + vTune * (hi - lo)) * snarePm);
+        d->env_decay_step = (uint32_t)(DRUM_ENV_MAGIC /
+            std::max(0.05f, vDec * KIT_SNARE_DECAY_SCALE[kit]));
+        break;
+      }
     case 2: /* CLAP */
       d->step1          = 0;
       d->env_decay_step = (uint32_t)(DRUM_ENV_MAGIC / std::max(0.06f, vDec * 0.9f));
@@ -140,12 +145,12 @@ static inline void IRAM_ATTR fire_tuned_drum(int ch, float velocity) {
     case 3: /* HH CLOSED */
     case 4: /* HH OPEN */
       {
-        const float bs = KIT_HAT_BASE_HZ[kit] * pm;
+        const float bs = KIT_HAT_BASE_HZ[kit] * hatPm;
         d->step1 = (uint32_t)(bs * 2.00f); d->step2 = (uint32_t)(bs * 3.00f);
         d->step3 = (uint32_t)(bs * 4.16f); d->step4 = (uint32_t)(bs * 5.43f);
         d->step5 = (uint32_t)(bs * 6.79f); d->step6 = (uint32_t)(bs * 8.21f);
         const float db = (ch == 3) ? 0.05f : 0.14f;
-        const float dm = (ch == 3) ? 0.30f : 1.10f;
+        const float dm = (ch == 3) ? 0.28f : 1.05f;
         d->env_decay_step = (uint32_t)(DRUM_ENV_MAGIC / std::max(db, vDec * dm));
         break;
       }
@@ -254,39 +259,64 @@ static inline bool IRAM_ATTR drum_fill_buf(int16_t* out_buf, size_t frames) {
           break;
         }
         case DrumType::DRUM_SNARE: {
-          d->phase1 += d->step1 + (uint32_t)(((uint64_t)d->step1 * d->env_pitch * 3u) >> 32);
-          const int32_t body      = drum_wave(d->body_wave, d->phase1);          const int32_t snap_fc   = (int32_t)d->tone_val;
-          const int32_t rattle_fc = std::max<int32_t>(1000, snap_fc - 6000);
+          const uint8_t k = d->kit;
+          d->phase1 += d->step1 +
+              (uint32_t)(((uint64_t)d->step1 * d->env_pitch * KIT_SNARE_PITCH_MUL[k]) >> 32);
+          const int32_t body = drum_wave(d->body_wave, d->phase1);
+          const int32_t tuneBias = ((int32_t)d->tone_val - 11000) >> 1;
+          int32_t snap_fc = KIT_SNARE_SNAP_FC[k] + tuneBias;
+          if (snap_fc < 4000) snap_fc = 4000;
+          if (snap_fc > 18000) snap_fc = 18000;
+          const int32_t rattle_fc = std::max<int32_t>(800, snap_fc - KIT_SNARE_RATTLE_DELTA[k]);
           const int32_t wn = fast_noise();
-          d->filter_low  += ((wn           - d->filter_low)  * snap_fc)   >> 15;
+          d->filter_low  += ((wn - d->filter_low) * snap_fc) >> 15;
           d->filter_high += ((d->filter_low - d->filter_high) * rattle_fc) >> 15;
-          out = drum_clip((body * (int32_t)(32768 - d->noise_mix) +
-                           (d->filter_low - d->filter_high) * (int32_t)d->noise_mix) >> 15);
+          const int32_t tone = (body * (int32_t)(32768 - d->noise_mix)) >> 15;
+          const int32_t ratt = ((d->filter_low - d->filter_high) * (int32_t)d->noise_mix) >> 15;
+          d->phase3++;
+          int32_t click = 0;
+          const uint16_t cl = KIT_SNARE_CLICK[k];
+          if (d->phase3 < cl) click = (int32_t)((cl - d->phase3) * (wn >> 4));
+          out = drum_clip(tone + ratt + click);
           break;
         }
         case DrumType::DRUM_CLAP: {
           d->phase3++;
+          const uint8_t k = d->kit;
+          const uint16_t b1 = KIT_CLAP_BURST1[k];
+          const uint16_t b2 = KIT_CLAP_BURST2[k];
+          const uint16_t b3 = KIT_CLAP_BURST3[k];
           uint32_t burst;
-          if      (d->phase3 < 440u)  burst = (440u  - d->phase3) << 20;
-          else if (d->phase3 < 880u)  burst = (880u  - d->phase3) << 20;
-          else if (d->phase3 < 1320u) burst = (1320u - d->phase3) << 20;
-          else                        burst = d->env_amp;
-          d->filter_low  += ((fast_noise() - d->filter_low)   * 14000) >> 15;
-          d->filter_high += ((d->filter_low - d->filter_high) *  9000) >> 15;
+          if      (d->phase3 < b1) burst = (uint32_t)(b1 - d->phase3) << 20;
+          else if (d->phase3 < b2) burst = (uint32_t)(b2 - d->phase3) << 20;
+          else if (d->phase3 < b3) burst = (uint32_t)(b3 - d->phase3) << 20;
+          else                       burst = d->env_amp;
+          /* Tune knob → bandpass centre; noise knob → layer level (was ignored). */
+          const int32_t tuneBias = ((int32_t)d->tone_val - 11000) >> 1;
+          int32_t lp = KIT_CLAP_FILTER_LP[k] + tuneBias;
+          int32_t hp = KIT_CLAP_FILTER_HP[k] + (tuneBias >> 1);
+          if (lp < 6000) lp = 6000;
+          if (lp > 20000) lp = 20000;
+          if (hp < 4000) hp = 4000;
+          if (hp > 16000) hp = 16000;
+          d->filter_low  += ((fast_noise() - d->filter_low)   * lp) >> 15;
+          d->filter_high += ((d->filter_low - d->filter_high) * hp) >> 15;
           const int32_t sc = ((d->filter_low - d->filter_high) * (int32_t)(burst >> 16)) >> 15;
-          mix += (((sc * (int32_t)d->velocity) >> 15) * (int32_t)d->vol_q15) >> 19;
+          const int32_t body = (sc * (32768 + (int32_t)d->noise_mix)) >> 16;
+          mix += (((body * (int32_t)d->velocity) >> 15) * (int32_t)d->vol_q15) >> 19;
           continue;
         }
         case DrumType::DRUM_HAT: {
           d->phase1 += d->step1; d->phase2 += d->step2; d->phase3 += d->step3;
           d->phase4 += d->step4; d->phase5 += d->step5; d->phase6 += d->step6;
+          const int32_t amp = KIT_HAT_METAL_AMP[d->kit];
           const int32_t metal =
-            ((d->phase1 & 0x80000000u) ? 5000 : -5000) +
-            ((d->phase2 & 0x80000000u) ? 5000 : -5000) +
-            ((d->phase3 & 0x80000000u) ? 5000 : -5000) +
-            ((d->phase4 & 0x80000000u) ? 5000 : -5000) +
-            ((d->phase5 & 0x80000000u) ? 5000 : -5000) +
-            ((d->phase6 & 0x80000000u) ? 5000 : -5000);
+            ((d->phase1 & 0x80000000u) ? amp : -amp) +
+            ((d->phase2 & 0x80000000u) ? amp : -amp) +
+            ((d->phase3 & 0x80000000u) ? amp : -amp) +
+            ((d->phase4 & 0x80000000u) ? amp : -amp) +
+            ((d->phase5 & 0x80000000u) ? amp : -amp) +
+            ((d->phase6 & 0x80000000u) ? amp : -amp);
           const int32_t comb =
             (metal * (int32_t)(32768 - d->noise_mix) +
              fast_noise() * (int32_t)d->noise_mix) >> 15;

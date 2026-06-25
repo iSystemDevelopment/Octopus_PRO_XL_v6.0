@@ -152,16 +152,17 @@ struct SeqSettings {
 /* TR-909 inspired factory calibration (not flat 0.5 placeholders):
  *   KICK: long decay + low noise → deep sub punch
  *   SNARE: balanced body/rattle noise
- *   CLAP: all noise, moderate decay
- *   HATS: mostly noise, short closed / longer open
+ *   SNARE: body wavetable + bandpassed rattle; Tune = snap brightness, Noise = wires
+ *   CLAP: bandpassed noise triple-burst; Tune = filter centre, Noise = layer level
+ *   HATS: 6-osc inharmonic metal + noise; Tune = HPF cutoff, Noise = wash amount
  *   TOMS: pitched, minimal noise, tune differentiated
  *   PERC: metallic, shorter decay                                           */
 struct DrumSettings {
   /*                         KCK    SNR    CLP    HHC    HHO    TMH    TML    PRC */
-  float tune[8] = { 0.50f, 0.50f, 0.50f, 0.55f, 0.50f, 0.62f, 0.38f, 0.50f };
-  float decay[8] = { 0.60f, 0.45f, 0.40f, 0.30f, 0.65f, 0.48f, 0.52f, 0.38f };
-  float volume[8] = { 0.85f, 0.75f, 0.70f, 0.65f, 0.60f, 0.70f, 0.70f, 0.65f };
-  float noise_mix[8] = { 0.02f, 0.45f, 0.50f, 0.90f, 0.90f, 0.08f, 0.06f, 0.15f };
+  float tune[8] = { 0.50f, 0.52f, 0.54f, 0.62f, 0.54f, 0.62f, 0.38f, 0.50f };
+  float decay[8] = { 0.60f, 0.42f, 0.36f, 0.24f, 0.70f, 0.48f, 0.52f, 0.38f };
+  float volume[8] = { 0.85f, 0.76f, 0.72f, 0.68f, 0.58f, 0.70f, 0.70f, 0.65f };
+  float noise_mix[8] = { 0.02f, 0.58f, 0.88f, 0.87f, 0.85f, 0.08f, 0.06f, 0.15f };
   uint8_t wave_idx[8] = { 8, 8, 8, 8, 8, 8, 8, 8 };
   /* All defaults = DRUM_DEFAULT_WAVE_IDX (8 = WT_SINE).
    * Changed via applyDrumWave(ch, idx) — persists across reboot.           */

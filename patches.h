@@ -1424,6 +1424,7 @@ static inline void applyDrumKit(uint8_t kit, bool echo) {
     drumVolume[ch].store(v, std::memory_order_relaxed);
     drumNoiseMix[ch].store(n, std::memory_order_relaxed);
   }
+  drumWaveIdx[1].store(KIT_SNARE_WAVE[kit], std::memory_order_relaxed);
   portEXIT_CRITICAL(&patchMux);
 
   if (echo) {
@@ -1434,6 +1435,7 @@ static inline void applyDrumKit(uint8_t kit, bool echo) {
     for (uint8_t i = 0; i < 32u; ++i)
       txSysex((uint8_t)(32u + i), snap[i]);
     txSysex(CMD_DRUM_KIT, (uint16_t)kit);
+    txSysex(CMD_DRUM_WAVE, (uint16_t)((1u << 5u) | KIT_SNARE_WAVE[kit]));
   }
 }
 

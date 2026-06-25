@@ -670,12 +670,12 @@ Melody engine parameters — **21 items** (synth core + preset/slots; no harp ar
 
 40 voice parameters + kit + pitch.
 
-**Voices:** Kick, Snare, Clap, HH-C, HH-O, Tom-H, Tom-L, Perc — each with Tune, Decay, Vol, Noise, Wave (Clap/HH: noise-only).
+**Voices:** Kick, Snare, Clap, HH-C, HH-O, Tom-H, Tom-L, Perc — each with Tune, Decay, Vol, Noise, Wave (Clap/HH: no body wave — Tune/Noise shape the noise engine).
 
 | Item | Function |
 |------|----------|
-| Drum Kit | TR-909 · TR-808 · Trap · House |
-| Drm Pitch | Global drum tuning (semitone-linear) |
+| Drum Kit | TR-909 · TR-808 · Trap · House — reloads per-voice tuning + clap/hat synthesis character |
+| Drm Pitch | Global drum tuning. Kick/toms/perc follow directly; snare body + hats normalize to factory ×0.60 at default |
 
 ---
 

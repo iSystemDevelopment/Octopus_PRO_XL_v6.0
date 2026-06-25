@@ -740,8 +740,8 @@ inline std::atomic<uint8_t> drumWaveIdx[8];
  * A kit selects (a) a per-voice tuning preset loaded into drumTune/Decay/Vol/
  * Noise[8] + drumLivePatch (via applyDrumKit in patches.h) and (b) a synthesis
  * "character" (kick pitch-sweep depth + hat base frequency) applied per voice in
- * the drum engine (groovebox.cpp).  TR-909 is kit 0 and matches the legacy
- * factory sound exactly.                                                          */
+ * the drum engine (groovebox.h).  TR-909 is kit 0 and matches settings.h factory
+ * defaults.  Clap/hat also use KIT_CLAP_* / KIT_HAT_* synthesis tables below.      */
 enum class DrumKitId : uint8_t { TR909 = 0, TR808, TRAP, HOUSE, COUNT };
 inline std::atomic<uint8_t> drumKit{ 0 };  /* persisted in DrumSettings.kit */
 
@@ -753,29 +753,58 @@ inline const char* const DRUM_KIT_NAMES[(int)DrumKitId::COUNT] = {
  * Row 0 (TR-909) is identical to settings.h DrumSettings factory defaults so a
  * kit-0 reload is a no-op vs the legacy sound.                                   */
 inline constexpr float DRUM_KIT_TUNE[(int)DrumKitId::COUNT][8] = {
-  { 0.50f, 0.50f, 0.50f, 0.55f, 0.50f, 0.62f, 0.38f, 0.50f }, /* 909 */
-  { 0.30f, 0.42f, 0.55f, 0.50f, 0.46f, 0.55f, 0.30f, 0.60f }, /* 808 deep kick */
-  { 0.22f, 0.48f, 0.55f, 0.62f, 0.55f, 0.55f, 0.28f, 0.62f }, /* Trap sub kick */
-  { 0.48f, 0.52f, 0.52f, 0.58f, 0.52f, 0.62f, 0.40f, 0.52f }, /* House punch   */
+  { 0.50f, 0.52f, 0.54f, 0.62f, 0.54f, 0.62f, 0.38f, 0.50f }, /* 909 snare body + bright hats */
+  { 0.30f, 0.36f, 0.46f, 0.44f, 0.40f, 0.55f, 0.30f, 0.60f }, /* 808 deep snare */
+  { 0.22f, 0.60f, 0.58f, 0.68f, 0.60f, 0.55f, 0.28f, 0.62f }, /* Trap tight crack snare */
+  { 0.48f, 0.50f, 0.54f, 0.58f, 0.52f, 0.62f, 0.40f, 0.52f }, /* House club snare */
 };
 inline constexpr float DRUM_KIT_DECAY[(int)DrumKitId::COUNT][8] = {
-  { 0.60f, 0.45f, 0.40f, 0.30f, 0.65f, 0.48f, 0.52f, 0.38f }, /* 909 */
-  { 0.90f, 0.55f, 0.45f, 0.25f, 0.75f, 0.70f, 0.80f, 0.45f }, /* 808 long boom */
-  { 0.98f, 0.40f, 0.48f, 0.20f, 0.55f, 0.55f, 0.85f, 0.40f }, /* Trap sub tail */
-  { 0.55f, 0.42f, 0.42f, 0.28f, 0.60f, 0.46f, 0.50f, 0.36f }, /* House tight   */
+  { 0.60f, 0.42f, 0.36f, 0.24f, 0.70f, 0.48f, 0.52f, 0.38f }, /* 909 tight snare */
+  { 0.90f, 0.58f, 0.50f, 0.20f, 0.82f, 0.70f, 0.80f, 0.45f }, /* 808 long snare tail */
+  { 0.98f, 0.26f, 0.30f, 0.14f, 0.48f, 0.55f, 0.85f, 0.40f }, /* Trap staccato */
+  { 0.55f, 0.38f, 0.34f, 0.26f, 0.62f, 0.46f, 0.50f, 0.36f }, /* House */
 };
 inline constexpr float DRUM_KIT_VOL[(int)DrumKitId::COUNT][8] = {
-  { 0.85f, 0.75f, 0.70f, 0.65f, 0.60f, 0.70f, 0.70f, 0.65f }, /* 909 */
-  { 0.90f, 0.72f, 0.68f, 0.60f, 0.58f, 0.70f, 0.72f, 0.62f }, /* 808 */
-  { 0.92f, 0.74f, 0.72f, 0.62f, 0.55f, 0.68f, 0.72f, 0.62f }, /* Trap */
-  { 0.88f, 0.74f, 0.70f, 0.66f, 0.60f, 0.70f, 0.70f, 0.66f }, /* House */
+  { 0.85f, 0.76f, 0.72f, 0.68f, 0.58f, 0.70f, 0.70f, 0.65f }, /* 909 */
+  { 0.90f, 0.70f, 0.64f, 0.60f, 0.52f, 0.70f, 0.72f, 0.62f }, /* 808 */
+  { 0.92f, 0.78f, 0.74f, 0.64f, 0.52f, 0.68f, 0.72f, 0.62f }, /* Trap */
+  { 0.88f, 0.75f, 0.71f, 0.66f, 0.58f, 0.70f, 0.70f, 0.66f }, /* House */
 };
 inline constexpr float DRUM_KIT_NOISE[(int)DrumKitId::COUNT][8] = {
-  { 0.02f, 0.45f, 0.50f, 0.90f, 0.90f, 0.08f, 0.06f, 0.15f }, /* 909 */
-  { 0.00f, 0.30f, 0.55f, 0.92f, 0.92f, 0.04f, 0.03f, 0.12f }, /* 808 tonal */
-  { 0.00f, 0.35f, 0.60f, 0.94f, 0.92f, 0.05f, 0.03f, 0.14f }, /* Trap */
-  { 0.03f, 0.48f, 0.52f, 0.88f, 0.88f, 0.08f, 0.06f, 0.16f }, /* House */
+  { 0.02f, 0.58f, 0.88f, 0.87f, 0.85f, 0.08f, 0.06f, 0.15f }, /* 909 snare wires */
+  { 0.00f, 0.40f, 0.94f, 0.96f, 0.94f, 0.04f, 0.03f, 0.12f }, /* 808 tonal snare */
+  { 0.00f, 0.72f, 0.90f, 0.91f, 0.89f, 0.05f, 0.03f, 0.14f }, /* Trap noisy crack */
+  { 0.03f, 0.54f, 0.86f, 0.86f, 0.84f, 0.08f, 0.06f, 0.16f }, /* House */
 };
+
+/* Factory drumPitchMult default — hats/clap/snare body normalize to this so default
+ * tuning matches classic TR voicing while kick/toms/perc follow Drm Pitch directly. */
+static constexpr float DRUM_PITCH_FACTORY = 0.60f;
+
+/* Per-kit synthesis character (groovebox.h) — not stored in NVS. */
+static constexpr uint32_t KIT_KICK_SWEEP[(int)DrumKitId::COUNT]  = { 14u, 6u, 4u, 12u };
+static constexpr float    KIT_HAT_BASE_HZ[(int)DrumKitId::COUNT] = {
+  4800.0f, 3600.0f, 5100.0f, 4600.0f   /* 909 bright · 808 dark · Trap crisp · House */
+};
+static constexpr int32_t  KIT_HAT_METAL_AMP[(int)DrumKitId::COUNT] = {
+  5200, 3400, 5600, 4800   /* square partial level — lower on 808 (noisier hats) */
+};
+/* Clap triple-burst end samples @ 44.1 kHz (~9 ms spacing on 909). */
+static constexpr uint16_t KIT_CLAP_BURST1[(int)DrumKitId::COUNT] = { 400, 460, 300, 400 };
+static constexpr uint16_t KIT_CLAP_BURST2[(int)DrumKitId::COUNT] = { 800, 920, 600, 800 };
+static constexpr uint16_t KIT_CLAP_BURST3[(int)DrumKitId::COUNT] = { 1200, 1380, 900, 1200 };
+static constexpr int32_t  KIT_CLAP_FILTER_LP[(int)DrumKitId::COUNT] = { 14500, 11500, 15800, 14200 };
+static constexpr int32_t  KIT_CLAP_FILTER_HP[(int)DrumKitId::COUNT] = {  9500,  6800, 10200,  9200 };
+/* Snare — body osc + bandpassed rattle (909 wires / 808 tone / Trap crack / House punch). */
+static constexpr float    KIT_SNARE_BODY_LO[(int)DrumKitId::COUNT] = { 168.f, 138.f, 195.f, 172.f };
+static constexpr float    KIT_SNARE_BODY_HI[(int)DrumKitId::COUNT] = { 285.f, 225.f, 335.f, 295.f };
+static constexpr uint8_t  KIT_SNARE_WAVE[(int)DrumKitId::COUNT]   = {  8, 23,  0,  7 };
+/* WT_SINE · Meteor Tabla · Cosmic Saw · Aether String */
+static constexpr int32_t  KIT_SNARE_SNAP_FC[(int)DrumKitId::COUNT]  = { 12200, 8200, 14800, 11600 };
+static constexpr int32_t  KIT_SNARE_RATTLE_DELTA[(int)DrumKitId::COUNT] = { 5200, 3200, 6800, 4800 };
+static constexpr uint32_t KIT_SNARE_PITCH_MUL[(int)DrumKitId::COUNT]   = { 3u, 2u, 5u, 3u };
+static constexpr uint16_t KIT_SNARE_CLICK[(int)DrumKitId::COUNT]  = { 130, 90, 100, 120 };
+static constexpr float    KIT_SNARE_DECAY_SCALE[(int)DrumKitId::COUNT] = { 0.72f, 0.92f, 0.52f, 0.70f };
 
 /* ═══════════════════════════════════════════════════════════════════════════
  * SECTION 11 — SEQUENCER TRANSPORT & PATTERN STATE
@@ -1369,10 +1398,10 @@ extern Adafruit_SH1106G display;
 static inline void initDrumParameters() {
   /* Placeholders until settings_sync_to_ssot() loads DrumSettings from NVS. */
   /*                                KCK    SNR    CLP    HHC    HHO    TMH    TML    PRC */
-  static const float TUNE_INIT[8]  = { 0.50f, 0.50f, 0.50f, 0.55f, 0.50f, 0.62f, 0.38f, 0.50f };
-  static const float DECAY_INIT[8] = { 0.60f, 0.45f, 0.40f, 0.30f, 0.65f, 0.48f, 0.52f, 0.38f };
-  static const float VOL_INIT[8]   = { 0.85f, 0.75f, 0.70f, 0.65f, 0.60f, 0.70f, 0.70f, 0.65f };
-  static const float NOISE_INIT[8] = { 0.02f, 0.45f, 0.50f, 0.90f, 0.90f, 0.08f, 0.06f, 0.15f };
+  static const float TUNE_INIT[8]  = { 0.50f, 0.52f, 0.54f, 0.62f, 0.54f, 0.62f, 0.38f, 0.50f };
+  static const float DECAY_INIT[8] = { 0.60f, 0.42f, 0.36f, 0.24f, 0.70f, 0.48f, 0.52f, 0.38f };
+  static const float VOL_INIT[8]   = { 0.85f, 0.76f, 0.72f, 0.68f, 0.58f, 0.70f, 0.70f, 0.65f };
+  static const float NOISE_INIT[8] = { 0.02f, 0.58f, 0.88f, 0.87f, 0.85f, 0.08f, 0.06f, 0.15f };
   for (int i = 0; i < 8; ++i) {
     drumTune[i].store(TUNE_INIT[i], std::memory_order_release);
     drumDecay[i].store(DECAY_INIT[i], std::memory_order_release);
