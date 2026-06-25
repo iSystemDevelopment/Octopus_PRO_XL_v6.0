@@ -32,6 +32,18 @@ Browser-only, pairs with firmware [6.1.01](#6101--2026-06-25).
 ### Changed
 
 - **Settings / Motion reset = no device reboot** (with firmware ≥ 6.1.01) — `resetScoped()` stores the scope; `_resetReboots()` gates the `CMD.SCOPED_RESET` ACK path: FULL/BANKS take the reboot-wait path, SETTINGS/MOTION reload the App and re-pull from the device. Confirm dialog + Help + RESET popup text now state the per-scope behaviour.
+- **Playhead (GOD layer)** — `#seq-playhead-layer` dedicated compositor; geometry from stage CSS only (no per-cell layout reads on hover); page-cross defers grid repaint to one rAF so STEP_SYNC never stutters.
+- **P1–P4 always active** — all four page buttons stay clickable at any LEN; steps beyond pattern length show dimmed (`beyond-len`). Manual P click sets **user lock** — playhead keeps running but won't auto-switch the grid view until you pick another P page.
+- **Grid tools = active P page only** — **CPY**, **PST**, **CLR**, **RND-H**, **RND-D**, and factory **MELODY/DRUM PATTERNS** affect only the 16 steps on the selected P page (not the full 64-step bank). Octopus **CLR** clears the local page and tx's one page of grid-row blobs — it does **not** send hardware SEQ_CLEAR or reset sounds.
+- **LOAD / SETTINGS·MOTION RESET reload** — after NVS sync burst drains, the App reloads and re-imports via `APP_SYNC_REQ` (consistent shell vs device blobs).
+- **MIDI melody ARP** — utility-bar **ARP** + PAT/RATE/GATE; expands active synth rows on each step; persists in session JSON.
+- **MIDI motion record** — **REC** captures CC knob moves per step (purple dots on grid); replays on Play.
+- **UI layout** — header version badge removed (version in page title, startup log, and Help); MIXER drum scope and MIDI seq activity scope fit their panels with no micro-scrollbars; seq CC knobs use a compact 4×2 grid in INSTRUMENTS.
+
+### Fixed
+
+- **P2–P4 appeared dead** when LEN=16 — `pointer-events: none` removed; all pages always editable.
+- **Parse error blocked App boot** — duplicate `page` binding in `_clearGridPageOctopusTx()`.
 
 ## [6.2.06] — 2026-06-25 (OctopusApp)
 

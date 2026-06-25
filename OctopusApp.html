@@ -247,46 +247,54 @@
         .midi-inst-panel-body {
             display: flex;
             flex-direction: column;
-            gap: 4px;
+            gap: 2px;
             flex: 1;
             min-height: 0;
             overflow: hidden
         }
 
         #midi-seq-knobs.panel-container {
-            flex: 0 0 auto;
-            display: block;
-            overflow: visible;
+            flex: 1 1 auto;
+            min-height: 0;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
             padding: 0
         }
 
         #midi-seq-knobs .sub-panel {
             width: 100%;
-            height: auto;
-            flex: none;
+            flex: 1 1 auto;
             min-height: 0;
-            padding: 4px 6px
+            display: flex;
+            flex-direction: column;
+            padding: 2px 4px
         }
 
         #midi-seq-knobs .sub-panel-title {
-            margin-bottom: 4px
+            margin-bottom: 2px;
+            flex-shrink: 0
         }
 
         #midi-seq-knobs .sub-panel-knobs {
+            flex: 1 1 auto;
+            min-height: 0;
             display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 3px 10px;
-            overflow: visible
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            grid-template-rows: repeat(2, minmax(0, 1fr));
+            gap: 2px 6px;
+            overflow: hidden;
+            align-items: center
         }
 
         #midi-seq-knobs .knob-wrapper {
             display: grid;
-            grid-template-columns: 30px 22px 1fr;
+            grid-template-columns: 24px 18px 1fr;
             align-items: center;
-            gap: 6px;
-            height: auto;
+            gap: 4px;
+            height: 100%;
             min-height: 0;
-            padding: 2px 4px;
+            padding: 1px 2px;
             border-radius: 3px;
             background: rgba(0, 0, 0, 0.25);
             justify-content: stretch
@@ -296,28 +304,29 @@
             width: auto;
             text-align: left;
             font-size: 7px;
-            height: auto
+            height: auto;
+            line-height: 1.1
         }
 
         #midi-seq-knobs .knob-hitbox {
-            width: 22px;
-            height: 22px;
+            width: 18px;
+            height: 18px;
             flex-shrink: 0
         }
 
         #midi-seq-knobs .knob {
-            width: 14px;
-            height: 14px
+            width: 12px;
+            height: 12px
         }
 
         #midi-seq-knobs .midi-knob-val {
             justify-self: end;
             width: 100%;
-            max-width: 40px;
-            min-width: 34px;
-            height: 16px;
-            line-height: 14px;
-            font-size: 8px;
+            max-width: 36px;
+            min-width: 28px;
+            height: 14px;
+            line-height: 12px;
+            font-size: 7px;
             font-family: 'Orbitron', sans-serif;
             font-weight: bold;
             color: #7dffb0;
@@ -334,12 +343,12 @@
         }
 
         .midi-scope-toy {
-            flex: 0 0 44px;
+            flex: 0 0 28px;
             width: 100%;
-            height: 44px;
-            min-height: 44px;
-            max-height: 44px;
-            border-radius: 4px;
+            height: 28px;
+            min-height: 28px;
+            max-height: 28px;
+            border-radius: 3px;
             position: relative;
             overflow: hidden;
             contain: layout paint style;
@@ -409,8 +418,9 @@
         }
 
         .midi-inst-panel-body .midi-scope-toy {
-            flex: 0 0 44px;
-            flex-shrink: 0
+            flex: 0 0 28px;
+            flex-shrink: 0;
+            margin-top: 2px
         }
 
         .midi-drum-note-row {
@@ -420,6 +430,11 @@
             font-size: 8px;
             color: #888;
             min-height: 20px
+        }
+
+        .knob-wrapper.motion-captured .knob-label {
+            color: var(--purple);
+            text-shadow: 0 0 4px var(--purple)
         }
 
         .midi-drum-note-row span {
@@ -692,6 +707,16 @@
             color: var(--cyan)
         }
 
+        #btnPage1.active-green,
+        #btnPage2.active-green,
+        #btnPage3.active-green,
+        #btnPage4.active-green {
+            border-color: var(--green) !important;
+            color: var(--green) !important;
+            box-shadow: 0 0 6px var(--green);
+            background: rgba(34, 197, 94, 0.08)
+        }
+
         /* Dedicated chain-loop toggle — sits with the bank row, anchored width */
         #btnBankChain {
             min-width: 28px;
@@ -922,7 +947,7 @@
             border-radius: 4px;
             position: relative;
             overflow: hidden;
-            min-height: 72px;
+            min-height: 0;
             height: 100%;
             box-shadow: inset 0 0 18px rgba(6, 182, 212, 0.05), inset 0 -1px 2px rgba(0, 0, 0, 0.6);
             /* Isolate the scope as its own compositing context so its per-frame
@@ -945,6 +970,8 @@
         }
 
         .drum-scope-canvas {
+            position: absolute;
+            inset: 0;
             width: 100%;
             height: 100%;
             display: block;
@@ -953,7 +980,8 @@
             transform: translateZ(0);
             will-change: transform;
             backface-visibility: hidden;
-            contain: paint
+            contain: strict;
+            pointer-events: none
         }
 
         .arp-on-btn {
@@ -973,18 +1001,19 @@
 
         .drum-grid {
             display: grid;
-            grid-template-columns: repeat(4, 1fr);
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            grid-template-rows: repeat(3, minmax(0, 1fr));
             gap: 4px;
             width: 100%;
             flex: 1;
             min-height: 0;
-            overflow-y: auto;
+            overflow: hidden;
             align-items: stretch
         }
 
         .drum-grid>.sub-panel,
         .drum-grid>.drum-scope-toy {
-            min-height: 72px
+            min-height: 0
         }
 
         .knob-wrapper {
@@ -1177,6 +1206,18 @@
             transform: translateZ(0)
         }
 
+        /* Dedicated compositor layer — playhead only; never repainted with grid cells. */
+        #seq-playhead-layer {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            z-index: 8;
+            isolation: isolate;
+            transform: translateZ(0);
+            contain: strict;
+            overflow: visible
+        }
+
         /* Playhead = sibling overlay outside grid paint containment — compositor only. */
         #seq-playhead {
             position: absolute;
@@ -1236,8 +1277,20 @@
         }
 
         .seq-step:hover {
-            outline: 1px solid #2a2a3a;
-            outline-offset: -1px
+            box-shadow: inset 0 0 0 1px #2a2a3a, inset 0 1px 1px rgba(255, 255, 255, 0.04), 0 1px 1px rgba(0, 0, 0, 0.6)
+        }
+
+        .seq-step.has-motion::after {
+            content: '';
+            position: absolute;
+            top: 2px;
+            right: 2px;
+            width: 3px;
+            height: 3px;
+            border-radius: 50%;
+            background: var(--purple);
+            box-shadow: 0 0 3px var(--purple);
+            pointer-events: none
         }
 
         .seq-step.active {
@@ -1513,7 +1566,7 @@
      HEADER (compact — all buttons visible)
 ═══════════════════════════════════════════════════════════════════════════ -->
     <header>
-        <div class="brand-mark"><i class="fa-solid fa-bolt" style="color:var(--purple)"></i>OCTOPUS<span style="color:var(--cyan)">PRO</span><span id="appVerBadge" style="font-size:7px;color:#555;margin-left:6px;letter-spacing:0.5px">v6.2</span></div>
+        <div class="brand-mark"><i class="fa-solid fa-bolt" style="color:var(--purple)"></i>OCTOPUS<span style="color:var(--cyan)">PRO</span></div>
         <select class="display-box" id="midiOut" style="width:150px" title="USB MIDI output — ★ = Octopus (auto-sync); other ports = MIDI Controller mode"></select>
         <div id="connBadge" class="conn-badge" style="color:#444;border-color:#1a1a26"><i class="fa-solid fa-circle" style="font-size:6px"></i>Octopus Off</div>
 
@@ -1533,12 +1586,12 @@
 
         <div class="header-sep"></div>
         <!-- Pattern tools -->
-        <button class="btn" style="color:var(--cyan);border-color:var(--cyan)" onclick="app.copyGrid()" title="Copy current grid pattern"><i class="fa-solid fa-copy"></i>CPY</button>
-        <button class="btn" style="color:var(--orange);border-color:var(--orange)" onclick="app.pasteGrid()" title="Paste to current bank only"><i class="fa-solid fa-paste"></i>PST</button>
+        <button class="btn" style="color:var(--cyan);border-color:var(--cyan)" onclick="app.copyGrid()" title="Copy active P page (16 steps) to clipboard"><i class="fa-solid fa-copy"></i>CPY</button>
+        <button class="btn" style="color:var(--orange);border-color:var(--orange)" onclick="app.pasteGrid()" title="Paste clipboard into active P page only"><i class="fa-solid fa-paste"></i>PST</button>
         <button class="btn" style="color:var(--purple);border-color:var(--purple)" onclick="app.randNotes('synth')" title="Randomize melody notes (rows 1-8) at the density below"><i class="fa-solid fa-dice"></i>RND-H</button>
         <button class="btn" style="color:var(--orange);border-color:var(--orange)" onclick="app.randNotes('drum')" title="Randomize drum hits (rows 9-16) at the density below"><i class="fa-solid fa-dice"></i>RND-D</button>
         <input class="display-box" id="randDensity" type="number" min="0" max="100" step="5" value="35" title="Randomizer density % — chance each cell is ON" style="width:44px;text-align:center">
-        <button class="btn active-red" onclick="app.clearGrid()" title="Clear active grid + P-locks + reset both sounds to preset 0 (mirrors hardware SEQ SETUP → Clear)"><i class="fa-solid fa-trash"></i>CLR</button>
+        <button class="btn active-red" onclick="app.clearGrid()" title="Clear active P page only (16 steps) — other pages, sounds, and bank data unchanged"><i class="fa-solid fa-trash"></i>CLR</button>
 
         <div class="header-sep octopus-only"></div>
         <!-- Mutes -->
@@ -1570,10 +1623,10 @@
             <div class="btn" id="btnBankD" onclick="app.setBank(3)">D</div>
             <button class="btn" id="btnBankChain" onclick="app.toggleChainLoop()" title="Chain loop — play banks in song order (🔗 song mode)"><i class="fa-solid fa-link"></i></button>
             <!-- Step pages P1–P4: each page edits 16 of up to 64 steps (matches firmware hwSeqData) -->
-            <div class="btn" id="btnPage1" onclick="app.userSetGridPage(0)" title="Pattern steps 1–16 — opens SEQUENCER grid">P1</div>
-            <div class="btn" id="btnPage2" onclick="app.userSetGridPage(1)" title="Pattern steps 17–32 — opens SEQUENCER grid">P2</div>
-            <div class="btn" id="btnPage3" onclick="app.userSetGridPage(2)" title="Pattern steps 33–48 — opens SEQUENCER grid">P3</div>
-            <div class="btn" id="btnPage4" onclick="app.userSetGridPage(3)" title="Pattern steps 49–64 — opens SEQUENCER grid">P4</div>
+            <div class="btn" id="btnPage1" onclick="app.userSetGridPage(0)" title="Page 1 — steps 1–16 of active bank. Click locks this view (playhead won't auto-switch pages).">P1</div>
+            <div class="btn" id="btnPage2" onclick="app.userSetGridPage(1)" title="Page 2 — steps 17–32. RND / pattern load affect this page only.">P2</div>
+            <div class="btn" id="btnPage3" onclick="app.userSetGridPage(2)" title="Page 3 — steps 33–48. RND / pattern load affect this page only.">P3</div>
+            <div class="btn" id="btnPage4" onclick="app.userSetGridPage(3)" title="Page 4 — steps 49–64. RND / pattern load affect this page only.">P4</div>
             <!-- Playhead LEDs -->
             <div class="head-indicator">
                 <div class="head-led" id="led-0"></div>
@@ -1629,6 +1682,19 @@
                 <input type="number" id="midiSeqOct" class="display-box" value="0" min="-4" max="4" style="width:34px;height:18px;font-size:8px;color:var(--pink)" onchange="app.setSeqOctave(this.value)">
             </label>
             <span style="color:#555;font-size:9px">50% gate</span>
+            <button type="button" class="btn" id="btnMidiArp" onclick="app.toggleMidiArp()" title="Melody arpeggiator — expands active synth rows on each step">ARP</button>
+            <select id="midiArpPat" class="display-box" style="height:18px;font-size:8px;width:52px;color:var(--pink)" onchange="app.setMidiArpPat(this.value)" title="Arp pattern">
+                <option value="0">Up</option><option value="1">Down</option><option value="2">UpDn</option><option value="3">DnUp</option>
+                <option value="4">Rnd</option><option value="5">AsIs</option><option value="6">Up+1</option><option value="7">Dn-1</option>
+            </select>
+            <select id="midiArpRate" class="display-box" style="height:18px;font-size:8px;width:44px;color:var(--pink)" onchange="app.setMidiArpRate(this.value)" title="Arp rate">
+                <option value="0">1/1</option><option value="1">1/2</option><option value="2">1/4</option><option value="3" selected>1/8</option>
+                <option value="4">1/8T</option><option value="5">1/16</option><option value="6">1/16T</option><option value="7">1/32</option>
+            </select>
+            <select id="midiArpGate" class="display-box" style="height:18px;font-size:8px;width:44px;color:var(--pink)" onchange="app.setMidiArpGate(this.value)" title="Arp gate">
+                <option value="0">100%</option><option value="1">75%</option><option value="2" selected>50%</option><option value="3">38%</option>
+                <option value="4">25%</option><option value="5">19%</option><option value="6">13%</option><option value="7">6%</option>
+            </select>
             <button type="button" class="btn" id="btnMidiClockOut" onclick="app.setMidiClockOut(!app.midiClockOut)" title="MIDI clock 0xF8 · 24 PPQN while playing">CLK</button>
             <button type="button" class="btn" style="font-size:8px;padding:2px 6px" onclick="app.exportMidiSession()" title="Export MIDI session JSON"><i class="fa-solid fa-download"></i> EXP</button>
             <button type="button" class="btn" style="font-size:8px;padding:2px 6px" onclick="document.getElementById('midiImportFile').click()" title="Import MIDI session JSON"><i class="fa-solid fa-upload"></i> IMP</button>
@@ -1887,6 +1953,7 @@
                 <div id="seq-grid-wrap">
                     <div class="seq-grid" id="seq-grid"></div>
                 </div>
+                <div id="seq-playhead-layer" aria-hidden="true"></div>
             </div>
             <!-- Song editor (shown when song mode active) -->
             <div id="song-editor">
@@ -1934,7 +2001,7 @@
                 <button class="btn active-red" onclick="app.toggleHelp()">CLOSE</button>
             </div>
             <div id="helpBodyOctopus" style="font-size:10px;color:#aaa;overflow-y:auto;flex:1;line-height:1.65;padding-right:4px">
-                <p style="color:#fff;font-size:9px;border-bottom:1px solid #1c1c2e;padding-bottom:4px;margin-bottom:8px;font-family:'Orbitron',sans-serif">FIRMWARE 6.1.00 · OCTOPUSAPP v6.2.00</p>
+                <p style="color:#fff;font-size:9px;border-bottom:1px solid #1c1c2e;padding-bottom:4px;margin-bottom:8px;font-family:'Orbitron',sans-serif">FIRMWARE 6.1.01 · OCTOPUSAPP v6.2.07</p>
                 <p style="margin-top:0;font-size:9px;margin-bottom:10px">
                     <a href="https://octopus-info.isystem.app" target="_blank" rel="noopener" style="color:var(--purple)">Product site</a>
                     · <a href="https://octopus.isystem.app" style="color:var(--cyan)">octopus.isystem.app</a>
@@ -1965,7 +2032,10 @@
                 <p style="margin-top:10px"><b style="color:var(--green)">WHAT'S NEW IN v6.2.07 (APP) · v6.1.01 (FIRMWARE)</b><br>
                 • <b>Settings / Motion reset — no reboot</b> (firmware ≥ 6.1.01): they apply live; the App just reloads and re-pulls the fresh image from the device. SAVE and Full / Banks+Pats reset still reboot.<br>
                 • <b>Octopus hard priority</b> — while a ★ Octopus port is connected the App locks to Octopus mode; non-Octopus ports can't be selected (unplug Octopus to use MIDI Controller mode).<br>
-                • <b>Mode-separation hardening</b> — Octopus and MIDI connect paths fully split; MIDI activity scopes no longer freeze; Octopus knob panels build lazily.</p>
+                • <b>Mode-separation hardening</b> — Octopus and MIDI connect paths fully split; MIDI activity scopes no longer freeze; Octopus knob panels build lazily.<br>
+                • <b>GOD playhead</b> — dedicated GPU layer; smooth during hover, repaints, and P-page switches (STEP_SYNC in Octopus mode).<br>
+                • <b>P-page grid tools</b> — CPY, PST, CLR, RND-H, RND-D, and factory pattern loads affect the <b>active P page only</b> (16 steps). Click P1–P4 to lock the grid view while playing.<br>
+                • <b>MIXER drum scope</b> — fits the percussion panel with no scroll bar.</p>
 
                 <p style="margin-top:10px"><b style="color:var(--green)">WHAT'S NEW IN v6.2.00 (APP)</b><br>
                 • <b>MIDI Controller mode</b> — no Octopus hardware required; badge <b>MIDI OUT</b>; standard MIDI to any USB interface.<br>
@@ -1990,7 +2060,7 @@
                 TR-909 / TR-808 / Trap / House — kit selection loads per-voice tuning (drum knobs follow). CC 70 on the drum MIDI channel switches kit live.</p>
 
                 <p style="margin-top:10px"><b style="color:var(--orange)">SAVE · LOAD · RESET · CLR</b><br>
-                Popups mirror hardware scopes: <b>Full</b> / <b>Banks+Pats</b> / <b>Motion</b> / <b>Settings</b>. <b>SAVE</b> commits via NvsWorker then reboots; the App reloads and re-imports. <b>Full/Banks reset</b> arm an NVS flag and reboot in ~150 ms — the wipe runs on the next boot (same as OC+SCALE combo). <b>Settings/Motion reset</b> (firmware ≥ 6.1.01) apply live with <b>no reboot</b> — the App reloads and re-pulls the fresh settings/motion image from the device. <b>LOAD</b> reloads RAM with no reboot, then the App reloads. Only one persist action at a time. CLR = hardware Clear (active grid + P-locks + both sounds → preset 0). All destructive actions use YES/NO confirm.</p>
+                Popups mirror hardware scopes: <b>Full</b> / <b>Banks+Pats</b> / <b>Motion</b> / <b>Settings</b>. <b>SAVE</b> commits via NvsWorker then reboots; the App reloads and re-imports. <b>Full/Banks reset</b> arm an NVS flag and reboot in ~150 ms — the wipe runs on the next boot (same as OC+SCALE combo). <b>Settings/Motion reset</b> (firmware ≥ 6.1.01) apply live with <b>no reboot</b> — the App reloads and re-pulls the fresh settings/motion image from the device. <b>LOAD</b> reloads RAM with no reboot, then the App reloads. Only one persist action at a time. Header <b>CLR</b> clears the <b>active P page only</b> (16 steps) — not hardware SEQ SETUP → Clear. All destructive persist actions use YES/NO confirm.</p>
 
                 <p style="margin-top:10px"><b style="color:var(--purple)">USER SLOTS</b><br>
                 Header <b>SLOTS</b> — 64 harp sounds, 64 seq sounds, 64 patterns. Save / load / rename; custom names persist via SysEx name blobs and echo on connect.</p>
@@ -1998,8 +2068,8 @@
                 <p style="margin-top:10px"><b style="color:var(--green)">BANKS · CHAIN · GRID TOOLS</b><br>
                 <b>Banks A–D</b> — four independent patterns; edits never bleed across banks.<br>
                 <b>🔗 Chain</b> — song mode plays banks in order; up to 16 steps per song slot.<br>
-                <b>SONG</b> — visual chain editor (bank + repeats per step). <b>P1–P4</b> — pattern step pages (opens SEQUENCER grid).<br>
-                <b>CPY/PST</b> — copy/paste active bank grid only. <b>RND-H / RND-D</b> — randomize melody or drum rows (density slider).</p>
+                <b>SONG</b> — visual chain editor (bank + repeats per step). <b>P1–P4</b> — 16-step pages within active bank (click to lock view while playing).<br>
+                <b>CPY/PST</b> — copy/paste <b>active P page</b> (16 steps). <b>CLR</b> — clear active P page only. <b>RND-H / RND-D</b> — randomize melody or drum rows on active P page (density slider). Factory pattern dropdowns also load into the active P page.</p>
 
                 <p style="margin-top:10px;color:#666;font-size:9px">
                     <a href="https://octopus-info.isystem.app" target="_blank" rel="noopener" style="color:var(--purple)">octopus-info.isystem.app</a> — product info &amp; specs<br>
@@ -2058,13 +2128,14 @@
                 • <b>MIDI OUT</b> — this guide. 2 tabs only. App play/stop/BPM. No SAVE/LOAD to device flash. Available only when no ★ port is connected.</p>
 
                 <p style="margin-top:10px"><b style="color:var(--green)">TABS IN MIDI MODE</b><br>
-                • <b>SEQUENCER</b> — 64 steps (P1–P4), banks A–D, CPY/PST/RND/CLR, <b>🔗 song chain</b>, factory melody/drum patterns.<br>
-                • <b>INSTRUMENTS</b> — seq synth MIDI (Ch, PC, 8× CC, scope) + drum MIDI (notes per row, scope).</p>
+                • <b>SEQUENCER</b> — 64 steps (P1–P4), banks A–D, CPY/PST/RND/CLR (active P page), <b>ARP</b>, <b>🔗 song chain</b>, factory melody/drum patterns (active P page).<br>
+                • <b>INSTRUMENTS</b> — seq synth MIDI (Ch, PC, 8× CC in 4×2 grid, SEQ ACT scope) + drum MIDI (notes per row, DRUM ACT scope) — panels fit with no scrollbars.</p>
 
-                <p style="margin-top:10px"><b style="color:var(--cyan)">SONG MODE &amp; PATTERNS (v6.2.03)</b><br>
+                <p style="margin-top:10px"><b style="color:var(--cyan)">SONG MODE &amp; PATTERNS (v6.2.03+)</b><br>
                 • <b>🔗</b> next to banks — <b>song mode</b>: plays chain rows in order (bank + repeats), same idea as hardware.<br>
                 • <b>PAT / EDIT</b> — pattern grid ↔ chain editor. Pick <b>Chain 01–16</b>, set steps, bank per row, repeats ×.<br>
-                • <b>MELODY PATTERNS</b> / <b>DRUM PATTERNS</b> dropdowns — load factory ROM into active bank (steps 1–16); MIDI fires on Play.<br>
+                • <b>MELODY PATTERNS</b> / <b>DRUM PATTERNS</b> dropdowns — load factory ROM into <b>active P page</b> (16 steps); MIDI fires on Play.<br>
+                • <b>ARP</b> (utility bar) — melody arpeggiator; <b>REC</b> can record CC motion per step (purple dots).<br>
                 • Song chains + patterns save in browser / <b>EXP</b> JSON with the grid.</p>
 
                 <p style="margin-top:10px"><b style="color:var(--orange)">TROUBLESHOOTING</b><br>
@@ -2390,6 +2461,7 @@
         const HARP_ARP_RATE_NAMES = ['1/8', '1/8T', '1/16', '1/16T'];
         const HARP_ARP_GATE_PCT = [100, 50, 25, 13];
         const ARP_GATE_PCT = [100, 75, 50, 38, 25, 19, 13, 6];
+        const MIDI_ARP_RATE_DIV = [1, 2, 4, 8, 6, 16, 12, 32];
         const NUM_USER_SLOTS = 64;
         // Drum kit names — must match DRUM_KIT_NAMES[] in globals.h
         const DRUM_KIT_NAMES = ["TR-909", "TR-808", "Trap", "House"];
@@ -3734,6 +3806,11 @@
             },
             midiKnobStates: {},
             midiClockOut: false,
+            midiArp: { en: false, pat: 0, rate: 3, gate: 2 },
+            _midiArpStep: -1,
+            _midiArpSubTick: 0,
+            _midiArpSubAccum: 0,
+            _midiArpOrder: [],
             _midiPpqnAccumMs: 0,
             _midiPersistTimer: null,
             bankIdx: 0,
@@ -3752,6 +3829,7 @@
             bpm: 120,
             seqLen: 16,
             gridPageIdx: 0, // 0–3 → steps gridPage*16 .. gridPage*16+15
+            _gridPageUserLock: false, // true after manual P1–P4 — playhead won't steal the view
             songSlotIdx: 0,
             songPlayStep: -1, // song chain step highlighted (device SONG_POS or local MIDI song clock)
             songData: Array.from({
@@ -3766,11 +3844,13 @@
                     repeats: 1
                 }))
             })),
-            clipboardGrid: null,
+            clipboardGrid: null, // 16×16 slice of active P page when copied
+            clipboardPage: -1,
             knobStates: {},
             _domGridCache: Array.from({
                 length: 16
             }, () => Array(16).fill(null)),
+            _seqRowLabelEls: [],
             // Per-bank local grid model (4 banks × 16 rows × 64 steps) — source of truth
             gridData: Array.from({
                 length: 4
@@ -3835,6 +3915,8 @@
             _plockStealWarned: false,
             _lastRingDrops: 0,
             _loadGridPending: false,
+            _pendingPostSyncReload: '',
+            _phPageSwitchRaf: 0,
             _midiSongChainIdx: 0,
             _midiSongRepeatLeft: 1,
             _reloadAfterReconnect: false,
@@ -3972,6 +4054,7 @@
                     this.stopHeartbeat();
                     this._connOnline = false;
                     this._midiSyncInstBar();
+                    this._reflectMidiArpUi();
                     const onSeq = document.getElementById('view-seq')?.classList.contains('active');
                     if (onSeq) this.switchView(3);
                     else this.switchView(1);
@@ -4158,13 +4241,22 @@
                     return;
                 }
                 if (kind === 'load') {
-                    /* Device already sent sendFullStateSync() before SESSION_LOAD ACK.
-                     * Stay on-page so the inbound grid burst can drain (reload was
-                     * aborting the queue mid-import). */
+                    /* Device sends sendFullStateSync() before SESSION_LOAD ACK.
+                     * Drain the burst on-page, then reload for a clean shell + re-pull. */
                     this._syncBurstExpected = true;
                     this._resetSlotSavedFlagsForSync();
                     this._loadGridPending = true;
+                    this._pendingPostSyncReload = 'load sync complete';
                     this.log('Load complete — updating matrix from device…');
+                    requestAnimationFrame(() => this._finishPostSyncIfReady());
+                    return;
+                }
+                if (kind === 'reset' && !reboot) {
+                    this._syncBurstExpected = true;
+                    this._resetSlotSavedFlagsForSync();
+                    this._pendingPostSyncReload = 'reset sync complete';
+                    this.log('Reset complete — updating from device…');
+                    requestAnimationFrame(() => this._finishPostSyncIfReady());
                     return;
                 }
                 this._scheduleAppReload(kind + ' complete');
@@ -4292,12 +4384,35 @@
                     this._gridModelDirty = false;
                     this.repaintGrid();
                 }
-                if (!this._syncBurstExpected && !this._syncBurstActive && this._loadGridPending) {
+                if (!this._rxQueue.length) {
+                    this._syncBurstActive = false;
+                    this._finishPostSyncIfReady();
+                }
+            },
+            _finishPostSyncIfReady() {
+                if (this._rxQueue.length || this._syncBurstActive) return;
+                if (this._phPendingStep >= 0 && this._seqGridVisible()) {
+                    const step = this._phPendingStep;
+                    this._phPendingStep = -1;
+                    this._paintPlayhead(step, true);
+                }
+                if (this._loadGridPending) {
                     this._loadGridPending = false;
                     this.log('Matrix synced from NVS load.');
                 }
-                this._syncBurstExpected = false;
-                this._syncBurstActive = false;
+                if (this._pendingPostSyncReload) {
+                    const reason = this._pendingPostSyncReload;
+                    this._pendingPostSyncReload = '';
+                    this._syncBurstExpected = false;
+                    const pid = this.midiOut?.id;
+                    if (pid && this._appMode !== 'midi')
+                        this._requestPortBootReload(pid, 'octopus', reason);
+                    else
+                        this._scheduleAppReload(reason);
+                    return;
+                }
+                if (this._syncBurstExpected)
+                    this._syncBurstExpected = false;
             },
             _schedulePlayheadRemeasure() {
                 if (!this._seqGridVisible()) return;
@@ -4308,12 +4423,12 @@
                 if (this._phResizeTimer) clearTimeout(this._phResizeTimer);
                 this._phResizeTimer = setTimeout(() => {
                     this._phResizeTimer = null;
+                    if (this.isPlaying) return;
                     const stage = this._phStageEl();
                     if (!stage) return;
                     const r = stage.getBoundingClientRect();
                     const g = this._phGeom;
-                    if (g && Math.abs(r.width - g.stageW) < 3) return;
-                    if (g && Math.abs(r.width - g.stageW) < 1 && Math.abs(r.height - g.stageH) < 1) return;
+                    if (g && Math.abs(r.width - g.stageW) < 8 && Math.abs(r.height - g.stageH) < 8) return;
                     this._phGeom = null;
                     this._phRectPage = -1;
                     this._paintPlayhead(this.visStep | 0, true);
@@ -4323,29 +4438,21 @@
                 return document.getElementById('seq-grid-stage') ||
                     document.getElementById('seq-grid-wrap');
             },
-            /** Measure column positions from grid CSS — stable under :hover (no per-cell layout reads). */
+            /** Measure column positions from grid CSS — no per-cell layout reads (hover-safe). */
             _remeasurePhGeometry() {
                 const stage = this._phStageEl();
-                const wrap = document.getElementById('seq-grid-wrap');
-                if (!stage || !wrap) return false;
+                if (!stage) return false;
                 const sr = stage.getBoundingClientRect();
                 if (!(sr.width > 0 && sr.height > 0)) return false;
-                const LABEL_W = 54, GAP = 2, COLS = 16;
+                const LABEL_W = 54, GAP = 2, COLS = 16, ROWS = 16;
                 const colW = (sr.width - LABEL_W - GAP * (COLS + 1)) / COLS;
                 if (!(colW > 0)) return false;
                 const cols = new Array(COLS);
                 for (let c = 0; c < COLS; c++)
                     cols[c] = LABEL_W + GAP + c * (colW + GAP);
-                let y = 0, h = sr.height;
-                const cell = this._domGridCache[0]?.[0];
-                const cellBot = this._domGridCache[15]?.[0];
-                if (cell && cellBot) {
-                    const cr0 = cell.getBoundingClientRect();
-                    const crB = cellBot.getBoundingClientRect();
-                    y = cr0.top - sr.top;
-                    h = crB.bottom - cr0.top;
-                    if (!(h > 0)) h = sr.height;
-                }
+                const rowH = (sr.height - GAP * (ROWS + 1)) / ROWS;
+                let y = GAP, h = ROWS * rowH + (ROWS - 1) * GAP;
+                if (!(h > 0)) { y = 0; h = sr.height; }
                 this._phGeom = {
                     cols, y, w: colW, h,
                     page: this.gridPageIdx | 0,
@@ -4357,6 +4464,34 @@
             },
             _applyPhTransform(ph, x, y) {
                 ph.style.transform = 'translate3d(' + x + 'px,' + y + 'px,0)';
+            },
+            /** Auto-follow playhead page without blocking STEP_SYNC on synchronous grid repaint. */
+            /** Active P-page step column range [step0, step1) clamped to seqLen. */
+            _pageStepRange(page) {
+                page = (page == null ? this.gridPageIdx : page) & 3;
+                const step0 = page * 16;
+                const len = Math.max(1, this.seqLen | 0);
+                return { page, step0, step1: Math.min(step0 + 16, len) };
+            },
+            _pageLabel(page) {
+                return 'P' + (((page == null ? this.gridPageIdx : page) & 3) + 1);
+            },
+            _followPlayheadPage(page, s) {
+                page = (+page) & 3;
+                if (page === this.gridPageIdx) return false;
+                this.gridPageIdx = page;
+                this._syncPageButtons();
+                this._phGeom = null;
+                this._phPendingStep = s;
+                if (this._phPageSwitchRaf) return true;
+                this._phPageSwitchRaf = requestAnimationFrame(() => {
+                    this._phPageSwitchRaf = 0;
+                    this.repaintGrid();
+                    const step = this._phPendingStep >= 0 ? this._phPendingStep : (this.visStep | 0);
+                    this._phPendingStep = -1;
+                    this._paintPlayhead(step, true);
+                });
+                return true;
             },
             /** True when the pattern grid is on-screen (SEQUENCER tab, not song editor). */
             _seqGridVisible() {
@@ -4394,8 +4529,12 @@
                 }
 
                 if (page !== this.gridPageIdx) {
-                    this.setGridPage(page, true);
-                    this._phPendingStep = s;
+                    if (!this._gridPageUserLock)
+                        this._followPlayheadPage(page, s);
+                    else {
+                        this._phPendingStep = s;
+                        if (ph) ph.classList.remove('ph-visible', 'ph-playing');
+                    }
                     return;
                 }
 
@@ -4501,8 +4640,6 @@
                     this.allNotesOff();
                 });
                 this.log('OctopusApp v' + APP_VERSION + ' · ' + location.origin);
-                const vb = document.getElementById('appVerBadge');
-                if (vb) vb.textContent = 'v' + APP_VERSION.replace(/\.00$/, '');
             },
 
             // Long dropdown names: a closed <select> ellipsizes overflowing text, so
@@ -5178,6 +5315,127 @@
                 if (!this.midiClockOut) this._midiPpqnAccumMs = 0;
                 if (persist) this._midiPersistSoon();
             },
+            _reflectMidiArpUi() {
+                const a = this.midiArp || { en: false, pat: 0, rate: 3, gate: 2 };
+                document.getElementById('btnMidiArp')?.classList.toggle('active-cyan', !!a.en);
+                const pat = document.getElementById('midiArpPat');
+                const rate = document.getElementById('midiArpRate');
+                const gate = document.getElementById('midiArpGate');
+                if (pat) pat.value = String(a.pat & 7);
+                if (rate) rate.value = String(a.rate & 7);
+                if (gate) gate.value = String(a.gate & 7);
+            },
+            toggleMidiArp() {
+                if (this._appMode !== 'midi') return;
+                this.midiArp.en = !this.midiArp.en;
+                this._reflectMidiArpUi();
+                if (!this.midiArp.en) {
+                    this._midiArpStep = -1;
+                    this._midiArpOrder = [];
+                    this._midiArpSubAccum = 0;
+                }
+                this._midiPersistSoon();
+            },
+            setMidiArpPat(v) {
+                if (this._appMode !== 'midi') return;
+                this.midiArp.pat = (+v) & 7;
+                this._reflectMidiArpUi();
+                this._midiPersistSoon();
+            },
+            setMidiArpRate(v) {
+                if (this._appMode !== 'midi') return;
+                this.midiArp.rate = (+v) & 7;
+                this._reflectMidiArpUi();
+                this._midiPersistSoon();
+            },
+            setMidiArpGate(v) {
+                if (this._appMode !== 'midi') return;
+                this.midiArp.gate = (+v) & 7;
+                this._reflectMidiArpUi();
+                this._midiPersistSoon();
+            },
+            _midiArpCollectNotes(step, asIs) {
+                const grid = this.gridData?.[this.bankIdx];
+                if (!grid) return [];
+                const notes = [];
+                for (let r = 0; r < 8; r++) {
+                    if (!grid[r]?.[step]) continue;
+                    notes.push(this._midiMelodyNoteForRow(r));
+                }
+                if (!asIs) notes.sort((a, b) => a - b);
+                return notes;
+            },
+            _midiArpPatternOrder(notes, pat, step) {
+                if (!notes.length) return [];
+                const p = pat & 7;
+                const asc = notes.slice().sort((a, b) => a - b);
+                if (p === 0) return asc;
+                if (p === 1) return asc.slice().reverse();
+                if (p === 2) {
+                    if (asc.length <= 2) return asc;
+                    return asc.concat(asc.slice(1, -1).reverse());
+                }
+                if (p === 3) {
+                    const rev = asc.slice().reverse();
+                    if (rev.length <= 2) return rev;
+                    return rev.concat(rev.slice(1, -1).reverse());
+                }
+                if (p === 4) {
+                    const a = asc.slice();
+                    for (let i = a.length - 1; i > 0; i--) {
+                        const j = ((step | 0) * 7 + i * 13) % (i + 1);
+                        [a[i], a[j]] = [a[j], a[i]];
+                    }
+                    return a;
+                }
+                if (p === 5) return notes.slice();
+                if (p === 6) return asc.map(n => Math.min(127, n + 12));
+                if (p === 7) return asc.map(n => Math.max(0, n - 12));
+                return asc;
+            },
+            _midiMelodyGateMs() {
+                const stepMs = this._midiStepMs();
+                if (this.midiArp?.en)
+                    return stepMs * ((ARP_GATE_PCT[this.midiArp.gate & 7] || 50) / 100);
+                return stepMs * 0.5;
+            },
+            _midiMelodyArpNote(note) {
+                const melCh = this._midiMelodyChannel();
+                const gateMs = this._midiMelodyGateMs();
+                this._midiNoteOn(melCh, note, 100);
+                this._midiScheduleNoteOff(melCh, note, gateMs);
+            },
+            _midiArpArm(step) {
+                step = step | 0;
+                if ((this._midiArpStep | 0) === step && this._midiArpOrder?.length) return;
+                this._midiArpStep = step;
+                this._midiArpSubTick = 0;
+                this._midiArpSubAccum = 0;
+                const pat = this.midiArp.pat & 7;
+                const notes = this._midiArpCollectNotes(step, pat === 5);
+                this._midiArpOrder = this._midiArpPatternOrder(notes, pat, step);
+                if (this._midiArpOrder.length)
+                    this._midiMelodyArpNote(this._midiArpOrder[0]);
+            },
+            _midiArpSubClock(dt) {
+                if (!this.midiArp?.en || !this.isPlaying) return;
+                const order = this._midiArpOrder;
+                if (!order || !order.length) return;
+                const div = MIDI_ARP_RATE_DIV[this.midiArp.rate & 7] || 8;
+                const subMs = this._midiStepMs() / div;
+                if (!(subMs > 0)) return;
+                this._midiArpSubAccum += dt;
+                while (this._midiArpSubAccum >= subMs) {
+                    this._midiArpSubAccum -= subMs;
+                    this._midiArpSubTick++;
+                    if (this._midiArpSubTick >= div) {
+                        this._midiArpSubAccum = 0;
+                        break;
+                    }
+                    const idx = this._midiArpSubTick % order.length;
+                    this._midiMelodyArpNote(order[idx]);
+                }
+            },
             _midiPersistSoon() {
                 clearTimeout(this._midiPersistTimer);
                 this._midiPersistTimer = setTimeout(() => this._persistMidiSession(), 400);
@@ -5206,6 +5464,12 @@
                         cc: { ...this.midiMap.cc }
                     },
                     midiClockOut: !!this.midiClockOut,
+                    midiArp: {
+                        en: !!this.midiArp?.en,
+                        pat: (this.midiArp?.pat | 0) & 7,
+                        rate: (this.midiArp?.rate | 0) & 7,
+                        gate: (this.midiArp?.gate | 0) & 7
+                    },
                     midiMotion: this.midiMotion.map(bank =>
                         bank.map(lane => ({ cc: lane.cc, steps: lane.steps.slice() }))
                     ),
@@ -5276,6 +5540,13 @@
                     this._refreshMidiKnobsFromMap();
                 }
                 if (o.midiClockOut != null) this.setMidiClockOut(!!o.midiClockOut, false);
+                if (o.midiArp) {
+                    if (o.midiArp.en != null) this.midiArp.en = !!o.midiArp.en;
+                    if (o.midiArp.pat != null) this.midiArp.pat = (+o.midiArp.pat) & 7;
+                    if (o.midiArp.rate != null) this.midiArp.rate = (+o.midiArp.rate) & 7;
+                    if (o.midiArp.gate != null) this.midiArp.gate = (+o.midiArp.gate) & 7;
+                    this._reflectMidiArpUi();
+                }
                 if (Array.isArray(o.midiMotion) && o.midiMotion.length === 4) {
                     for (let b = 0; b < 4; b++) {
                         const src = o.midiMotion[b];
@@ -5323,21 +5594,25 @@
                 if (o.bankIdx != null) this.setBank(o.bankIdx, false);
                 if (o.gridPageIdx != null) this.setGridPage(o.gridPageIdx, false);
                 else this.repaintGrid();
+                this._updateSeqRowLabels();
                 this._midiSyncInstBar();
                 if (logIt) this.log('MIDI session imported.');
                 return true;
             },
             _refreshMidiKnobsFromMap() {
-                for (const cc of Object.keys(this.midiKnobStates)) {
-                    const val = this.midiMap.cc[cc];
-                    if (val == null) continue;
-                    for (const entry of this.midiKnobStates[cc]) {
-                        const k = entry.meta;
-                        const clamped = Math.max(k.min, Math.min(k.max, +val));
-                        const sn = (clamped - k.min) / (k.max - k.min);
-                        entry.node.style.setProperty('--val', Math.max(0, Math.min(1, sn)));
-                        entry.text.innerText = k.fmt(clamped);
-                    }
+                for (const cc of Object.keys(this.midiKnobStates))
+                    if (this.midiMap.cc[cc] != null)
+                        this._setMidiKnobCcUi(+cc, this.midiMap.cc[cc]);
+            },
+            _setMidiKnobCcUi(cc, val) {
+                const entries = this.midiKnobStates[cc];
+                if (!entries) return;
+                for (const entry of entries) {
+                    const k = entry.meta;
+                    const clamped = Math.max(k.min, Math.min(k.max, +val));
+                    const sn = (clamped - k.min) / (k.max - k.min);
+                    entry.node.style.setProperty('--val', Math.max(0, Math.min(1, sn)));
+                    entry.text.innerText = k.fmt(clamped);
                 }
             },
             exportMidiSession() {
@@ -5372,12 +5647,19 @@
                 cc = cc & 127;
                 if (!this._sendMidiBytes([0xB0 | (ch & 15), cc, val])) return;
                 this.midiMap.cc[cc] = val;
-                if (!opts?.fromReplay && this.isRecording && this.isPlaying)
-                    this._midiRecordAutomation(cc, val);
-                if (ch === this._midiMelodyChannel()) this._midiPulseScope(this._midiSeqScope, 0.18);
-                this._midiPersistSoon();
+                if (ch === this._midiMelodyChannel())
+                    this._setMidiKnobCcUi(cc, val);
+                if (!opts?.fromReplay) {
+                    if (this.isRecording)
+                        this._midiRecordAutomation(cc, val);
+                    if (ch === this._midiMelodyChannel()) this._midiPulseScope(this._midiSeqScope, 0.06);
+                    this._midiPersistSoon();
+                }
             },
             _midiRecordAutomation(cc, val) {
+                if (!this.isRecording) return;
+                val = Math.max(0, Math.min(127, Math.round(+val)));
+                cc = cc & 127;
                 const bank = this.bankIdx | 0;
                 const step = this.visStep | 0;
                 let lanes = this.midiMotion[bank];
@@ -5387,14 +5669,34 @@
                     if (lanes.length >= 4) {
                         if (!this._midiMotionFullWarned) {
                             this._midiMotionFullWarned = true;
-                            this.log('MIDI automation full — max 4 CC lanes per bank (like hardware P-locks)');
+                            this.log('MIDI motion full — max 4 CC lanes per bank');
                         }
                         return;
                     }
                     lane = { cc, steps: Array(64).fill(null) };
                     lanes.push(lane);
                 }
+                if (lane.steps[step] === val) return;
                 lane.steps[step] = val;
+                this._midiMotionDirty = true;
+                if (!this._motionRecLogged) {
+                    this._motionRecLogged = true;
+                    this.log('Motion recording — CC' + cc + ' @ step ' + (step + 1));
+                }
+                this._flashMidiKnobCc(cc);
+                if (document.getElementById('view-seq')?.classList.contains('active'))
+                    this.repaintGrid();
+            },
+            _flashMidiKnobCc(cc) {
+                const entries = this.midiKnobStates[cc];
+                if (!entries) return;
+                for (const e of entries) {
+                    const w = e.node?.closest('.knob-wrapper');
+                    if (w) {
+                        w.classList.add('motion-captured');
+                        setTimeout(() => w.classList.remove('motion-captured'), 120);
+                    }
+                }
             },
             _midiReplayAutomation(step) {
                 const lanes = this.midiMotion[this.bankIdx | 0];
@@ -5402,19 +5704,27 @@
                 const ch = this._midiMelodyChannel();
                 for (const lane of lanes) {
                     const v = lane.steps[step];
-                    if (v != null) this._midiSendCc(ch, lane.cc, v, { fromReplay: true });
+                    if (v != null)
+                        this._midiSendCc(ch, lane.cc, v, { fromReplay: true });
                 }
             },
             _midiSendProgramChange(ch, pc) {
                 if (this._appMode !== 'midi') return;
                 pc = Math.max(0, Math.min(127, (+pc) | 0));
                 if (!this._sendMidiBytes([0xC0 | (ch & 15), pc])) return;
-                if (ch === this._midiMelodyChannel()) this._midiPulseScope(this._midiSeqScope, 0.35);
-                else if (ch === this._midiDrumChannel()) this._midiPulseScope(this._midiDrumScope, 0.35);
+                if (ch === this._midiMelodyChannel()) this._midiPulseScope(this._midiSeqScope, 0.35, pc);
+                else if (ch === this._midiDrumChannel()) this._midiPulseScope(this._midiDrumScope, 0.35, pc);
             },
-            _midiPulseScope(s, amp) {
+            _midiPulseScope(s, amp, note) {
                 if (!s || amp <= 0) return;
-                if (amp > s.amp) s.amp = Math.min(1.35, amp);
+                if (amp > s.amp) s.amp = Math.min(1.2, amp);
+                if (note != null && note >= 0) {
+                    s.driveNote = note & 127;
+                    s.lastHitMs = performance.now();
+                }
+            },
+            _midiNoteFreq(note) {
+                return 440 * Math.pow(2, ((note | 0) - 69) / 12);
             },
             _midiMelodyChannel() {
                 const el = document.getElementById(this._appMode === 'midi' ? 'midiMelodyCh' : 'wireSeqCh');
@@ -5429,8 +5739,8 @@
                 const ok = this._sendMidiBytes([0x90 | (ch & 15), note & 127, Math.max(1, vel & 127)]);
                 if (!ok) return;
                 const a = 0.42 + Math.min(1, vel / 127) * 0.58;
-                if (ch === this._midiMelodyChannel()) this._midiPulseScope(this._midiSeqScope, a);
-                else if (ch === this._midiDrumChannel()) this._midiPulseScope(this._midiDrumScope, a);
+                if (ch === this._midiMelodyChannel()) this._midiPulseScope(this._midiSeqScope, a, note & 127);
+                else if (ch === this._midiDrumChannel()) this._midiPulseScope(this._midiDrumScope, a, note & 127);
             },
             _midiNoteOff(ch, note) {
                 if (this._appMode !== 'midi') return;
@@ -5456,6 +5766,19 @@
                 const octEl = document.getElementById(this._appMode === 'midi' ? 'midiSeqOct' : 'seqOct');
                 const oct = Math.max(-4, Math.min(4, Math.round(+octEl?.value || 0)));
                 return Math.max(0, Math.min(127, scale[7 - row] + trn + oct * 12));
+            },
+            _formatMidiNoteLabel(note) {
+                const NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+                const n = Math.max(0, Math.min(127, note | 0));
+                return NAMES[n % 12] + (Math.floor(n / 12) - 1);
+            },
+            /** Left-hand synth row labels — follow scale + transpose + octave. */
+            _updateSeqRowLabels() {
+                for (let r = 0; r < 8; r++) {
+                    const lbl = this._seqRowLabelEls[r];
+                    if (!lbl) continue;
+                    lbl.innerText = this._formatMidiNoteLabel(this._midiMelodyNoteForRow(r));
+                }
             },
             _midiDrumNoteForRow(row) {
                 const idx = ((row | 0) - 8) & 7;
@@ -5501,10 +5824,13 @@
                 this.songPlayStep = ci;
                 this._highlightSongStep();
             },
-            _applySynthPatternGrid(pat, bankIdx) {
+            _applySynthPatternGrid(pat, bankIdx, pageIdx) {
                 bankIdx = bankIdx | 0;
+                pageIdx = (pageIdx == null ? this.gridPageIdx : pageIdx) & 3;
+                const base = pageIdx * 16;
                 for (let r = 0; r < 8; r++)
-                    for (let c = 0; c < 64; c++) this.gridData[bankIdx][r][c] = false;
+                    for (let c = base; c < base + 16; c++)
+                        this.gridData[bankIdx][r][c] = false;
                 for (let step = 0; step < 16; step++) {
                     if (!pat.gate[step]) continue;
                     const p = Math.max(-12, Math.min(12, pat.pitch[step]));
@@ -5513,34 +5839,43 @@
                         const d = Math.abs(p - this.ROW_SEMITONE[r]);
                         if (d < bestDst) { bestDst = d; bestRow = r; }
                     }
-                    this.gridData[bankIdx][bestRow][step] = true;
+                    this.gridData[bankIdx][bestRow][base + step] = true;
                 }
             },
-            _applyDrumPatternGrid(pat, bankIdx) {
+            _applyDrumPatternGrid(pat, bankIdx, pageIdx) {
                 bankIdx = bankIdx | 0;
+                pageIdx = (pageIdx == null ? this.gridPageIdx : pageIdx) & 3;
+                const base = pageIdx * 16;
                 for (let r = 8; r < 16; r++)
-                    for (let c = 0; c < 64; c++) this.gridData[bankIdx][r][c] = false;
+                    for (let c = base; c < base + 16; c++)
+                        this.gridData[bankIdx][r][c] = false;
                 if (!pat.tracks) return;
                 pat.tracks.forEach((mask, ti) => {
                     const gr = 8 + ti;
                     for (let c = 0; c < 16; c++)
-                        this.gridData[bankIdx][gr][c] = !!((mask >> c) & 1);
+                        this.gridData[bankIdx][gr][base + c] = !!((mask >> c) & 1);
                 });
             },
-            /** Fire note-ons for one pattern step; 50% gate note-offs (groovebox default). */
+            /** Fire note-ons for one pattern step; gate from ARP settings when enabled. */
             _midiPlayStep(step) {
                 if (this._appMode !== 'midi' || !this.isPlaying) return;
                 const grid = this.gridData?.[this.bankIdx];
                 if (!grid) return;
                 const melCh = this._midiMelodyChannel();
                 const drumCh = this._midiDrumChannel();
-                const gateMs = this._midiStepMs() * 0.5;
+                const gateMs = this._midiMelodyGateMs();
                 this._midiClearGateTimers();
-                for (let r = 0; r < 8; r++) {
-                    if (!grid[r]?.[step]) continue;
-                    const note = this._midiMelodyNoteForRow(r);
-                    this._midiNoteOn(melCh, note, 100);
-                    this._midiScheduleNoteOff(melCh, note, gateMs);
+                if (this.midiArp?.en) {
+                    this._midiArpArm(step);
+                } else {
+                    this._midiArpStep = -1;
+                    this._midiArpOrder = [];
+                    for (let r = 0; r < 8; r++) {
+                        if (!grid[r]?.[step]) continue;
+                        const note = this._midiMelodyNoteForRow(r);
+                        this._midiNoteOn(melCh, note, 100);
+                        this._midiScheduleNoteOff(melCh, note, gateMs);
+                    }
                 }
                 for (let r = 8; r < 16; r++) {
                     if (!grid[r]?.[step]) continue;
@@ -5746,6 +6081,7 @@
                         if (ms) ms.value = v14;
                         const inst = document.getElementById('midiInstScale');
                         if (inst) inst.value = v14;
+                        this._updateSeqRowLabels();
                     },
                     [CMD.H_DLY_MIX]: v14 => { document.getElementById('wireHarpDly').innerText = Math.round(v14 / 16383 * 100) + '%'; },
                     [CMD.H_REV_MIX]: v14 => { document.getElementById('wireHarpRev').innerText = Math.round(v14 / 16383 * 100) + '%'; },
@@ -5765,6 +6101,7 @@
                         const t = (v14 <= 24) ? Math.max(-12, Math.min(12, v14 - 12)) : Math.max(-12, Math.min(12, Math.round((v14 / 16383) * 24 - 12)));
                         const a = document.getElementById('seqTrn'); if (a) a.value = t;
                         const b = document.getElementById('seqEngTrn'); if (b) b.value = t;
+                        this._updateSeqRowLabels();
                     },
                     [CMD.HW_H_OCT]: v14 => { const o = (v14 <= 8) ? (v14 - 4) : Math.max(-4, Math.min(4, Math.round((v14 / 16383) * 8 - 4))); const el = document.getElementById('harpOct'); if (el) el.value = o; },
                     [CMD.HW_S_OCT]: v14 => {
@@ -5772,6 +6109,7 @@
                         const el = document.getElementById('seqOct'); if (el) el.value = o;
                         const m = document.getElementById('midiSeqOct'); if (m) m.value = o;
                         const inst = document.getElementById('midiInstOct'); if (inst) inst.value = o;
+                        this._updateSeqRowLabels();
                     },
                     [CMD.H_PITCH]: v14 => { this._setKnob(CMD.H_PITCH, v14); },
                     // Transport — hardware is SOLE owner; these are read-only reflectors.
@@ -5956,6 +6294,16 @@
                         this._setTransport(true, true);
                     else
                         this._setTransport(this.isPlaying, nextRec);
+                    if (nextRec)
+                        this.log('REC ON — twist INSTRUMENTS CC knobs to capture motion per step (purple dot on grid).');
+                    else {
+                        this._motionRecLogged = false;
+                        if (this._midiMotionDirty) {
+                            this._midiMotionDirty = false;
+                            this.repaintGrid();
+                            this._midiPersistSoon();
+                        }
+                    }
                     return;
                 }
                 this._transportHint();
@@ -5989,6 +6337,9 @@
                 }
                 this._midiClockLastTs = 0;
                 this._midiClockAccumMs = 0;
+                this._midiArpStep = -1;
+                this._midiArpOrder = [];
+                this._midiArpSubAccum = 0;
             },
             /** MIDI Controller local clock — drives visStep + playhead. */
             _midiClockTick(ts) {
@@ -6030,6 +6381,7 @@
                     advanced = true;
                 }
                 if (advanced) this._midiClockAccumMs = Math.min(this._midiClockAccumMs, stepMs);
+                this._midiArpSubClock(dt);
             },
             toggleMute(ch) {
                 if (this._appMode === 'midi') return;   // [SEPARATION] Octopus-only setter
@@ -6102,6 +6454,7 @@
                 if (m) m.value = String(s);
                 const inst = document.getElementById('midiInstScale');
                 if (inst) inst.value = String(s);
+                this._updateSeqRowLabels();
                 if (this._appMode === 'midi') this._midiPersistSoon();
             },
 
@@ -6387,9 +6740,9 @@
             setTranspose(v) {
                 const t = Math.max(-12, Math.min(12, Math.round(+v)));
                 if (this._appMode !== 'midi') this.txParam(CMD.TRANSPOSE, t + 12);
-                // Keep both seq-transpose boxes (global header + engine panel) in sync.
                 const a = document.getElementById('seqTrn'); if (a) a.value = t;
                 const b = document.getElementById('seqEngTrn'); if (b) b.value = t;
+                this._updateSeqRowLabels();
                 if (this._appMode === 'midi') this._midiPersistSoon();
             },
             // Sequencer octave (±4). Wire: v14 = oct + 4.
@@ -6399,6 +6752,7 @@
                 const el = document.getElementById('seqOct'); if (el) el.value = o;
                 const m = document.getElementById('midiSeqOct'); if (m) m.value = o;
                 const inst = document.getElementById('midiInstOct'); if (inst) inst.value = o;
+                this._updateSeqRowLabels();
                 if (this._appMode === 'midi') this._midiPersistSoon();
             },
             setHarpWave(v) {
@@ -6443,13 +6797,21 @@
                 this.visStep = s;
                 this._paintPlayhead(s);
             },
-            // P1–P4: each page shows 16 columns of the 64-step pattern for the active bank.
+            // P1–P4: 16-column pages of the 64-step pattern for the active bank (not song chains — use SONG + 🔗).
             userSetGridPage(p) {
+                this._gridPageUserLock = true;
                 this.setGridPage(p, true, true);
+            },
+            _syncPageButtons() {
+                [1, 2, 3, 4].forEach(i => {
+                    const el = document.getElementById('btnPage' + i);
+                    if (!el) return;
+                    el.classList.toggle('active-green', (i - 1) === (this.gridPageIdx | 0));
+                });
             },
             setGridPage(p, repaint = true, fromUser = false) {
                 this.gridPageIdx = (+p) & 3;
-                [1, 2, 3, 4].forEach(i => document.getElementById('btnPage' + i) ?.classList.toggle('active-green', (i - 1) === this.gridPageIdx));
+                this._syncPageButtons();
                 if (repaint) {
                     if (fromUser) {
                         if (this.showSongEditor) this._setSongView(false, false);
@@ -6468,15 +6830,18 @@
                 if (this._appMode === 'midi') this._midiPersistSoon();
             },
             _updatePageButtons() {
-                const pages = Math.max(1, Math.ceil(this.seqLen / 16));
+                const pagesInLen = Math.max(1, Math.ceil(this.seqLen / 16));
                 [1, 2, 3, 4].forEach(i => {
                     const el = document.getElementById('btnPage' + i);
                     if (!el) return;
-                    const on = i <= pages;
-                    el.style.opacity = on ? '1' : '0.35';
-                    el.style.pointerEvents = on ? 'auto' : 'none';
+                    const lo = (i - 1) * 16 + 1;
+                    const hi = i * 16;
+                    el.style.opacity = i <= pagesInLen ? '1' : '0.55';
+                    el.style.pointerEvents = 'auto';
+                    el.title = i <= pagesInLen
+                        ? `Pattern steps ${lo}–${Math.min(hi, this.seqLen)} — opens SEQUENCER grid`
+                        : `Pattern steps ${lo}–${hi} (beyond LEN ${this.seqLen}) — opens SEQUENCER grid`;
                 });
-                if (this.gridPageIdx >= pages) this.setGridPage(pages - 1);
             },
             // Banks A/B/C/D = firmware banks 0-3; the chain dimension is forced to 0.
             setBank(b, tx = true) {
@@ -6553,6 +6918,7 @@
                     requestAnimationFrame(() => this.buildSongEditor());
                 } else {
                     this._phGeom = null;
+                    this._phPendingStep = this.visStep | 0;
                     requestAnimationFrame(() => this._paintPlayhead(this.visStep | 0, true));
                 }
                 this._updateSeqModeBtn();
@@ -6657,39 +7023,48 @@
                 this.sendSongStep(stepIdx);
             },
 
-            // ── Grid CPY/PST/RND/CLR (active bank only) ──────────────────────────────
+            // ── Grid CPY/PST/RND/CLR (active bank + active P page) ───────────────────
             copyGrid() {
-                this.clipboardGrid = this.gridData[this.bankIdx].map(row => row.slice());
-                this.log('Grid copied (bank ' + 'ABCD' [this.bankIdx] + ')');
+                const pg = this.gridPageIdx | 0;
+                const { step0, step1 } = this._pageStepRange(pg);
+                const bank = this.gridData[this.bankIdx];
+                this.clipboardPage = pg;
+                this.clipboardGrid = Array.from({ length: 16 }, (_, r) => {
+                    const slice = new Array(16);
+                    for (let i = 0; i < 16; i++)
+                        slice[i] = !!(bank[r] && bank[r][step0 + i]);
+                    return slice;
+                });
+                this.log('Copied ' + this._pageLabel(pg) + ' steps ' + (step0 + 1) + '–' + step1 +
+                    ' (bank ' + 'ABCD'[this.bankIdx] + ')');
             },
             pasteGrid() {
                 if (!this.clipboardGrid) { this.log('Nothing in clipboard'); return; }
-                const bank = this.bankIdx;
-                // [USB-OPT] Use lossless grid-row blobs (sub 0x05, one per half-row)
-                // instead of per-cell GRID_TOG — worst case 16 rows × 4 pages = 64
-                // messages instead of up to 1024 individual GRID_TOG calls. The firmware
-                // applies each half-row absolutely (set, not toggle), so no mismatch risk.
+                const pg = this.gridPageIdx | 0;
+                const { step0, step1 } = this._pageStepRange(pg);
+                const bank = this.bankIdx | 0;
+                const src = this.clipboardGrid;
                 for (let r = 0; r < 16; r++) {
-                    const src = this.clipboardGrid[r];
                     const dst = this.gridData[bank][r];
-                    for (let c = 0; c < 64; c++)
-                        dst[c] = !!(src && src[c]);
-                    for (let page = 0; page < 4; page++) {
-                        const base = page * 16;
+                    const row = src[r];
+                    if (!row) continue;
+                    for (let i = 0; i < 16; i++)
+                        dst[step0 + i] = !!row[i];
+                }
+                if (this._appMode !== 'midi') {
+                    for (let r = 0; r < 16; r++) {
                         let lo = 0, hi = 0;
                         for (let i = 0; i < 8; i++) {
-                            if (dst[base + i])     lo |= (1 << i);
-                            if (dst[base + 8 + i]) hi |= (1 << i);
+                            if (this.gridData[bank][r][step0 + i]) lo |= (1 << i);
+                            if (this.gridData[bank][r][step0 + 8 + i]) hi |= (1 << i);
                         }
-                        // [FIX-GRID-ENC] Use lossless _txGridRow (sub 0x05) instead of
-                        // CMD.GRID_ROW_LO/HI — old format overlapped page bits with byte
-                        // bits in v14, corrupting steps 4-5 for pages 1-3.
-                        if (this._appMode !== 'midi')
-                            this._txGridRow(bank, r, page, lo, hi);
+                        this._txGridRow(bank, r, pg, lo, hi);
                     }
                 }
                 this.repaintGrid();
-                this.log('Pasted to bank ' + 'ABCD'[bank] + ' (all 64 steps)');
+                const from = this.clipboardPage >= 0 ? this._pageLabel(this.clipboardPage) : 'clipboard';
+                this.log('Pasted ' + from + ' → ' + this._pageLabel(pg) + ' steps ' + (step0 + 1) + '–' + step1 +
+                    ' (bank ' + 'ABCD'[bank] + ')');
                 if (this._appMode === 'midi') this._midiPersistSoon();
             },
             // RND — randomize cells in the active bank only.
@@ -6701,12 +7076,13 @@
                 let dens = dEl ? parseInt(dEl.value, 10) : 35;
                 if (!isFinite(dens)) dens = 35;
                 dens = Math.max(0, Math.min(100, dens));
-                if (dEl) dEl.value = dens; // reflect the clamp back
+                if (dEl) dEl.value = dens;
                 const p = dens / 100;
                 const r0 = (kind === 'drum') ? 8 : 0;
                 const r1 = (kind === 'drum') ? 16 : 8;
+                const { step0, step1, page } = this._pageStepRange();
                 for (let r = r0; r < r1; r++)
-                    for (let c = 0; c < 64; c++) {
+                    for (let c = step0; c < step1; c++) {
                         const on = Math.random() < p;
                         if (this.gridData[this.bankIdx][r][c] === on) continue;
                         this.gridData[this.bankIdx][r][c] = on;
@@ -6716,34 +7092,67 @@
                 this.repaintGrid();
                 if (this.isPlaying) {
                     if (this._appMode === 'midi') {
-                        this.visStep = 0;
-                        this._paintPlayhead(0, true);
-                        this._midiPlayStep(0);
+                        this.visStep = step0;
+                        this._paintPlayhead(step0, true);
+                        this._midiPlayStep(step0);
                     } else {
                         this.txSysex(CMD.SEQ_RESTART, 0);
                     }
                 }
                 this.log((kind === 'drum' ? 'Drums' : 'Notes') + ' randomized @ ' +
-                    dens + '% (all pages, bank ' + 'ABCD' [this.bankIdx] + ')' +
-                    (this.isPlaying ? ' — restarting from step 1' : ''));
+                    dens + '% (' + this._pageLabel(page) + ' steps ' + (step0 + 1) + '–' + step1 +
+                    ', bank ' + 'ABCD'[this.bankIdx] + ')' +
+                    (this.isPlaying ? ' — restart @ step ' + (step0 + 1) : ''));
                 if (this._appMode === 'midi') this._midiPersistSoon();
             },
-            clearGrid() {
+            /** Zero grid cells for one P page in the local model. */
+            _clearGridPageLocal(page) {
+                page = (page == null ? this.gridPageIdx : page) & 3;
+                const { step0, step1 } = this._pageStepRange(page);
+                const bank = this.bankIdx | 0;
                 for (let r = 0; r < 16; r++)
-                    for (let c = 0; c < 64; c++)
-                        this.gridData[this.bankIdx][r][c] = false;
-                this.repaintGrid();
+                    for (let c = step0; c < step1; c++)
+                        this.gridData[bank][r][c] = false;
+                return { page, step0, step1, bank };
+            },
+            /** Drop MIDI motion automation on steps belonging to this P page. */
+            _clearGridPageMidiMotion(page) {
+                if (this._appMode !== 'midi') return;
+                const { step0, step1 } = this._pageStepRange(page);
+                const bank = this.bankIdx | 0;
+                let lanes = this.midiMotion[bank];
+                if (!lanes || !lanes.length) return;
+                for (const lane of lanes)
+                    for (let c = step0; c < step1; c++)
+                        lane.steps[c] = null;
+                lanes = lanes.filter(lane => lane.steps.some(v => v != null));
+                this.midiMotion[bank] = lanes;
+                this._midiMotionDirty = true;
+            },
+            /** Push one cleared P page to Octopus hardware (lossless grid-row blobs). */
+            _clearGridPageOctopusTx(page) {
+                const { page: pg, bank } = this._clearGridPageLocal(page);
+                for (let r = 0; r < 16; r++)
+                    this._txGridRow(bank, r, pg, 0, 0);
+                return this._pageStepRange(pg);
+            },
+            clearGrid() {
+                const pg = this.gridPageIdx | 0;
+                const { step0, step1, page } = this._pageStepRange(pg);
                 if (this._appMode === 'midi') {
-                    this.log('Cleared grid (bank ' + 'ABCD' [this.bankIdx] + ') — local only in MIDI mode.');
+                    this._clearGridPageLocal(pg);
+                    this._clearGridPageMidiMotion(pg);
+                    this._motionRecLogged = false;
+                    this.repaintGrid();
+                    this.log('Cleared ' + this._pageLabel(page) + ' steps ' + (step0 + 1) + '–' + step1 +
+                        ' (bank ' + 'ABCD'[this.bankIdx] + ') — other pages unchanged.');
                     this._midiPersistSoon();
                     return;
                 }
-                // 1:1 mirror of hardware SEQ SETUP → Clear: active grid + P-locks +
-                // BOTH sounds reset to preset 0.  We clear locally for instant feedback,
-                // then let the device do the authoritative clear (it echoes the cleared
-                // rows + reset sound knobs back, so App and hardware stay identical).
-                this.txParam(CMD.SEQ_CLEAR, 0);
-                this.log('Cleared grid + P-locks + reset sounds (bank ' + 'ABCD' [this.bankIdx] + ')');
+                this._clearGridPageOctopusTx(pg);
+                this.repaintGrid();
+                this.log('Cleared ' + this._pageLabel(page) + ' steps ' + (step0 + 1) + '–' + step1 +
+                    ' (bank ' + 'ABCD'[this.bankIdx] + ') — other pages + sounds unchanged.');
             },
 
             // ── Pattern load (active bank only) ───────────────────────────────────────
@@ -6754,18 +7163,22 @@
                 const pat = SYNTH_PATTERNS[idx];
                 const bank = 'ABCD'[this.bankIdx];
                 if (this._appMode === 'midi') {
-                    this._applySynthPatternGrid(pat, this.bankIdx);
+                    const pg = this.gridPageIdx | 0;
+                    const { step0, step1 } = this._pageStepRange(pg);
+                    this._applySynthPatternGrid(pat, this.bankIdx, pg);
                     this.repaintGrid();
                     if (this.isPlaying) {
-                        this.visStep = 0;
-                        this._paintPlayhead(0, true);
-                        this._midiPlayStep(0);
+                        this.visStep = step0;
+                        this._paintPlayhead(step0, true);
+                        this._midiPlayStep(step0);
                     }
-                    this.log('MIDI melody pattern: ' + pat.name + ' → bank ' + bank + ' (steps 1–16)');
+                    this.log('MIDI melody pattern: ' + pat.name + ' → bank ' + bank + ' ' +
+                        this._pageLabel(pg) + ' (steps ' + (step0 + 1) + '–' + step1 + ')');
                     this._midiPersistSoon();
                     return;
                 }
-                this.log('Loading synth pattern: ' + pat.name + ' → bank ' + bank);
+                this.log('Loading synth pattern: ' + pat.name + ' → bank ' + bank + ' ' +
+                    this._pageLabel() + ' (steps ' + (this._pageStepRange().step0 + 1) + '–' + this._pageStepRange().step1 + ')');
                 this._suppressTx = true;
                 for (let r = 0; r < 8; r++)
                     for (let c = 0; c < 16; c++) this.setCell(r, c, false);
@@ -6799,18 +7212,22 @@
                 const pat = DRUM_PATTERNS[idx];
                 const bank = 'ABCD'[this.bankIdx];
                 if (this._appMode === 'midi') {
-                    this._applyDrumPatternGrid(pat, this.bankIdx);
+                    const pg = this.gridPageIdx | 0;
+                    const { step0, step1 } = this._pageStepRange(pg);
+                    this._applyDrumPatternGrid(pat, this.bankIdx, pg);
                     this.repaintGrid();
                     if (this.isPlaying) {
-                        this.visStep = 0;
-                        this._paintPlayhead(0, true);
-                        this._midiPlayStep(0);
+                        this.visStep = step0;
+                        this._paintPlayhead(step0, true);
+                        this._midiPlayStep(step0);
                     }
-                    this.log('MIDI drum pattern: ' + pat.name + ' → bank ' + bank + ' (steps 1–16)');
+                    this.log('MIDI drum pattern: ' + pat.name + ' → bank ' + bank + ' ' +
+                        this._pageLabel(pg) + ' (steps ' + (step0 + 1) + '–' + step1 + ')');
                     this._midiPersistSoon();
                     return;
                 }
-                this.log('Loading drum pattern: ' + pat.name + ' → bank ' + bank);
+                this.log('Loading drum pattern: ' + pat.name + ' → bank ' + bank + ' ' +
+                    this._pageLabel() + ' (steps ' + (this._pageStepRange().step0 + 1) + '–' + this._pageStepRange().step1 + ')');
                 this._suppressTx = true;
                 // ROM track mask: bit c = step c (LSB = step 0), matching the firmware sequencer.
                 if (pat.tracks) pat.tracks.forEach((mask, ti) => {
@@ -6873,13 +7290,14 @@
                 this._playLast = -1;
 
                 // Row 0 = top = highest note (firmware row0 = +12 st via kRowSemitone), row7 = root.
-                const synthLabels = ['C5', 'B4', 'A4', 'G4', 'F4', 'E4', 'D4', 'C4'];
                 const drumLabels = ['KICK', 'SNARE', 'CLAP', 'HH-C', 'HH-O', 'TOM-H', 'TOM-L', 'PERC'];
+                this._seqRowLabelEls = new Array(16);
                 // Explicit grid placement for every label/cell — keeps columns aligned for playhead geometry.
                 for (let r = 0; r < 16; r++) {
                     const lbl = document.createElement('div');
                     lbl.className = 'seq-row-label ' + (r < 8 ? 'lbl-synth' : 'lbl-drum');
-                    lbl.innerText = r < 8 ? synthLabels[r] : drumLabels[r - 8];
+                    lbl.innerText = r < 8 ? '—' : drumLabels[r - 8];
+                    if (r < 8) this._seqRowLabelEls[r] = lbl;
                     lbl.style.gridRow = String(r + 1);
                     lbl.style.gridColumn = '1';
                     g.appendChild(lbl);
@@ -6894,7 +7312,8 @@
                     }
                 }
 
-                // Playhead on the stage shell — outside #seq-grid-wrap paint containment.
+                // Playhead on dedicated layer — outside #seq-grid-wrap paint containment.
+                const phLayer = document.getElementById('seq-playhead-layer') || stage;
                 let ph = savedPh;
                 if (!ph) {
                     ph = document.createElement('div');
@@ -6902,20 +7321,21 @@
                     ph.setAttribute('aria-hidden', 'true');
                     this._playheadEl = ph;
                 }
-                stage.appendChild(ph);
+                phLayer.appendChild(ph);
                 if (typeof ResizeObserver !== 'undefined') {
                     this._phResizeOb = new ResizeObserver((entries) => {
+                        if (this.isPlaying) return;
                         const e = entries[0];
                         if (!e) return;
                         const { width, height } = e.contentRect;
                         const g = this._phGeom;
-                        if (g && Math.abs(width - g.stageW) < 3) return;
-                        if (g && Math.abs(width - g.stageW) < 1 && Math.abs(height - g.stageH) < 1) return;
+                        if (g && Math.abs(width - g.stageW) < 8 && Math.abs(height - g.stageH) < 8) return;
                         this._scheduleWindowPhResize();
                     });
                     this._phResizeOb.observe(stage);
                 }
                 this.repaintGrid();
+                this._updateSeqRowLabels();
                 this._paintPlayhead(this.visStep | 0, true);
             },
 
@@ -6970,15 +7390,27 @@
             repaintGrid() {
                 const bank = this.gridData[this.bankIdx];
                 const off = this.gridPageIdx * 16;
+                const len = Math.max(1, this.seqLen | 0);
+                const lanes = (this._appMode === 'midi') ? this.midiMotion[this.bankIdx | 0] : null;
                 for (let r = 0; r < 16; r++)
                     for (let c = 0; c < 16; c++) {
                         const cell = this._domGridCache[r][c];
                         if (!cell) continue;
-                        const on = !!bank[r][off + c];
+                        const abs = off + c;
+                        const on = !!bank[r][abs];
+                        const beyond = abs >= len;
                         if (cell._gridOn !== on) {
                             cell._gridOn = on;
                             cell.classList.toggle('active', on);
                         }
+                        cell.classList.toggle('beyond-len', beyond);
+                        let hasMotion = false;
+                        if (lanes && lanes.length) {
+                            for (const lane of lanes) {
+                                if (lane.steps[abs] != null) { hasMotion = true; break; }
+                            }
+                        }
+                        cell.classList.toggle('has-motion', hasMotion);
                     }
                 /* Grid cell toggles only — playhead stays until step/page changes. */
             },
@@ -7087,8 +7519,8 @@
                     const r = host.getBoundingClientRect();
                     if (!(r.width > 2 && r.height > 2)) return;
                     const dpr = window.devicePixelRatio || 1;
-                    const w = Math.max(44, Math.floor(r.width * dpr));
-                    const h = Math.max(44, Math.floor(r.height * dpr));
+                    const w = Math.max(28, Math.floor(r.width * dpr));
+                    const h = Math.max(28, Math.floor(r.height * dpr));
                     if (canvas.width !== w || canvas.height !== h) {
                         canvas.width = w;
                         canvas.height = h;
@@ -7102,38 +7534,38 @@
                     canvas,
                     ctx: null,
                     resize,
-                    phase: Math.random() * Math.PI * 2,
-                    amp: 0.04,
-                    hits: 0,
-                    lastStep: -1,
-                    histLen: 128,
-                    history: new Float32Array(128),
+                    phase: 0,
+                    amp: 0.02,
+                    driveNote: -1,
+                    lastHitMs: 0,
+                    histLen: 96,
+                    history: new Float32Array(96),
                     histIdx: 0,
                     lastTs: 0,
                     stroke: opts.stroke,
                     glow: opts.glow,
-                    gridRow0: opts.gridRow0,
-                    gridRow1: opts.gridRow1
+                    isDrum: !!opts.isDrum
                 };
             },
             _initMidiSeqScope() {
                 this._midiSeqScope = this._initMidiScopeHost(
                     document.getElementById('midi-seq-scope-host'),
                     document.getElementById('midi-seq-scope-canvas'),
-                    { stroke: '#ec4899', glow: 'rgba(236, 72, 153, 0.55)', gridRow0: 0, gridRow1: 8 }
+                    { stroke: '#ec4899', glow: 'rgba(236, 72, 153, 0.45)', isDrum: false }
                 );
             },
             _initMidiDrumScope() {
                 this._midiDrumScope = this._initMidiScopeHost(
                     document.getElementById('midi-drum-scope-host'),
                     document.getElementById('midi-drum-scope-canvas'),
-                    { stroke: '#06b6d4', glow: 'rgba(6, 182, 212, 0.55)', gridRow0: 8, gridRow1: 16 }
+                    { stroke: '#06b6d4', glow: 'rgba(6, 182, 212, 0.45)', isDrum: true }
                 );
             },
             _midiScopeViewActive() {
                 return document.getElementById('view-midi-inst')?.classList.contains('active');
             },
-            _tickMidiActivityScope(ts, s) {
+            /** Thin trace driven by actual MIDI note-ons (pitch + velocity), not grid/random. */
+            _tickMidiOutputScope(ts, s) {
                 if (!s || document.hidden) return;
                 if (!this._midiScopeViewActive()) return;
                 if (!s.lastTs) s.lastTs = ts;
@@ -7142,71 +7574,70 @@
                 const ctx = s.ctx || (s.ctx = s.canvas.getContext('2d'));
                 const w = s.canvas.width, h = s.canvas.height;
                 if (w < 8 || h < 8) return;
-                const step = this.isPlaying ? (this.visStep | 0) : -1;
-                if (step !== s.lastStep) {
-                    s.lastStep = step;
-                    if (step >= 0) {
-                        let hits = 0, energy = 0;
-                        const grid = this.gridData?.[this.bankIdx];
-                        if (grid) {
-                            for (let r = s.gridRow0; r < s.gridRow1; r++) {
-                                if (grid[r] && grid[r][step]) {
-                                    hits++;
-                                    energy += (r <= 9) ? 1.0 : (r >= 12 ? 0.5 : 0.72);
-                                }
-                            }
-                        }
-                        if (energy > 0) {
-                            const accent = (step % 4 === 0) ? 1.12 : 1.0;
-                            const hitAmp = Math.min(1.2, energy * 0.34 * accent);
-                            if (hitAmp > s.amp) s.amp = hitAmp;
-                            s.hits = Math.max(s.hits, hits);
-                        }
-                    }
-                }
-                const floor = this.isPlaying ? 0.03 : 0.02;
-                s.amp += (floor - s.amp) * (1 - Math.exp(-(this.isPlaying ? 5.0 : 2.0) * dt));
+
+                const floor = 0.015;
+                const decay = s.isDrum ? 14.0 : 8.0;
+                s.amp += (floor - s.amp) * (1 - Math.exp(-decay * dt));
                 if (s.amp < floor) s.amp = floor;
-                s.hits *= 0.90;
-                const amp = s.amp;
-                const omega = 5.0 + s.hits * 2.6 + amp * 7.5;
-                s.phase += omega * dt;
-                const n1 = Math.sin(s.phase);
-                const n2 = Math.sin(s.phase * 2.13 + 0.55) * 0.32;
-                const n3 = Math.sin(s.phase * 0.51 + 1.1) * 0.16;
-                const noise = (Math.random() - 0.5) * 0.10 * amp;
-                s.history[s.histIdx] = (n1 + n2 + n3 + noise) * amp;
+
+                const now = performance.now();
+                if (s.driveNote >= 0 && now - s.lastHitMs > (s.isDrum ? 120 : 280))
+                    s.driveNote = -1;
+
+                let sample = 0;
+                if (s.driveNote >= 0 && s.amp > floor + 0.02) {
+                    const freq = this._midiNoteFreq(s.driveNote);
+                    const visHz = s.isDrum
+                        ? Math.min(220, Math.max(40, freq * 0.35))
+                        : Math.min(1200, Math.max(80, freq * 0.5));
+                    s.phase += visHz * 2 * Math.PI * dt;
+                    const a = s.amp;
+                    if (s.isDrum) {
+                        const click = Math.sin(s.phase) * Math.exp(-(now - s.lastHitMs) * 0.022);
+                        sample = click * a * 0.95;
+                    } else {
+                        sample = (Math.sin(s.phase) + Math.sin(s.phase * 2) * 0.12) * a * 0.88;
+                    }
+                } else {
+                    sample = Math.sin(s.phase * 0.4) * s.amp * 0.08;
+                }
+
+                s.history[s.histIdx] = sample;
                 s.histIdx = (s.histIdx + 1) % s.histLen;
-                ctx.fillStyle = 'rgba(2, 2, 6, 0.28)';
+
+                const dpr = window.devicePixelRatio || 1;
+                ctx.setTransform(1, 0, 0, 1, 0, 0);
+                ctx.fillStyle = 'rgba(2, 2, 6, 0.48)';
                 ctx.fillRect(0, 0, w, h);
-                const cy = h * 0.5, pad = Math.max(2, w * 0.02), ampPx = h * 0.36;
-                ctx.strokeStyle = s.gridRow0 === 0 ? 'rgba(236, 72, 153, 0.14)' : 'rgba(6, 182, 212, 0.14)';
+                const pad = Math.max(1, Math.floor(w * 0.015));
+                const vPad = Math.max(2 * dpr, Math.floor(h * 0.14));
+                const plotH = Math.max(8, h - vPad * 2);
+                const cy = vPad + plotH * 0.5;
+                const ampPx = plotH * 0.16;
+                const cssLw = Math.min(2 * dpr, Math.max(1, Math.floor(plotH * 0.06)));
+                ctx.lineJoin = 'round';
+                ctx.lineCap = 'round';
+                ctx.shadowBlur = 0;
+                ctx.strokeStyle = s.isDrum ? 'rgba(6, 182, 212, 0.10)' : 'rgba(236, 72, 153, 0.10)';
                 ctx.lineWidth = 1;
                 ctx.beginPath();
                 ctx.moveTo(pad, cy);
                 ctx.lineTo(w - pad, cy);
                 ctx.stroke();
                 ctx.strokeStyle = s.stroke;
-                ctx.lineWidth = Math.max(0.75, w / 180);
-                ctx.shadowBlur = 3;
-                ctx.shadowColor = s.glow;
+                ctx.lineWidth = cssLw;
                 ctx.beginPath();
                 for (let i = 0; i < s.histLen; i++) {
                     const idx = (s.histIdx + i) % s.histLen;
                     const x = pad + (i / (s.histLen - 1)) * (w - pad * 2);
                     const y = cy - s.history[idx] * ampPx;
                     if (i === 0) ctx.moveTo(x, y);
-                    else {
-                        const px = pad + ((i - 1) / (s.histLen - 1)) * (w - pad * 2);
-                        const py = cy - s.history[(s.histIdx + i - 1) % s.histLen] * ampPx;
-                        ctx.quadraticCurveTo(px, py, (px + x) * 0.5, (py + y) * 0.5);
-                    }
+                    else ctx.lineTo(x, y);
                 }
                 ctx.stroke();
-                ctx.shadowBlur = 0;
             },
             _tickMidiSeqScope(ts) {
-                this._tickMidiActivityScope(ts, this._midiSeqScope);
+                this._tickMidiOutputScope(ts, this._midiSeqScope);
             },
 
             // ── Build knobs ───────────────────────────────────────────────────────────
@@ -7421,7 +7852,7 @@
             _tickDrumScope(ts) {
                 if (this._appMode === 'midi') {
                     this._tickMidiSeqScope(ts);
-                    this._tickMidiActivityScope(ts, this._midiDrumScope);
+                    this._tickMidiOutputScope(ts, this._midiDrumScope);
                     return;
                 }
                 const s = this._drumScope;
@@ -7495,9 +7926,11 @@
                 ctx.fillStyle = 'rgba(2, 2, 6, 0.28)';
                 ctx.fillRect(0, 0, w, h);
 
-                const cy = h * 0.5;
                 const pad = Math.max(2, w * 0.02);
-                const ampPx = h * 0.36;
+                const vPad = Math.max(2, Math.floor(h * 0.12));
+                const plotH = Math.max(8, h - vPad * 2);
+                const cy = vPad + plotH * 0.5;
+                const ampPx = plotH * 0.34;
 
                 ctx.strokeStyle = 'rgba(6, 182, 212, 0.14)';
                 ctx.lineWidth = 1;

@@ -775,8 +775,8 @@ Open **[octopus.isystem.app](https://octopus.isystem.app)** in Chrome or Edge ov
 
 | Tab | Content |
 |-----|---------|
-| **INSTRUMENTS** | Laser show, D-BEAM, harp synth, seq synth, drum scope |
-| **MIXER** | Levels, pans, mutes, master processing, insert wet controls |
+| **INSTRUMENTS** | Laser show, D-BEAM, harp synth, seq synth |
+| **MIXER** | Levels, pans, mutes, master processing, insert wet controls; **drum beat-reactive scope** (fits panel, no scroll) |
 | **SEQUENCER** | 64-step grid (P1–P4), banks, song editor, pattern loaders, arp |
 
 ### 9.2 Transport & authority
@@ -786,6 +786,33 @@ Header **PLAY / STOP / REC** and **BPM** field are **read-only reflectors**. Har
 ### 9.3 Utility bar
 
 SAVE · LOAD · RESET · SLOTS · CPY/PST · RND-H/RND-D · CLR · mutes · DBEAM · MIDI routing · MON · HELP
+
+App version is shown in the **browser tab title**, the startup log line, and **HELP** — not in the header bar (keeps the compact transport/tool row visible on smaller screens).
+
+### 9.3.1 Pattern pages (P1–P4) & grid tools
+
+Each **bank A–D** holds up to **64 steps**. The App shows **16 steps at a time** on the SEQUENCER grid:
+
+| Control | Scope |
+|---------|--------|
+| **A–D** | Four independent patterns (banks) |
+| **P1–P4** | 16-step windows within the active bank (steps 1–16 … 49–64) |
+| **LEN** | Pattern length 16 / 32 / 48 / 64 — steps beyond LEN are dimmed but pages stay clickable |
+
+**Grid tools** (header + pattern dropdowns) operate on the **active P page only** — the 16 columns currently shown — not the whole bank:
+
+| Tool | Behaviour |
+|------|-----------|
+| **CPY / PST** | Copy / paste the active P page (16×16 cells) within or across pages |
+| **CLR** | Clear active P page only — other pages, bank data, and sounds unchanged |
+| **RND-H / RND-D** | Randomize melody (rows 1–8) or drum (rows 9–16) on the active P page |
+| **MELODY / DRUM PATTERNS** | Factory ROM loads into the active P page (16 steps) |
+
+Click **P1–P4** to lock the grid view (**user lock**): while playing, the cyan playhead still tracks hardware (Octopus) or the local clock (MIDI), but the grid won't auto-switch pages until you pick another P page.
+
+**Playhead:** rendered on a dedicated GPU layer (`#seq-playhead-layer`) — smooth during mouse hover, grid repaints, and page changes. See [docs/app_god_rules.md](./docs/app_god_rules.md) for the full audit checklist.
+
+**Octopus linked — CLR note:** App **CLR** is page-local. Hardware **SEQ SETUP → Clear** (full wipe + sound reset) is separate and is **not** triggered by the header CLR button.
 
 ### 9.4 Universal MIDI Controller mode *(OctopusApp v6.2.07 — shipped)*
 
@@ -802,9 +829,9 @@ When **no Octopus PRO XL** is connected (★ port absent from the MIDI list), Oc
 
 **Octopus hard priority (v6.2.07):** while a ★ Octopus port is connected, the App **locks to Octopus mode**. You cannot pick a non-★ port from the dropdown — unplug Octopus to drive third-party MIDI gear. If Octopus and another interface are both plugged in, ★ always wins auto-connect.
 
-**INSTRUMENTS (MIDI mode)** — seq synth panel (channel, program change, 8 CC knobs, activity canvas) and drum machine panel (per-row GM notes, scope canvas). No laser, D-BEAM, or studio mixer.
+**INSTRUMENTS (MIDI mode)** — seq synth panel (channel, program change, 8 CC knobs in a compact 4×2 grid, **SEQ ACT** scope canvas) and drum machine panel (per-row GM notes, **DRUM ACT** scope). Layout fits the panel with no scrollbars. No laser, D-BEAM, or studio mixer.
 
-**SEQUENCER (MIDI mode)** — same 64-step grid (banks A–D, pages P1–P4). The App runs its own BPM clock, playhead, and fires MIDI notes each step (melody rows 1–8 scale-aware; drum rows 9–16 GM-style). **Song mode** (🔗 chain toggle) plays up to 16 chain steps per slot (bank + repeats), matching hardware behaviour. **MELODY PATTERNS** and **DRUM PATTERNS** dropdowns load factory patterns into the active bank; notes go out on Play.
+**SEQUENCER (MIDI mode)** — same 64-step grid (banks A–D, pages P1–P4). The App runs its own BPM clock, playhead, and fires MIDI notes each step (melody rows 1–8 scale-aware; drum rows 9–16 GM-style). **ARP** in the utility bar expands melody rows per step (pattern / rate / gate). **REC** can capture CC automation per step (purple dots on the grid). **Song mode** (🔗 chain toggle) plays up to 16 chain steps per slot (bank + repeats), matching hardware behaviour. **MELODY PATTERNS** and **DRUM PATTERNS** load factory patterns into the **active P page** (16 steps); notes go out on Play. **CPY/PST/CLR/RND** also scope to the active P page — see [§9.3.1](#931-pattern-pages-p1p4--grid-tools).
 
 Octopus-only actions (SAVE, LOAD, RESET, SLOTS, CPU telemetry) are hidden in MIDI mode.
 
@@ -1018,6 +1045,7 @@ Authoritative list: **`code_info.h` §9**. Targets for the next upgrade:
 | 1.2 | 2026-06-23 | Planned §9.4 — OctopusApp universal MIDI Controller mode (v6.2) |
 | 1.3 | 2026-06-23 | §9.4 shipped — MIDI Controller beginner guides (Mac/Windows/DAW); OctopusApp v6.2.00 |
 | 1.4 | 2026-06-25 | v6.2.07 / fw 6.1.01 — Octopus hard priority, mode-separation hardening, SETTINGS/MOTION reset no reboot |
+| 1.5 | 2026-06-25 | v6.2.07 — P-page grid tools (CPY/PST/CLR/RND/patterns), GOD playhead layer, MIDI ARP/motion, scope layout |
 
 ---
 

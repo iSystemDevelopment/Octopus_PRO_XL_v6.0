@@ -6,8 +6,8 @@
 
 | | |
 |---|---|
-| **Firmware** | **6.1.00** (field baseline — flash via USB) |
-| **OctopusApp** | **6.2.00** (Web MIDI + MIDI Controller mode — deploy `OctopusApp.html`) |
+| **Firmware** | **6.1.01** (SETTINGS/MOTION reset without reboot — flash via USB) |
+| **OctopusApp** | **6.2.07** (Web MIDI + MIDI Controller mode — deploy `OctopusApp.html`) |
 | **Platform** | ESP32-S3 (dual-core, FreeRTOS, ESP-IDF 5) |
 | **Author** | DIODAC ELECTRONICS / [iSystem](https://isystem.app) |
 | **Launch App** | **[octopus.isystem.app](https://octopus.isystem.app)** |
@@ -66,7 +66,7 @@ NVS flash uses namespace **`octopus`** (`SETTINGS_VERSION 0x0615` for struct lay
 
 See [User Manual §3.4 — App-connected mode](./user_manual.md#34-app-connected-mode).
 
-### Universal MIDI Controller mode *(OctopusApp v6.2.00 — shipped)*
+### Universal MIDI Controller mode *(OctopusApp v6.2.07 — shipped)*
 
 With **no Octopus hardware** connected, OctopusApp runs as a **standalone MIDI controller**: pick any USB MIDI interface from the port dropdown, compose on the 64-step grid, and send **standard MIDI** (notes, Control Change, Program Change) to external synths, drum machines, or a DAW. The App owns transport and tempo in this mode; laser, D-BEAM, NVS SAVE/LOAD, and SysEx sync stay **Octopus-only**.
 
@@ -111,7 +111,7 @@ Consult **`code_info.h`** before changing SysEx commands or persistence.
 
 See **[DEPLOYMENT.md](./DEPLOYMENT.md)** for production checklists and cache headers.
 
-### OctopusApp (`octopus.isystem.app`) — **v6.2.00**
+### OctopusApp (`octopus.isystem.app`) — **v6.2.07**
 
 1. Upload `OctopusApp.html` to the VPS web root for the `octopus` subdomain.
 2. Serve over **HTTPS** (Web MIDI requires a secure context).
@@ -127,7 +127,7 @@ No server-side MIDI — all USB MIDI runs in the browser.
 
 ### Firmware
 
-Flash via USB after field-testing `6.1.00` on hardware. Include `partitions.csv` for the 256 KB NVS layout.
+Flash via USB after field-testing **6.1.01** on hardware. Include `partitions.csv` for the 256 KB NVS layout.
 
 ---
 

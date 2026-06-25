@@ -10,7 +10,8 @@ Phases **0–7** complete (shipped at v6.2.00). Deploy checklist: **[DEPLOYMENT.
 
 > **Current `APP_VERSION`: `6.2.07` · `SYSTEM_FW_VERSION`: `6.1.01`.**
 > App post-ship work (6.2.01–6.2.07): song mode + playhead refactor, shared-room
-> scene presets, Link Aux toggle, mode-separation hardening, Octopus hard priority.
+> scene presets, Link Aux toggle, mode-separation hardening, Octopus hard priority,
+> P-page grid tools, GOD playhead layer, MIDI ARP/motion, scope layout polish.
 > Firmware 6.1.01: SETTINGS/MOTION scoped reset no longer reboots the ESP.
 
 ## Ship checklist (before / after upload)
@@ -22,6 +23,9 @@ Phases **0–7** complete (shipped at v6.2.00). Deploy checklist: **[DEPLOYMENT.
 - [ ] Smoke test: title **v6.2.07**, badge **MIDI OUT**, Play → MIDI notes
 - [ ] Smoke test: ★ Octopus → **Octopus ON**, SysEx sync unchanged
 - [ ] Smoke test (MIDI mode): activity scopes animate while playing (GPU gate fix)
+- [ ] Smoke test (MIDI INSTRUMENTS): seq CC panel + SEQ ACT scope — **no vertical scrollbar**
+- [ ] Smoke test (Octopus MIXER): drum scope fits grid — **no vertical micro-scrollbar**
+- [ ] Smoke test: P-page CPY/PST/CLR — copy P2 → paste P3 leaves P2 unchanged
 - [ ] Smoke test: ★ Octopus connected → non-Octopus port selection refused (hard priority)
 - [ ] Smoke test: RESET → Settings/Motion = App reloads, **no** device reboot; FULL/Banks = reboot
 - [ ] Optional: git tag `octopusapp-v6.2.07` · `fw-v6.1.01`
@@ -53,6 +57,18 @@ Details: [docs/midi_controller_mode.md](./docs/midi_controller_mode.md) → *Sco
 - [x] **SETTINGS / MOTION reset without ESP reboot** — `audio.cpp`: `if (isReset)` sends ACK, then reboots only for FULL/BANKS and `continue`s for SETTINGS/MOTION (no `esp_restart`); `OctopusApp.html`: scope-aware `CMD.SCOPED_RESET` ACK (`_resetReboots()` → reload + re-pull for SETTINGS/MOTION, reboot-wait for FULL/BANKS).
 - [x] SAVE and FULL / BANKS+PATS reset keep their reboot.
 - [x] Confirm dialog, Help modal, RESET popup, `code_info.h`, `octopus_web.html` updated per-scope.
+
+## Playhead & P-page polish ✅ (App v6.2.07)
+
+Details: **[docs/app_god_rules.md](./docs/app_god_rules.md)** · **[CHANGELOG.md](./CHANGELOG.md)** [6.2.07].
+
+- [x] `#seq-playhead-layer` — dedicated compositor; hover-safe geometry
+- [x] P1–P4 always clickable; `beyond-len` dim; manual P = user lock (no auto page steal)
+- [x] CPY/PST/CLR/RND + pattern load → **active P page only**
+- [x] LOAD / SETTINGS·MOTION RESET → post-sync drain → page reload
+- [x] MIDI ARP (utility bar) + motion record on REC
+- [x] MIXER drum scope + MIDI seq scope — fit panel, no scrollbars
+- [x] Header version badge removed (Help + title + log)
 - [ ] **Reflash firmware v6.1.01** to devices (the no-reboot behaviour needs the new firmware; App tolerates old firmware too).
 
 ---

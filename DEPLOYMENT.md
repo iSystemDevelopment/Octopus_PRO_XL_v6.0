@@ -7,7 +7,7 @@ Production hosting for the **browser App** and **product site**. Firmware is fla
 | **OctopusApp** | [octopus.isystem.app](https://octopus.isystem.app) | `OctopusApp.html` |
 | **Product site** | [octopus-info.isystem.app](https://octopus-info.isystem.app) | `octopus_web.html` → `index.html` |
 
-**Versions:** Firmware **6.1.01** · OctopusApp **6.2.07** (Universal MIDI Controller mode, Octopus hard priority, no-reboot Settings/Motion reset).
+**Versions:** Firmware **6.1.01** · OctopusApp **6.2.07** (Universal MIDI Controller, Octopus hard priority, P-page grid tools, GOD playhead, no-reboot Settings/Motion reset).
 
 ---
 
@@ -208,11 +208,13 @@ Run in **Google Chrome** (or Edge) on **HTTPS**:
 | 6 | Share preview | [FB Debugger](https://developers.facebook.com/tools/debug/) on `https://octopus.isystem.app` shows **octopus-app-hero** image + title |
 | 7 | Sequencer | Grid edit, **Play** / **Stop**, playhead moves at BPM |
 | 8 | MIDI notes | External synth or loopback receives notes on step advance |
-| 9 | INSTRUMENTS | CC knob sends MIDI; PC on change; scopes animate |
-| 10 | Persistence | Reload → pattern + song chain restored; **EXP** includes `songData` |
-| 11 | Help | **HELP** → **MIDI CONTROLLER** tab documents song mode + patterns |
-| 12 | Regression | Reconnect ★ Octopus → full SysEx sync identical to v6.1 behaviour |
-| 13 | Octopus lockout | With ★ + another port plugged in, picking non-★ reverts to ★; unplug ★ → MIDI OUT available |
+| 9 | INSTRUMENTS | CC knob sends MIDI; PC on change; SEQ ACT / DRUM ACT scopes animate; **no panel scrollbars** |
+| 10 | P-page tools | LEN=64 → copy P2, paste P3 → P2 unchanged; CLR clears active P page only |
+| 11 | Persistence | Reload → pattern + song chain restored; **EXP** includes `songData` |
+| 12 | Help | **HELP** → **MIDI CONTROLLER** tab documents song mode + patterns + P-page tools |
+| 13 | Regression | Reconnect ★ Octopus → full SysEx sync identical to v6.1 behaviour |
+| 14 | Octopus lockout | With ★ + another port plugged in, picking non-★ reverts to ★; unplug ★ → MIDI OUT available |
+| 15 | MIXER scope | Octopus ON → MIXER tab → drum scope visible, no vertical micro-scrollbar |
 
 ### MIDI Controller production notes
 

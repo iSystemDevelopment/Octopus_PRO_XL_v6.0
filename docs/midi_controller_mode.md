@@ -1,6 +1,6 @@
 # OctopusApp — Universal MIDI Controller Mode
 
-**Status:** **Shipped** · **OctopusApp v6.2.00** (browser-only; **firmware unchanged at 6.1.00**)
+**Status:** **Shipped** · **OctopusApp v6.2.07** (browser-only; pairs with firmware **6.1.01**)
 
 Authoritative build plan for the dual-mode App: **Octopus linked** (current v6.1 behaviour) vs **MIDI controller** (standalone sequencer + CC/PC to any USB MIDI interface).
 
@@ -178,7 +178,7 @@ Each phase ends with a **verification checklist** before starting the next.
 2. Pitch from scale + row + octave + transpose (`grid row 0 = lowest scale degree`).
 3. Drum rows → GM note map (configurable in phase 6).
 4. `toggleCell` updates local grid only (no `CMD.GRID_TOG`) in MIDI mode.
-5. CPY/PST/RND/CLR remain local-only.
+5. CPY/PST/RND/CLR and pattern load — active **P page** only (16 steps); local-only in MIDI mode (no grid SysEx).
 
 **Deliverables**
 
@@ -320,6 +320,27 @@ Architecture remained sound after ship; these close the lifecycle/hygiene gaps f
 3. **Defense-in-depth setter guards** — `setPlayMode`, `toggleMute`, `toggleDbeam`, `setDrumWave`, `setDrumKit`, `toggleLaserShow`, `toggleMidiHue`, `setHarpWave`, `setSeqWave`, `setHarpOctave`, `setPbRange`, `setPbEnable` now early-return in MIDI mode, so a stray programmatic call can't mutate Octopus shadow state behind the hidden `.octopus-only` UI. (Shared setters — `setSeqOctave`, `setTranspose`, `setGlobalScale`, `loadSynthPat`, `loadDrumPat`, `randNotes` — keep their existing per-mode branches.)
 4. **Lazy Octopus DOM** — `_ensureOctopusKnobs()` builds the five knob panels once, on first entry into the Octopus shell (`setAppMode` for `octopus`/`disconnected`, plus a boot fallback). A pure **MIDI OUT** session never builds them; **disconnected** still shows the Octopus shell preview and builds knobs once.
 5. **Octopus hard priority / MIDI lockout** — while a live ★ Octopus port exists, the App auto-switches to Octopus and refuses non-Octopus port selection (see "Octopus hard priority" above). MIDI mode is available only with no Octopus connected.
+
+---
+
+## Playhead, P-pages & grid tools (v6.2.07)
+
+Shared by **Octopus linked** and **MIDI Controller** modes unless noted.
+
+| Topic | Detail |
+|-------|--------|
+| **Playhead** | `#seq-playhead-layer` — compositor-only cyan bar; no hover stutter; Octopus = STEP_SYNC, MIDI = local clock |
+| **P1–P4** | 16-step edit windows within active bank; always clickable; beyond-LEN steps dimmed |
+| **User lock** | Manual P click locks grid view; playhead still tracks — auto page-follow disabled until you change P |
+| **CPY / PST** | Active P page only (16 columns) |
+| **CLR** | Active P page only — no full-bank wipe, no hardware SEQ_CLEAR, no sound reset |
+| **RND-H / RND-D** | Active P page, melody or drum rows |
+| **Pattern dropdowns** | Factory melody/drum ROM → active P page (16 steps) |
+| **MIDI ARP** | Utility bar — melody rows only; persists in `localStorage` / EXP |
+| **MIDI motion** | REC captures CC per step; purple grid dots; replays on Play |
+| **Scopes** | MIXER drum scope + INSTRUMENTS SEQ ACT canvas fit their cells — no micro-scrollbars |
+
+Authoritative checklist: [docs/app_god_rules.md](./app_god_rules.md).
 
 ---
 
