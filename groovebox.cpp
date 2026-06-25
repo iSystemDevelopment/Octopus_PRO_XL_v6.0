@@ -591,13 +591,34 @@ const DrumPatternROM DRUM_PATTERNS[NUM_DRUM_PATS] PROGMEM = {
 /* ── 9. Grid cursor state (declared extern in groovebox.h) ───────────────── */
 std::atomic<int> seqUI_row{ 0 };
 std::atomic<int> seqUI_col{ 0 };
-std::atomic<int> seqUI_page{ 0 }; /* 0 = synth rows 0-7, 1 = drum rows 8-15 */
+std::atomic<int> seqUI_page{ 0 };     /* 0 = synth rows 0-7, 1 = drum rows 8-15           */
+std::atomic<int> seqUI_stepPage{ 0 }; /* 0-3 = step window 1-16 / 17-32 / 33-48 / 49-64    */
 
 /* ═══════════════════════════════════════════════════════════════════════════
  * 10. GRID EDITOR NAVIGATION + RENDER
- * Vertical scroll wraps synth(0-7) → drum(0-7) → adjacent bank, mirroring the
- * horizontal L/R bank wrap so both axes feel continuous.
+ * Vertical scroll wraps synth(0-7) → drum(0-7) → adjacent bank.  Horizontal L/R
+ * runs col 0-15 → next 16-step page (of the 64-step pattern, page count bounded by
+ * seqLength) → adjacent bank, so both axes feel continuous across all 64 steps.
  * ═══════════════════════════════════════════════════════════════════════════ */
+/* Step pages of the active pattern (16 cols each), 1-4 bounded by seqLength. */
+static inline int seqUI_numStepPages() {
+  int len = (int)seqLength.load(std::memory_order_relaxed);
+  if (len < 1) len = 1;
+  int pages = (len + 15) / 16;
+  if (pages < 1) pages = 1;
+  if (pages > 4) pages = 4;
+  return pages;
+}
+/* Active step page, clamped to range (self-heals after a LEN shrink). */
+static inline int seqUI_curStepPage() {
+  const int pages = seqUI_numStepPages();
+  int sp = seqUI_stepPage.load(std::memory_order_relaxed);
+  if (sp < 0) sp = 0;
+  if (sp >= pages) sp = pages - 1;
+  seqUI_stepPage.store(sp, std::memory_order_relaxed);
+  return sp;
+}
+
 void seqUI_moveUp() {
   const int row = seqUI_row.load(std::memory_order_relaxed);
   if (row > 0) { seqUI_row.store(row - 1, std::memory_order_relaxed); return; }
@@ -627,15 +648,32 @@ void seqUI_moveDown() {
 void seqUI_moveLeft() {
   const int col = seqUI_col.load(std::memory_order_relaxed);
   if (col > 0) { seqUI_col.store(col - 1, std::memory_order_relaxed); return; }
+  /* Off the left edge: step back one page; on page 0, wrap to prev bank's last page. */
+  const int sp = seqUI_curStepPage();
   seqUI_col.store(15, std::memory_order_relaxed);
-  seqUI_setBank(seqUI_gridBank() - 1);
+  if (sp > 0) {
+    seqUI_stepPage.store(sp - 1, std::memory_order_relaxed);
+    displayDirty.store(true, std::memory_order_release);
+  } else {
+    seqUI_setBank(seqUI_gridBank() - 1);
+    seqUI_stepPage.store(seqUI_numStepPages() - 1, std::memory_order_relaxed);
+  }
 }
 
 void seqUI_moveRight() {
   const int col = seqUI_col.load(std::memory_order_relaxed);
   if (col < 15) { seqUI_col.store(col + 1, std::memory_order_relaxed); return; }
+  /* Off the right edge: step to next page; on the last page, wrap to next bank page 0. */
+  const int sp    = seqUI_curStepPage();
+  const int pages = seqUI_numStepPages();
   seqUI_col.store(0, std::memory_order_relaxed);
-  seqUI_setBank(seqUI_gridBank() + 1);
+  if (sp < pages - 1) {
+    seqUI_stepPage.store(sp + 1, std::memory_order_relaxed);
+    displayDirty.store(true, std::memory_order_release);
+  } else {
+    seqUI_setBank(seqUI_gridBank() + 1);
+    seqUI_stepPage.store(0, std::memory_order_relaxed);
+  }
 }
 
 void seqUI_selectBank(int bank) {
@@ -646,8 +684,9 @@ void seqUI_toggleStep() {
   const int page = seqUI_page.load(std::memory_order_relaxed) & 1;
   const int row  = seqUI_row.load(std::memory_order_relaxed);
   const int col  = seqUI_col.load(std::memory_order_relaxed);
-  const int hwRow = (page == 0) ? row : (row + 8);
-  toggleHardwareGridStep((uint8_t)hwRow, (uint8_t)col);
+  const int hwRow  = (page == 0) ? row : (row + 8);
+  const int absCol = col + seqUI_curStepPage() * 16;   /* absolute step 0-63 */
+  toggleHardwareGridStep((uint8_t)hwRow, (uint8_t)absCol);
 }
 
 /* ── Matrix grid renderer ────────────────────────────────────────────────── */
@@ -659,10 +698,16 @@ void seqUI_renderMatrix() {
   const int page     = seqUI_page.load(std::memory_order_relaxed) & 1;
   const int curRow   = seqUI_row.load(std::memory_order_relaxed);
   const int curCol   = seqUI_col.load(std::memory_order_relaxed);
-  const int playhead = (int)seqCurrentStep.load(std::memory_order_relaxed) & 15;
-  const int length   = std::max(1, std::min(16,
+  const int stepPage = seqUI_curStepPage();
+  const int base     = stepPage * 16;                 /* first absolute step on this page */
+  const int pages    = seqUI_numStepPages();
+  const int seqLen   = std::max(1, std::min(64,
                                   (int)seqLength.load(std::memory_order_relaxed)));
   const bool playing = seqPlaying.load(std::memory_order_relaxed);
+  const int curStep  = (int)seqCurrentStep.load(std::memory_order_relaxed);
+  /* Playhead column on THIS page only (−1 if the current step is on another page). */
+  const int phCol    = (playing && curStep >= base && curStep < base + 16)
+                         ? (curStep - base) : -1;
 
   /* [gbox OPT-7] Prefetch the 8 row words once instead of 128 per-cell function
    * calls; the cell test below is a single bitwise AND. No behaviour change.    */
@@ -676,38 +721,37 @@ void seqUI_renderMatrix() {
     for (int col = 0; col < 16; ++col) {
       const int x = col * STEP_W;
       const int y = 9 + row * STEP_H;
+      const int absStep = base + col;
 
-      if (col >= length) {
+      if (absStep >= seqLen) {
         display.drawRect(x + 1, y + 1, STEP_W - 2, STEP_H - 2, SH110X_WHITE);
         display.drawLine(x + 1, y + 1, x + STEP_W - 2, y + STEP_H - 2, SH110X_WHITE);
         continue;
       }
 
-      const bool active   = (rowData[row] & (1ull << col)) != 0;
+      const bool active   = (rowData[row] & (1ull << absStep)) != 0;
       const bool isCursor = (row == curRow && col == curCol);
 
       if (active) display.fillRect(x + 1, y + 1, STEP_W - 2, STEP_H - 2, SH110X_WHITE);
       else        display.drawRect(x + 1, y + 1, STEP_W - 2, STEP_H - 2, SH110X_WHITE);
 
-      if (col == playhead && playing)
+      if (col == phCol)
         display.drawFastHLine(x + 2, y + STEP_H - 2, STEP_W - 4, SH110X_WHITE);
       if (isCursor)
         display.drawRect(x, y, STEP_W, STEP_H, SH110X_WHITE);
     }
   }
 
-  /* ── Top status bar — title + live cursor read-out CONSOLIDATED ──────────────
-   * The R/C/STEP status used to sit on its OWN bottom row (y=57) where it
-   * overdrew the lowest grid steps.  It now shares the inverted top bar with the
-   * bank/page tag in one compact ≤21-char line ("A SYN R1C01 S01/16"), so it is
-   * always visible AND the full 8×16 grid is free of text overlap.  Cursor-aware:
-   * the bank/page + R/C reflect wherever the edit cursor is.                     */
+  /* ── Top status bar — bank · synth/drum · step-page · cursor read-out ─────────
+   * One inverted ≤21-char line, e.g. "A SYN P2/4 R1 S20/64": bank, page n of total,
+   * cursor row, and the cursor's ABSOLUTE step (1-64) of seqLength — so 64-step
+   * paging is legible and the 8×16 grid stays free of text overlap.              */
   display.fillRect(0, 0, 128, 8, SH110X_WHITE);
   display.setTextColor(SH110X_BLACK);
   display.setCursor(2, 0);
-  display.printf("%c %s R%dC%02d S%02d/%d",
+  display.printf("%c %s P%d/%d R%d S%02d/%d",
                  'A' + bank, page == 0 ? "SYN" : "DRM",
-                 curRow + 1, curCol + 1, playhead + 1, length);
+                 stepPage + 1, pages, curRow + 1, base + curCol + 1, seqLen);
   display.setTextColor(SH110X_WHITE);
 }
 

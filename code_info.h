@@ -42,6 +42,11 @@
  *     DC bias, DAC threshold, D-BEAM expression, SNR, system report, fog reject)
  *   • [6.1.01] SETTINGS / MOTION scoped reset applies live with NO reboot
  *     (settings_save_task ACKs then `continue`s; only FULL / BANKS+PATS restart)
+ *   • Hardware SEQ MATRIX step pages — `seqUI_stepPage` (0–3) pages the 16×8 OLED
+ *     window across the full pattern (up to 64 steps, bounded by LEN); encoder
+ *     L/R at column 0/15 changes page before bank wrap; status bar shows
+ *     `A SYN P2/4 R1 S20/64` (absolute step + length); playhead column on current
+ *     page only; steps beyond LEN crossed out (parity with App P1–P4).
  *   • [drum-voice refinements, same-day] Classic-leaning snare / clap / metal-hat
  *     synthesis: snare = body wavetable + bandpassed rattle + click transient;
  *     clap = per-kit bandpass triple-burst with a noise layer; hats = per-kit
@@ -733,11 +738,7 @@
  * ═══════════════════════════════════════════════════════════════════════════
  * 9. FUTURE WORK
  *
- *   Planned for the next upgrade (not in v6.1.01 as-shipped):
- *
- *   • Hardware SEQ MATRIX step pages — pattern length supports up to 64 steps, but
- *     the OLED matrix editor shows only 16 at a time (steps 17–63 today: OctopusApp
- *     P1–P4 only).  Add on-device step paging to match the App.
+ *   Planned for the next upgrade:
  *
  *   • OLED P-lock lane editor — motion record + playback work during performance;
  *     add a full-screen lane/param editor on hardware (today: clear/wipe only).

@@ -13,6 +13,10 @@ Versioning aligns with firmware `SYSTEM_FW_VERSION` in `code_info.h`.
 
 Firmware patch — scoped-reset reboot policy plus a same-day **drum-voice refinement** pass for more classic-sounding metals, clap and snare. Pairs with OctopusApp [6.2.07](#6207--2026-06-25). Reflash required to get the no-reboot behaviour and the new drum voicing; the shipped App tolerates both old and new firmware.
 
+### Added
+
+- **Hardware SEQ MATRIX step pages** — `seqUI_stepPage` (0–3) pages the OLED 16×8 matrix across the full pattern (up to 64 steps, bounded by `seqLength`). Encoder L/R at column 0/15 advances step page before bank wrap; `seqUI_toggleStep()` uses absolute column `col + stepPage×16`; status bar `P%n/%d` + absolute step `S%02d/%d`; playhead underline on the current page only; steps beyond LEN crossed out (parity with OctopusApp P1–P4).
+
 ### Changed
 
 - **SETTINGS / MOTION scoped reset no longer reboots the ESP.** They were already applied live by `applyResetScope()`, but `settings_save_task` (`audio.cpp`) still called `esp_restart()` afterwards. The `if (isReset)` branch now sends the `CMD_SCOPED_RESET` ACK and reboots **only** for `ResetScope::FULL` / `BANKS_PATTERNS`; for SETTINGS / MOTION it skips the restart and `continue`s. The App reloads on the ACK and re-pulls the fresh settings/motion image via `APP_SYNC_REQ`. SAVE and FULL / BANKS+PATS reset keep their reboot.

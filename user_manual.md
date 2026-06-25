@@ -325,7 +325,7 @@ This section documents the **musical and signal-processing semantics** underlyin
 
 ### 7.1 Sequencer grid topology
 
-The sequencer stores patterns as **64 steps × 16 rows** per bank. Hardware and App present a **16×8 window** at a time; position within the full 64 steps is selected by **page** (App: P1–P4). The hardware matrix editor currently covers **steps 1–16 only** — see [§12.C](#c-planned-upgrades-future-work).
+The sequencer stores patterns as **64 steps × 16 rows** per bank. Hardware and App present a **16×8 window** at a time; position within the full 64 steps is selected by **step page** (App: **P1–P4**; hardware SEQ MATRIX: encoder L/R at column 1 or 16).
 
 #### Row assignment
 
@@ -369,9 +369,11 @@ flowchart TB
   …
  row 8   [■]      [ ]         [ ]
 
- • Horizontal wrap at column 16 → previous/next bank
- • Vertical wrap at row 1/8 → switch SYN/DRM page or adjacent bank
- • Encoder click → toggle step at cursor
+ • Horizontal wrap at column 16 → previous/next **step page** (P1–P4, count bounded by LEN); on the last page, wrap to the next bank at page 1
+ • Horizontal wrap at column 1 → previous step page; on page 1, wrap to the previous bank's last page
+ • Vertical wrap at row 1/8 → switch SYN/DRM view or adjacent bank
+ • Encoder click → toggle step at cursor (absolute step 1–64)
+ • Status bar (inverted top line) — e.g. `A SYN P2/4 R1 S20/64`: bank, synth/drum view, step page, cursor row, absolute step / pattern length
 ```
 
 ### 7.2 Arpeggiator pattern reference
@@ -647,6 +649,8 @@ Pattern management and sequencer arp (**13 items**).
 | Item | Function |
 |------|----------|
 | Open Grid | Enter 16×8 step editor ([§7.1](#71-sequencer-grid-topology)) |
+
+**On-device paging:** pattern **Length** (16 / 32 / 48 / 64 in SEQ SETUP) sets how many step pages exist (1–4). The matrix always shows 16 columns; move the encoder past column 16 (or before column 1) to change step page. Steps beyond **Length** appear crossed out. The playhead underline appears only when the running step is on the visible page.
 
 ---
 
@@ -1005,6 +1009,9 @@ Octopus **linked** mode matches firmware **6.1.01** (including SETTINGS/MOTION r
 | Lost MIDI pattern after refresh | Patterns live in browser `localStorage` — use **EXP** before clearing site data |
 | Cannot pick non-★ MIDI port | **Expected** while Octopus is plugged in (v6.2.07 lockout) — unplug ★ to use MIDI Controller mode |
 | Badge stuck Octopus OFF | No port selected, or waiting for sync — pick ★ for Octopus ON; with no ★, pick any output for MIDI OUT |
+| OLED stuck **APP CONNECTED** after closing the App tab | Known issue — heartbeat may not release immediately; wait ~5 s or power-cycle. Tracked in `todo.md` |
+| App stale after reconnect / Octopus switch | Known issue — full `APP_SYNC_REQ` reload may not run; try hard refresh or replug. Tracked in `todo.md` |
+| Harp beams affect sequencer sound | Known issue — laser/D-BEAM crosstalk under investigation. Tracked in `todo.md` |
 | Lost pattern after power | Perform SAVE → Full Save |
 | Stuck notes | Short SCALE on HARP dashboard (panic) |
 | Factory restore | Boot with OC+SCALE held, or RESET → Full Reset (instant reboot, wipe on next boot) |
@@ -1031,12 +1038,19 @@ Cosmic Saw · Quantum Sq · Pulsar 25% · Stellar Tri · Nebula Organ · Astral 
 
 Authoritative list: **`code_info.h` §9**. Targets for the next upgrade:
 
-1. **Hardware matrix step pages** — on-device editing for steps 17–64 (App P1–P4 today).
-2. **OLED P-lock lane editor** — full-screen motion lane editing on hardware.
-3. **External MIDI OUT** — channel-voice output via a WiFi/BLE coprocessor path.
-4. **OctopusApp motion-matrix editor** — per-step P-lock editing in the browser.
+1. **OLED P-lock lane editor** — full-screen motion lane editing on hardware.
+2. **External MIDI OUT** — channel-voice output via a WiFi/BLE coprocessor path.
+3. **OctopusApp motion-matrix editor** — per-step P-lock editing in the browser.
 
-### D. Document revision
+### D. Known open issues (App ↔ hardware link)
+
+Tracked in **`todo.md`** — adversarial verification pending:
+
+1. **Heartbeat after App close** — hardware OLED may stay **APP CONNECTED** when the browser tab closes (`beforeunload` does not call `stopHeartbeat()`; firmware timeout is 4.5 s).
+2. **Connect / mode-switch sync** — switching to Octopus or reconnecting may not pull live blobs / reload the App shell (`APP_SYNC_REQ` path).
+3. **Harp → sequencer crosstalk** — breaking laser beams reportedly alters sequencer sound setup; engines should be independent (`applyHarpParam` / `applySeqParam`, D-BEAM routing).
+
+### E. Document revision
 
 | Version | Date | Notes |
 |---------|------|-------|
@@ -1046,6 +1060,7 @@ Authoritative list: **`code_info.h` §9**. Targets for the next upgrade:
 | 1.3 | 2026-06-23 | §9.4 shipped — MIDI Controller beginner guides (Mac/Windows/DAW); OctopusApp v6.2.00 |
 | 1.4 | 2026-06-25 | v6.2.07 / fw 6.1.01 — Octopus hard priority, mode-separation hardening, SETTINGS/MOTION reset no reboot |
 | 1.5 | 2026-06-25 | v6.2.07 — P-page grid tools (CPY/PST/CLR/RND/patterns), GOD playhead layer, MIDI ARP/motion, scope layout |
+| 1.6 | 2026-06-25 | Hardware SEQ MATRIX step pages documented (fw `seqUI_stepPage`); §12.D known open issues |
 
 ---
 

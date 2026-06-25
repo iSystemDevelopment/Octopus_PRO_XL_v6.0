@@ -400,6 +400,7 @@ static constexpr int SEQ_UI_CHAIN = 0;
 extern std::atomic<int> seqUI_row;
 extern std::atomic<int> seqUI_col;
 extern std::atomic<int> seqUI_page;
+extern std::atomic<int> seqUI_stepPage;  /* 0-3 horizontal 16-step window of the 64-step pattern */
 
 void seq_start();
 void seq_stop();
