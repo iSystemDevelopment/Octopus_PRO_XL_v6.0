@@ -37,6 +37,9 @@
 
 float decodeMasterPitch(uint16_t v14);
 
+/* Implemented in dbeam.cpp — restore only mix buses the VOLUME pedal dipped. */
+void dbeamVolumeRestoreEngagedBuses();
+
 enum class PGroup : uint8_t {
   HARP_SYNTH = 0,
   SEQ_SYNTH = 1,
