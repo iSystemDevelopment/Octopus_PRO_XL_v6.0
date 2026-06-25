@@ -390,13 +390,7 @@ static constexpr const char* kDrumChName[8] = {
 static constexpr const char* kDrumParamName[5] = {
   "Tune", "Decay", "Vol", "Noise", "Wave"
 };
-/* Aux FX parameter names (case 7) */
-static constexpr const char* kAuxFxName[14] = {
-  "Dly Time", "Dly FB", "Rev Size", "Rev Damp",
-  "H.Dly Snd", "H.Rev Snd", "S.Dly Snd", "S.Rev Snd",
-  "Harp FX-A", "Harp FX-B", "Seq FX-A", "Seq FX-B",
-  "Drum FX-A", "Drum FX-B"
-};
+/* Aux menu labels: kL2AuxFx[16] in display.h (SSOT). */
 /* Master menu mute names (l2 = 18/19/20) */
 static constexpr const char* kMuteName[3] = { "Harp Mute", "Seq Mute", "Drm Mute" };
 

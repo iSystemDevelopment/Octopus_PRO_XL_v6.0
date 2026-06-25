@@ -50,7 +50,9 @@
 extern std::atomic<int> seqUI_page;
 
 /* NVS partition namespace — product ID, not a firmware semver.
- * Legacy "octopus_v5" is copied here once on first boot after the rename. */
+ * Legacy "octopus_v5" is copied here once on first boot after the rename.
+ * [LEGACY-MIGRATION-v5] Keep until after 2026-Q4; safe to remove when v5.x
+ * field units are no longer expected to upgrade in-place. */
 static constexpr const char* NVS_NAMESPACE        = "octopus";
 static constexpr const char* NVS_NAMESPACE_LEGACY = "octopus_v5";
 

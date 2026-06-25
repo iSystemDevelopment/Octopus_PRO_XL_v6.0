@@ -2200,7 +2200,7 @@
      JAVASCRIPT
 ═══════════════════════════════════════════════════════════════════════════ -->
     <script>
-        const APP_VERSION = '6.2.05';
+        const APP_VERSION = '6.2.06';
         const PAYPAL_DONATE_URL = 'https://www.paypal.com/donate?hosted_button_id=KX7B76V37PED8';
         const MIDI_SESSION_KEY = 'octopusapp_midi_session_v1';
         const PORT_BOOT_KEY = 'octopusapp_port_boot_v1';
@@ -2256,8 +2256,7 @@
             DJ_FQ: 76,
             DJ_RES: 77,
             DJ_MIX: 78,
-            // 79-82: legacy LFO aliases (HLFO_R/D, SLFO_R/D) — removed v6.0 (replaced by HLFO_RT/SLFO_RT)
-            // 92 HW_GATE / 93 HW_WHITE / 96 HW_MARGIN — hardware-only params, no App UI; removed
+            /* Gaps: 79–82 HLFO_R/D SLFO_R/D (legacy LFO aliases); 92–93, 96 HW-only */
             DB_CURVE: 83,
             DB_OFFSET: 84,
             DB_RANGE: 85,
@@ -2285,10 +2284,11 @@
             H_SCALE: 108,
             D_FX_IDX: 110,
             H_FX_IDX_B: 111,
-            /* 112 H_FX_MIX, 116 S_FX_MIX — retired v6.0 (insert sends use 121–124) */
+            H_FX_MIX: 112,       /* legacy ganged dly+rev send — use 121/122 */
             H_FX_TIME: 113,
             H_FX_SIZE: 114,
             H_FX_IDX: 115,
+            S_FX_MIX: 116,       /* legacy ganged dly+rev send — use 123/124 */
             S_FX_TIME: 117,
             S_FX_SIZE: 118,
             S_FX_IDX: 119,
@@ -2297,7 +2297,8 @@
             H_REV_MIX: 122,
             S_DLY_MIX: 123,
             S_REV_MIX: 124,
-            /* 125 FETCH, 126 HARD_SAVE — superseded by APP_SYNC_REQ / SESSION_SAVE */
+            FETCH: 125,          /* legacy full sync — App uses APP_SYNC_REQ 155 */
+            HARD_SAVE: 126,      /* legacy save — App uses SESSION_SAVE 156 */
             S_FX_IDX_B: 127,
             // Laser 128-137 (sub 0x01)
             LSR_SHOW: 128,
@@ -2319,7 +2320,7 @@
             AUX_REV_DMP: 143,
             DRUM_WAVE: 144,
             DB_ROUTE: 145,
-            /* 146/147 (DB_CUT_CC/DB_MOD_CC) removed v6.0 — D-BEAM is local DSP only */
+            /* 146–147 DB_CUT_CC/DB_MOD_CC — wire IDs reserved; D-BEAM is local DSP only */
             // Song mode + transport 148-157 (sub 0x01)
             SONG_MODE: 148,
             SONG_SLOT: 149,
@@ -2327,7 +2328,7 @@
             SONG_STEPS_N: 151,
             SONG_POS: 152,
             TRANSPORT: 153,
-            /* 154 TRANSPORT_AVAIL — retired v6.0 (hardware always owns transport) */
+            TRANSPORT_AVAIL: 154, /* accepted-and-ignored — hardware always owns transport */
             APP_SYNC_REQ: 155,
             SESSION_SAVE: 156,
             SESSION_LOAD: 157,
@@ -2335,10 +2336,7 @@
             H_PAN: 159,
             S_PAN: 160,
             D_PAN: 161,
-            // RETIRED v6.1 — IDs reserved. Old v14 packing overlapped step bits 4-5
-            // with the page field; bulk grid sync (both directions) now uses the
-            // lossless sub-0x05 blob (_txGridRow / _parseDeviceSysex). Kept only so
-            // the wire IDs never renumber; the App neither sends nor receives these.
+            /* 162–163 GRID_ROW_LO/HI — wire IDs reserved; grid uses sub-0x05 blob */
             GRID_ROW_LO: 162,
             GRID_ROW_HI: 163,
             // [v6.1] Device→App telemetry: load% (b0-6) | ring-drops (b7-12) | lanes-full (b13)
@@ -2351,6 +2349,7 @@
             // [SAVE/LOAD/RESET v2] App↔device parity for the scoped persistence menus
             SCOPED_RESET: 169,  // v14 = ResetScope + 1 (0 = NACK, 16383 = ACK)
             SEQ_CLEAR: 170,     // clear active grid + P-locks + reset both sounds to preset 0
+            SOFT_RESET: 171,    // retired v6.1 — firmware RX ignored
             USR_SOUND_SAVE: 172, // v14 = (engine<<13)|slot 0..63
             USR_SOUND_LOAD: 173,
             USR_SOUND_NAME: 174, // NAME blob sub 0x03 (device echoes on sync)
@@ -3833,11 +3832,20 @@
             _reloadAfterReconnect: false,
             _reloadTimer: null,
 
+            _octopusRescanPending: false,
+            _octopusKnobsBuilt: false,        // [LAZY-DOM] Octopus knob panels built once
+            _octopusSwitchOfferedFor: null,   // [UX] port id we already asked to switch to
+            _midiClockTimer: null,
+            _midiMotionFullWarned: false,
+            /* Per-bank CC automation lanes (MIDI mode): up to 4 CCs × 64 steps. */
+            midiMotion: Array.from({ length: 4 }, () => []),
+
             // Match Octopus USB MIDI ports (Windows names vary wildly).
             _isOctopusPortName(name) {
                 const n = (name || '').toLowerCase();
                 return n.includes('octopus') || n.includes('esp32') || n.includes('diodac') ||
-                    n.includes('pro s3') || n.includes('pro xl') || n.includes('303a');
+                    n.includes('pro s3') || n.includes('pro xl') || n.includes('pro_s3') ||
+                    n.includes('303a') || n.includes('isystem') || n.includes('tinyusb');
             },
             _portLive(port) {
                 if (!port) return false;
@@ -3863,7 +3871,13 @@
                 await Promise.all(jobs);
             },
             _pickAutoOutput(access) {
-                const outs = [...access.outputs.values()].filter(o => this._portLive(o));
+                const outs = [...access.outputs.values()]
+                    .filter(o => this._portLive(o))
+                    .sort((a, b) => {
+                        const ao = this._isOctopusPortName(a.name) ? 0 : 1;
+                        const bo = this._isOctopusPortName(b.name) ? 0 : 1;
+                        return ao - bo;
+                    });
                 const named = outs.filter(o => this._isOctopusPortName(o.name));
                 if (named.length) {
                     return named.find(o => /out/i.test(o.name) && !/in/i.test(o.name)) ||
@@ -3872,12 +3886,96 @@
                 /* No ★ Octopus port — auto-pick first live output → MIDI Controller mode. */
                 return outs.length ? outs[0] : null;
             },
+            /** Adopt an output port and run onConnect (no full-page reload). */
+            async _adoptMidiPort(port, sel) {
+                if (!port || !this._portLive(port)) return false;
+                const prev = this.midiOut;
+                if (prev && prev.id !== port.id) this.allNotesOff(prev);
+                this.midiOut = port;
+                if (sel) sel.value = port.id;
+                await this.onConnect();
+                return true;
+            },
+            /** Connect port — full page reload when Octopus↔MIDI mode changes or after NVS reset. */
+            async _connectMidiPort(port, sel, reason) {
+                if (!port || !this._portLive(port)) return false;
+                if (this.midiOut && this.midiOut.id === port.id) {
+                    if (sel) sel.value = port.id;
+                    return true;
+                }
+                if (this._reloadAfterReconnect) {
+                    this._requestPortBootReload(port.id,
+                        this._isOctopusPortName(port.name) ? 'octopus' : 'midi',
+                        reason || 'device returned after save/reset');
+                    return true;
+                }
+                const prev = this.midiOut;
+                const nextOct = this._isOctopusPortName(port.name);
+                const prevOct = prev && this._portIsOctopus(prev);
+                if (prev && nextOct !== prevOct) {
+                    if (prev) this.allNotesOff(prev);
+                    this._requestPortBootReload(port.id, nextOct ? 'octopus' : 'midi',
+                        reason || 'MIDI port change');
+                    return true;
+                }
+                return this._adoptMidiPort(port, sel);
+            },
+            _scheduleOctopusRescan() {
+                if (this._octopusRescanPending) return;
+                if (this._appMode === 'octopus' && this._connOnline) return;
+                this._octopusRescanPending = true;
+                setTimeout(() => {
+                    this._octopusRescanPending = false;
+                    if (this._scanMidi) this._scanMidi();
+                }, 1200);
+            },
             _portIsOctopus(port) {
                 return this._isOctopusPortName((port || this.midiOut)?.name);
+            },
+            /** True while the user is actively running a standalone MIDI Controller session
+             *  (live non-Octopus port).  Used to confirm before auto-hijacking into Octopus. */
+            _isActiveMidiSession() {
+                return this._appMode === 'midi' && this.midiOut && this._portLive(this.midiOut);
+            },
+            /** [UX] An Octopus port appeared mid-MIDI-session.  Octopus normally auto-wins,
+             *  but hijacking a live session with a silent reload is abrupt — so ask first.
+             *  Accept → reload into Octopus (the intentional mode boundary); decline → stay,
+             *  and don't nag again until this Octopus port re-appears. */
+            _offerOctopusSwitch(port, sel) {
+                if (!port) return false;
+                if (this._octopusSwitchOfferedFor === port.id) return false; // ask once per appearance
+                this._octopusSwitchOfferedFor = port.id;
+                const name = port.name || 'Octopus';
+                const go = window.confirm(
+                    '★ ' + name + ' detected.\n\n' +
+                    'Switch from MIDI Controller mode to Octopus linked mode?\n' +
+                    'The App will reload. Your MIDI session is saved automatically.');
+                if (go) {
+                    this._connectMidiPort(port, sel, 'user accepted Octopus switch');
+                    return true;
+                }
+                this.log('Staying in MIDI Controller mode — choose ★ ' + name + ' from the port menu to switch later.');
+                return false;
+            },
+            /** [LAZY-DOM] Build the five Octopus knob panels once, on first Octopus entry.
+             *  Idempotent: cheap no-op on every later call.  knobStates must be populated
+             *  before APP_SYNC echoes arrive, so this runs synchronously from setAppMode(). */
+            _ensureOctopusKnobs() {
+                if (this._octopusKnobsBuilt) return;
+                this._octopusKnobsBuilt = true;
+                this.buildKnobs('laser-show-knobs', KNOBS.laserShow, false);
+                this.buildKnobs('harp-knobs', KNOBS.harpSynth, false);
+                this.buildKnobs('seq-knobs', KNOBS.seqSynth, false);
+                this.buildKnobs('drum-knobs', KNOBS.drums, true);
+                this.buildKnobs('master-knobs', KNOBS.master, false);
             },
             /** 'octopus' | 'midi' | 'disconnected' — drives layout shell (Phase 1+). */
             setAppMode(mode) {
                 const next = (mode === 'midi' || mode === 'disconnected') ? mode : 'octopus';
+                // Build Octopus DOM before the shell shows it.  Both 'octopus' and
+                // 'disconnected' render the Octopus shell (data-app-mode='octopus'), so the
+                // knob panels must exist for either — only true MIDI mode stays lazy.
+                if (next !== 'midi') this._ensureOctopusKnobs();
                 const prev = this._appMode;
                 if (prev === next) return;
                 if (prev === 'midi') {
@@ -3897,6 +3995,7 @@
                     else this.switchView(1);
                     this.updateConnBadge(this.midiOut && this._portLive(this.midiOut));
                 } else if (prev === 'midi') {
+                    this._stopMidiClock();
                     if (this.isPlaying) this._setTransport(false, false);
                     const onMidiInst = document.getElementById('view-midi-inst')?.classList.contains('active');
                     if (onMidiInst) this.switchView(1);
@@ -4160,11 +4259,7 @@
                     || cmd === CMD.SESSION_SAVE || cmd === CMD.SESSION_LOAD
                     || cmd === CMD.SCOPED_RESET;
             },
-            // Vestigial: the retired GRID_ROW_LO/HI (162/163) were the only
-            // low-priority queue items. Grid rows now arrive as sub-0x05 blobs
-            // applied directly in _parseDeviceSysex (they never enter _rxQueue), so
-            // nothing matches here today — kept as the evict-preference hook in case
-            // a future bulk/low-priority echo is added.
+            // Low-priority queue evict hook — GRID_ROW_* kept for wire-ID naming only.
             _rxIsLowPriority(cmd) {
                 return cmd === CMD.GRID_ROW_LO || cmd === CMD.GRID_ROW_HI;
             },
@@ -4200,7 +4295,7 @@
             },
             _drainRxQueue() {
                 this._rxDrainScheduled = false;
-                const budget = this.isPlaying ? 18 : 40;
+                const budget = (this.isPlaying && !this._syncBurstActive) ? 18 : 40;
                 let n = 0;
                 while (n < budget && this._rxQueue.length) {
                     const item = this._rxQueue.shift();
@@ -4373,11 +4468,10 @@
             },
             async init() {
                 this.populateDropdowns();
-                this.buildKnobs('laser-show-knobs', KNOBS.laserShow, false);
-                this.buildKnobs('harp-knobs', KNOBS.harpSynth, false);
-                this.buildKnobs('seq-knobs', KNOBS.seqSynth, false);
-                this.buildKnobs('drum-knobs', KNOBS.drums, true);
-                this.buildKnobs('master-knobs', KNOBS.master, false);
+                // [LAZY-DOM] Octopus knob panels (laser/harp/seq/drum/master) are built on
+                // first entry into Octopus mode via _ensureOctopusKnobs() — see setAppMode().
+                // A MIDI-only session never pays for them; an Octopus session builds them
+                // synchronously before APP_SYNC echoes can land (knobStates is needed first).
                 this.buildMidiInst();
                 this.buildSequencer();
                 this.buildSongEditor();
@@ -4387,7 +4481,12 @@
                 this._updatePageButtons();
                 this._initSelectTitles();
                 await this.setupMIDI();
+                // [LAZY-DOM] If we did not land in MIDI mode (Octopus connected, no port, or
+                // WebMIDI unavailable — all of which show the Octopus shell), make sure the
+                // knob panels exist.  Idempotent: a no-op if _onConnectOctopus already built.
+                if (this._appMode !== 'midi') this._ensureOctopusKnobs();
                 this._applyTransportChrome();
+                if (this._appMode === 'midi') this._loadMidiSession();
                 window.addEventListener('resize', () => this._scheduleWindowPhResize());
                 this.animateVU();
                 /* Idle stopped state: show playhead at step 0 (matches hardware boot). */
@@ -4422,7 +4521,6 @@
                 this.log('OctopusApp v' + APP_VERSION + ' · ' + location.origin);
                 const vb = document.getElementById('appVerBadge');
                 if (vb) vb.textContent = 'v' + APP_VERSION.replace(/\.00$/, '');
-                this._loadMidiSession();
             },
 
             // Long dropdown names: a closed <select> ellipsizes overflowing text, so
@@ -4641,45 +4739,43 @@
                             }
                         }
                         const boot = this._readPortBoot();
+                        const preferred = this._pickAutoOutput(access);
+                        const octopusOut = preferred && this._isOctopusPortName(preferred.name)
+                            ? preferred : null;
                         if (boot) {
-                            const port = access.outputs.get(boot.portId);
-                            if (port && this._portLive(port)) {
-                                this.midiOut = port;
-                                if (sel) sel.value = port.id;
-                                this._clearPortBoot();
-                                await this.onConnect();
+                            const bootPort = access.outputs.get(boot.portId);
+                            const pick = octopusOut ||
+                                (bootPort && this._portLive(bootPort) ? bootPort : preferred);
+                            this._clearPortBoot();
+                            if (pick && await this._connectMidiPort(pick, sel, 'boot reconnect')) {
                                 if (inN === 0 && outList.length)
                                     this.log('Warning: no MIDI inputs — close other tabs using this device');
                                 return;
                             }
-                            if (outList.length)
-                                this.log('Waiting for selected MIDI port…');
-                            else
-                                this.setAppMode('disconnected');
-                            return;
                         }
-                        let autoOut = null;
-                        for (const out of outList) {
-                            if (!autoOut && this._isOctopusPortName(out.name) && this._portLive(out))
-                                autoOut = out;
-                        }
-                        if (!autoOut)
-                            autoOut = this._pickAutoOutput(access);
-                        if (autoOut) {
-                            if (this.midiOut && this.midiOut.id === autoOut.id) {
-                                if (sel) sel.value = autoOut.id;
+                        const hasOctopus = outList.some(o => this._isOctopusPortName(o.name));
+                        if (!hasOctopus) this._octopusSwitchOfferedFor = null; // re-offer on replug
+                        if (preferred) {
+                            if (this.midiOut && this.midiOut.id === preferred.id) {
+                                if (sel) sel.value = preferred.id;
                                 await this._bindMidiInputs(access);
+                            } else if (octopusOut && this._isActiveMidiSession()) {
+                                // Octopus appeared while a MIDI session is live — confirm
+                                // before the (intentional) reload instead of auto-hijacking.
+                                this._offerOctopusSwitch(octopusOut, sel);
                             } else {
-                                if (this.midiOut) this.allNotesOff(this.midiOut);
-                                const mode = this._isOctopusPortName(autoOut.name) ? 'octopus' : 'midi';
-                                this._requestPortBootReload(autoOut.id, mode, 'MIDI connect');
+                                await this._connectMidiPort(preferred, sel, 'auto connect');
                             }
+                            if (!octopusOut && !hasOctopus)
+                                this._scheduleOctopusRescan();
                         } else if (outList.length) {
                             this.log(`MIDI: ${outList.length} out / ${access.inputs.size} in — pick a port (★ = Octopus)`);
                             if (!this.midiOut) this.setAppMode('disconnected');
+                            this._scheduleOctopusRescan();
                         } else {
                             this.log('No MIDI outputs — plug in USB and allow Web MIDI');
                             this.setAppMode('disconnected');
+                            this._scheduleOctopusRescan();
                         }
                         if (inN === 0 && outList.length)
                             this.log('Warning: no MIDI inputs — close other tabs using this device');
@@ -4687,23 +4783,21 @@
                     await this._scanMidi();
                     access.onstatechange = () => { this._scanMidi(); };
                     const sel = document.getElementById('midiOut');
-                    if (sel) sel.onchange = e => {
+                    if (sel) sel.onchange = async e => {
                         if (!e.target.value) {
                             this.allNotesOff();
                             this.midiOut = null;
                             this.stopHeartbeat();
+                            this._stopMidiClock();
                             this._clearPortBoot();
                             this.setAppMode('disconnected');
                             this.updateConnBadge(false);
                             return;
                         }
-                        const prev = this.midiOut;
                         const next = access.outputs.get(e.target.value);
                         if (!next) return;
-                        if (prev && prev.id === next.id) return;
-                        if (prev) this.allNotesOff(prev);
-                        const mode = this._isOctopusPortName(next.name) ? 'octopus' : 'midi';
-                        this._requestPortBootReload(next.id, mode, 'MIDI port change');
+                        if (this.midiOut && this.midiOut.id === next.id) return;
+                        await this._connectMidiPort(next, sel, 'manual port pick');
                     };
                 } catch (e) {
                     this.log('MIDI access denied: ' + e.message);
@@ -4717,12 +4811,27 @@
                 this.stopHeartbeat();
                 this._connOnline = false;
                 this.updateConnBadge(false);
+                const pid = this.midiOut?.id;
+                if (pid) this._stashPortBoot(pid, 'octopus');
                 this.midiOut = null;
-                            this._startReconnectPoll();
+                this._startReconnectPoll();
             },
             async onConnect() {
                 this._stopReconnectPoll();
-                this._loadSlotMeta();
+                this._stopMidiClock();
+                if (this._reloadAfterReconnect && this.midiOut) {
+                    this._requestPortBootReload(this.midiOut.id, 'octopus',
+                        'device reconnected after save/reset');
+                    return;
+                }
+                // [SEPARATION] Mode is knowable up-front — midiOut is set before onConnect
+                // runs — so the Octopus sync-burst gate is armed BEFORE the firmware's
+                // initial echo burst can arrive, and is NEVER armed in MIDI mode.  Leaving
+                // it armed in MIDI mode was a latent GPU bug: nothing drains the RX queue in
+                // MIDI (parseDeviceSysex returns early), so _syncBurstExpected stayed true
+                // forever, and animateVU's `gpuBusy` gate froze the activity scopes.
+                const oct = this._portIsOctopus();
+                // ── Shared inbound / link reset (both modes start from a clean RX state) ──
                 this._sxRxBuf = null;
                 this._connOnline = false;
                 this._linkWarned = false;
@@ -4733,19 +4842,13 @@
                 this._linkDegradedUntil = 0;
                 this._ringDropWarned = false;
                 this._plockStealWarned = false;
-                this._persistBusy = false;
-                this._persistKind = '';
-                this._persistAwaitReboot = false;
-                if (this._persistTimeoutId) { clearTimeout(this._persistTimeoutId); this._persistTimeoutId = null; }
-                this.closeAllPersistModals();
                 this._rxQueue.length = 0;
                 this._rxDrainScheduled = false;
-                this._syncBurstExpected = true;
-                this._syncBurstActive = false;
-                this._resetSlotSavedFlagsForSync();
                 this._gridModelDirty = false;
-                this._linkGraceUntil = Date.now() + 4000;
+                this._syncBurstExpected = oct;   // Octopus-only; MIDI mode never gates the GPU
+                this._syncBurstActive = false;
                 this.updateConnBadge(false);
+                // ── Shared port open ──
                 if (this.midiOut) await this._openMidiPort(this.midiOut);
                 if (this._midiAccess) {
                     await this._openAllMidiPorts(this._midiAccess);
@@ -4754,21 +4857,46 @@
                         this.log('Warning: no MIDI inputs — close other tabs using this device');
                 }
                 if (!this.midiOut || !this._portLive(this.midiOut)) {
+                    this._syncBurstExpected = false;
                     this.setAppMode('disconnected');
                     this.updateConnBadge(false);
                     this.log('MIDI output unavailable — replug USB or pick another port');
                     return;
                 }
-                if (this._portIsOctopus()) {
-                    this.setAppMode('octopus');
-                    this.txParam(CMD.APP_SYNC_REQ, 0);
-                    this.startHeartbeat();
-                    this.log('Syncing with Octopus (' + (this.midiOut.name || 'MIDI') + ')…');
-                } else {
-                    this.setAppMode('midi');
-                    this.updateConnBadge(true);
-                    this.log('MIDI Controller mode → ' + (this.midiOut.name || 'port') + ' (standard MIDI; no SysEx).');
+                // ── Mode-specific connect — no Octopus lifecycle state bleeds into MIDI ──
+                if (oct) this._onConnectOctopus();
+                else this._onConnectMidi();
+            },
+            /** Octopus-linked connect: NVS slot cache, persist-modal cleanup, sync burst,
+             *  APP_SYNC request + heartbeat.  None of this runs in MIDI Controller mode. */
+            _onConnectOctopus() {
+                this._loadSlotMeta();
+                if (!this._persistAwaitReboot && !this._reloadAfterReconnect) {
+                    this._persistBusy = false;
+                    this._persistKind = '';
+                    if (this._persistTimeoutId) {
+                        clearTimeout(this._persistTimeoutId);
+                        this._persistTimeoutId = null;
+                    }
+                    this.closeAllPersistModals();
                 }
+                this._syncBurstExpected = true;
+                this._syncBurstActive = false;
+                this._resetSlotSavedFlagsForSync();
+                this._linkGraceUntil = Date.now() + 4000;
+                this.setAppMode('octopus');
+                this.txParam(CMD.APP_SYNC_REQ, 0);
+                this.startHeartbeat();
+                this.log('Syncing with Octopus (' + (this.midiOut.name || 'MIDI') + ')…');
+            },
+            /** MIDI Controller connect: standard MIDI only — no NVS, no sync burst, no
+             *  heartbeat.  The app clock owns transport; activity scopes animate freely. */
+            _onConnectMidi() {
+                this._syncBurstExpected = false;
+                this._syncBurstActive = false;
+                this.setAppMode('midi');
+                this.updateConnBadge(true);
+                this.log('MIDI Controller mode → ' + (this.midiOut.name || 'port') + ' (standard MIDI; no SysEx).');
             },
             // Periodic heartbeat: the firmware marks the link "connected" only while it
             // keeps receiving App sysex (CMD.PING refreshes lastWebSysexMs).  Sending a
@@ -4902,9 +5030,12 @@
                     const candidate = this._pickAutoOutput(this._midiAccess);
                     if (!candidate) return;
                     this._stopReconnectPoll();
-                    const mode = this._isOctopusPortName(candidate.name) ? 'octopus' : 'midi';
                     this.log('Device returned — reconnecting…');
-                    this._requestPortBootReload(candidate.id, mode, 'device returned');
+                    if (this._reloadAfterReconnect) {
+                        this._requestPortBootReload(candidate.id, 'octopus', 'device returned');
+                        return;
+                    }
+                    await this._connectMidiPort(candidate, document.getElementById('midiOut'), 'device returned');
                 }, 1000);
             },
             _stopReconnectPoll() {
@@ -5082,6 +5213,9 @@
                         cc: { ...this.midiMap.cc }
                     },
                     midiClockOut: !!this.midiClockOut,
+                    midiMotion: this.midiMotion.map(bank =>
+                        bank.map(lane => ({ cc: lane.cc, steps: lane.steps.slice() }))
+                    ),
                     isSongMode: !!this.isSongMode,
                     showSongEditor: !!this.showSongEditor,
                     songSlotIdx: this.songSlotIdx | 0,
@@ -5149,6 +5283,19 @@
                     this._refreshMidiKnobsFromMap();
                 }
                 if (o.midiClockOut != null) this.setMidiClockOut(!!o.midiClockOut, false);
+                if (Array.isArray(o.midiMotion) && o.midiMotion.length === 4) {
+                    for (let b = 0; b < 4; b++) {
+                        const src = o.midiMotion[b];
+                        if (!Array.isArray(src)) { this.midiMotion[b] = []; continue; }
+                        this.midiMotion[b] = src.filter(l => l && l.cc != null && Array.isArray(l.steps))
+                            .slice(0, 4)
+                            .map(l => ({
+                                cc: l.cc & 127,
+                                steps: l.steps.slice(0, 64).map(v => v == null ? null : Math.max(0, Math.min(127, +v | 0)))
+                            }));
+                    }
+                    this._midiMotionFullWarned = false;
+                }
                 if (Array.isArray(o.songData) && o.songData.length === 16) {
                     for (let i = 0; i < 16; i++) {
                         const src = o.songData[i];
@@ -5226,14 +5373,44 @@
                 };
                 reader.readAsText(file);
             },
-            _midiSendCc(ch, cc, val) {
+            _midiSendCc(ch, cc, val, opts) {
                 if (this._appMode !== 'midi') return;
                 val = Math.max(0, Math.min(127, (+val) | 0));
                 cc = cc & 127;
                 if (!this._sendMidiBytes([0xB0 | (ch & 15), cc, val])) return;
                 this.midiMap.cc[cc] = val;
+                if (!opts?.fromReplay && this.isRecording && this.isPlaying)
+                    this._midiRecordAutomation(cc, val);
                 if (ch === this._midiMelodyChannel()) this._midiPulseScope(this._midiSeqScope, 0.18);
                 this._midiPersistSoon();
+            },
+            _midiRecordAutomation(cc, val) {
+                const bank = this.bankIdx | 0;
+                const step = this.visStep | 0;
+                let lanes = this.midiMotion[bank];
+                if (!lanes) lanes = this.midiMotion[bank] = [];
+                let lane = lanes.find(l => l.cc === cc);
+                if (!lane) {
+                    if (lanes.length >= 4) {
+                        if (!this._midiMotionFullWarned) {
+                            this._midiMotionFullWarned = true;
+                            this.log('MIDI automation full — max 4 CC lanes per bank (like hardware P-locks)');
+                        }
+                        return;
+                    }
+                    lane = { cc, steps: Array(64).fill(null) };
+                    lanes.push(lane);
+                }
+                lane.steps[step] = val;
+            },
+            _midiReplayAutomation(step) {
+                const lanes = this.midiMotion[this.bankIdx | 0];
+                if (!lanes || !lanes.length) return;
+                const ch = this._midiMelodyChannel();
+                for (const lane of lanes) {
+                    const v = lane.steps[step];
+                    if (v != null) this._midiSendCc(ch, lane.cc, v, { fromReplay: true });
+                }
             },
             _midiSendProgramChange(ch, pc) {
                 if (this._appMode !== 'midi') return;
@@ -5378,6 +5555,7 @@
                     this._midiNoteOn(drumCh, note, 110);
                     this._midiScheduleNoteOff(drumCh, note, gateMs);
                 }
+                this._midiReplayAutomation(step);
             },
             /** Single outbound API: Octopus SysEx or MIDI-controller mapping. */
             txParam(cmd, val) {
@@ -5651,15 +5829,10 @@
                         if (s < 0) s = 0;
                         if (s >= len) s = len - 1;
                         this.visStep = s;
-                        // [LED-FIX] The 4 beat LEDs depend only on the step, not on the
-                        // grid geometry — drive them HERE so they keep sequencing in the
-                        // SONG editor view too.  Previously they only updated inside
-                        // _paintPlayhead(), which bails early when the grid is hidden
-                        // (showSongEditor), so the LEDs froze the moment the chain editor
-                        // was opened.  (_updateBeatLeds de-dups, so the later _paintPlayhead
-                        // call is a no-op when the grid IS visible — no double work.)
                         if (this.isPlaying) this._updateBeatLeds(s & 15);
-                        this._paintPlayhead(s);
+                        /* During APP_SYNC burst skip layout reads — paint from cached geom only. */
+                        if (!this._syncBurstActive) this._paintPlayhead(s);
+                        else this._phPendingStep = s;
                     },
                     [CMD.CPU_LOAD]: v14 => {
                         // [CPU-ENC] 14-bit-safe packing (mirrors groovebox.cpp):
@@ -5686,11 +5859,8 @@
                             this.log('P-lock lanes full — new automation not recorded (max 4 lanes per pattern)');
                         }
                     },
-                    // Grid rows are exchanged BOTH directions as lossless sub-0x05
-                    // blobs (device→App via sendFullStateSync / echoFullGrid; App→device
-                    // via _txGridRow). The legacy numeric CMD.GRID_ROW_LO/HI (162/163)
-                    // are retired — neither sent nor handled — so they have no dispatch
-                    // entry here.
+                    // Grid rows: lossless sub-0x05 blob (_txGridRow / _parseDeviceSysex).
+                    // GRID_ROW_LO/HI (162/163) are reserved wire IDs — no dispatch entry.
                 };
             },
             applyIncoming(cmd, v14) {
@@ -5744,12 +5914,14 @@
                         this._midiClockAccumMs = 0;
                         this._midiPpqnAccumMs = 0;
                         if (playing) {
+                            this._startMidiClock();
                             this._midiSendRealtime(0xFA);
                             if (this.isSongMode) this._midiResetSongPlayback();
                             this._paintPlayhead(this.visStep | 0, true);
                             this._updateBeatLeds((this.visStep | 0) & 15);
                             this._midiPlayStep(this.visStep | 0);
                         } else {
+                            this._stopMidiClock();
                             this._midiSendRealtime(0xFC);
                             this._midiClearGateTimers();
                             this.allNotesOff();
@@ -5779,7 +5951,11 @@
             },
             toggleRec() {
                 if (this._appMode === 'midi') {
-                    this._setTransport(this.isPlaying, !this.isRecording);
+                    const nextRec = !this.isRecording;
+                    if (nextRec && !this.isPlaying)
+                        this._setTransport(true, true);
+                    else
+                        this._setTransport(this.isPlaying, nextRec);
                     return;
                 }
                 this._transportHint();
@@ -5800,7 +5976,21 @@
                 if (this._appMode !== 'midi') return;
                 this._sendMidiBytes([byte & 0xFF]);
             },
-            /** MIDI Controller local clock — drives visStep + playhead (Phase 3). */
+            /** MIDI clock — interval timer (immune to rAF jank from mouse hover on grid). */
+            _startMidiClock() {
+                if (this._midiClockTimer) return;
+                this._midiClockLastTs = performance.now();
+                this._midiClockTimer = setInterval(() => this._midiClockTick(performance.now()), 4);
+            },
+            _stopMidiClock() {
+                if (this._midiClockTimer) {
+                    clearInterval(this._midiClockTimer);
+                    this._midiClockTimer = null;
+                }
+                this._midiClockLastTs = 0;
+                this._midiClockAccumMs = 0;
+            },
+            /** MIDI Controller local clock — drives visStep + playhead. */
             _midiClockTick(ts) {
                 if (this._appMode !== 'midi' || !this.isPlaying) {
                     this._midiClockLastTs = 0;
@@ -5842,6 +6032,7 @@
                 if (advanced) this._midiClockAccumMs = Math.min(this._midiClockAccumMs, stepMs);
             },
             toggleMute(ch) {
+                if (this._appMode === 'midi') return;   // [SEPARATION] Octopus-only setter
                 const map = {
                     H: [CMD.H_MUTE, 'muteH', 'btnMuteH'],
                     S: [CMD.S_MUTE, 'muteS', 'btnMuteS'],
@@ -5853,6 +6044,7 @@
                 document.getElementById(id).classList.toggle('active-red', this[key]);
             },
             toggleDbeam() {
+                if (this._appMode === 'midi') return;   // [SEPARATION] Octopus-only setter
                 this.isDbeam = !this.isDbeam;
                 this.txSysex(CMD.DB_ENABLED, this.isDbeam ? 16383 : 0);
                 this._reflectDbeamEnable();
@@ -5863,9 +6055,11 @@
             },
             // Drum body-oscillator wave: v14 = (ch<<5)|wave_idx  (matches applyDrumWave in patches.h)
             setDrumWave(ch, widx) {
+                if (this._appMode === 'midi') return;   // [SEPARATION] Octopus-only setter
                 this.txSysex(CMD.DRUM_WAVE, ((+ch & 7) << 5) | (+widx & 31));
             },
             setDrumKit(kit) {
+                if (this._appMode === 'midi') return;   // [SEPARATION] Octopus-only setter
                 kit = (+kit) & 3;
                 this.txSysex(CMD.DRUM_KIT, kit);
                 this._reflectDrumKit(kit);
@@ -5880,12 +6074,14 @@
                 if (h) h.innerText = DRUM_KIT_NAMES[kit] || '?';
             },
             toggleLaserShow() {
+                if (this._appMode === 'midi') return;   // [SEPARATION] Octopus-only setter
                 this.isLaserShow = !this.isLaserShow;
                 this.txSysex(CMD.LSR_SHOW, this.isLaserShow ? 16383 : 0);
                 document.getElementById('btnLaserShow').innerText = 'LASER SHOW: ' + (this.isLaserShow ? 'ON' : 'OFF');
                 document.getElementById('btnLaserShow').classList.toggle('active-green', this.isLaserShow);
             },
             toggleMidiHue() {
+                if (this._appMode === 'midi') return;   // [SEPARATION] Octopus-only setter
                 this.isMidiHue = !this.isMidiHue;
                 this.txSysex(CMD.MIDI_HUE, this.isMidiHue ? 16383 : 0);
                 document.getElementById('btnMidiHue').innerText = 'MIDI→HUE: ' + (this.isMidiHue ? 'ON' : 'OFF');
@@ -6195,28 +6391,33 @@
                 if (this._appMode === 'midi') this._midiPersistSoon();
             },
             setHarpWave(v) {
+                if (this._appMode === 'midi') return;   // [SEPARATION] Octopus-only setter
                 const w = Math.max(0, Math.min(24, Math.round(+v)));
                 this.txSysex(CMD.H_WAVE, w);
                 this._setKnob(CMD.H_WAVE, w);
                 const el = document.getElementById('harpWave'); if (el) el.value = w;
             },
             setSeqWave(v) {
+                if (this._appMode === 'midi') return;   // [SEPARATION] Octopus-only setter
                 const w = Math.max(0, Math.min(24, Math.round(+v)));
                 this.txSysex(CMD.S_WAVE, w);
                 this._setKnob(CMD.S_WAVE, w);
                 const el = document.getElementById('seqWave'); if (el) el.value = w;
             },
             setHarpOctave(v) {
+                if (this._appMode === 'midi') return;   // [SEPARATION] Octopus-only setter
                 const o = Math.max(-4, Math.min(4, Math.round(+v)));
                 this.txSysex(CMD.HW_H_OCT, o + 4);
                 const el = document.getElementById('harpOct'); if (el) el.value = o;
             },
             setPbRange(v) {
+                if (this._appMode === 'midi') return;   // [SEPARATION] Octopus-only setter
                 const n = Math.max(0, Math.min(24, Math.round(+v)));
                 this.txSysex(CMD.PB_RANGE, n);
                 const el = document.getElementById('pbRange'); if (el) el.value = n;
             },
             setPbEnable(v) {
+                if (this._appMode === 'midi') return;   // [SEPARATION] Octopus-only setter
                 const on = (+v) > 0;
                 this.txSysex(CMD.PB_ENABLE, on ? 16383 : 0);
                 const el = document.getElementById('pbEnable'); if (el) el.value = on ? '16383' : '0';
@@ -6282,6 +6483,7 @@
             // ── Harp play mode (POLY8 / STRINGS / SOLO) ─────────────────────────────────
             // tx=false when reflecting a device echo (CMD.PLAY_MODE) — no loop-back.
             setPlayMode(m, tx = true) {
+                if (this._appMode === 'midi') return;   // [SEPARATION] Octopus-only setter
                 let pm = (+m) | 0;
                 if (pm < 0 || pm > 2) pm = 0;
                 this.playMode = pm;
@@ -6974,8 +7176,8 @@
                 ctx.lineTo(w - pad, cy);
                 ctx.stroke();
                 ctx.strokeStyle = s.stroke;
-                ctx.lineWidth = Math.max(1.2, w / 100);
-                ctx.shadowBlur = 6;
+                ctx.lineWidth = Math.max(0.75, w / 180);
+                ctx.shadowBlur = 3;
                 ctx.shadowColor = s.glow;
                 ctx.beginPath();
                 for (let i = 0; i < s.histLen; i++) {
@@ -7294,8 +7496,8 @@
                 ctx.stroke();
 
                 ctx.strokeStyle = '#06b6d4';
-                ctx.lineWidth = Math.max(1.2, w / 100);
-                ctx.shadowBlur = 6;
+                ctx.lineWidth = Math.max(0.75, w / 180);
+                ctx.shadowBlur = 3;
                 ctx.shadowColor = 'rgba(6, 182, 212, 0.55)';
                 ctx.beginPath();
                 for (let i = 0; i < s.histLen; i++) {
@@ -7437,43 +7639,32 @@
 
             // ── VU meter + playhead rAF loop ──────────────────────────────────────────
             animateVU(ts) {
-                // [DISCRETE-PLAYHEAD] The per-frame sub-cell PLL glide (_pllPositionTick)
-                // was REMOVED from the rAF loop.  Driving the bar's position every frame
-                // made it hostage to main-thread jank: moving the mouse forces the browser
-                // to do hit-testing + :hover style-recalc + grid repaints BETWEEN frames,
-                // which delays this rAF callback so the glide stuttered (the reported
-                // "mouse movement glitches the playhead").  The bar is now DISCRETE — its
-                // cell is set ONLY on a CMD_STEP_SYNC event (prompt + infrequent), so it is
-                // immune to mouse/rAF jank and lands exactly on the hardware step (1:1 with
-                // the device's own discrete 16-box bar).  Sub-cell smoothing can be
-                // restored later via a compositor-driven CSS transform transition if wanted.
                 if (this._phPendingStep >= 0 && this._seqGridVisible()) {
                     const step = this._phPendingStep;
                     this._phPendingStep = -1;
                     this._paintPlayhead(step, true);
                 }
 
-                // [PLAYHEAD-DETACH] Song editor rebuild is coalesced AND deferred to its
-                // OWN rAF frame — never the same frame as the playhead PLL tick.
-                // buildSongEditor() can take 50-200 ms (full DOM rebuild); running it in
-                // a shared frame would stall _pllPositionTick for that entire duration.
                 if (this._songEditorDirty) {
                     this._songEditorDirty = false;
                     requestAnimationFrame(() => this.buildSongEditor());
                 }
-                const mixerOn = document.getElementById('view-mixer')?.classList.contains('active');
-                const l = document.getElementById('vu-left'),
-                    r = document.getElementById('vu-right');
-                if (mixerOn && this.isPlaying) {
-                    l.style.transform = 'scaleX(' + (Math.random() * 0.3 + 0.7).toFixed(3) + ')';
-                    r.style.transform = 'scaleX(' + (Math.random() * 0.3 + 0.7).toFixed(3) + ')';
-                } else if (l && r) {
-                    l.style.transform = 'scaleX(0)';
-                    r.style.transform = 'scaleX(0)';
-                }
+
                 const now = ts || performance.now();
-                if (this._appMode === 'midi') this._midiClockTick(now);
-                this._tickDrumScope(now);
+                const gpuBusy = this._syncBurstActive || this._syncBurstExpected;
+                if (!gpuBusy) {
+                    const mixerOn = document.getElementById('view-mixer')?.classList.contains('active');
+                    const l = document.getElementById('vu-left'),
+                        r = document.getElementById('vu-right');
+                    if (mixerOn && this.isPlaying) {
+                        l.style.transform = 'scaleX(' + (Math.random() * 0.3 + 0.7).toFixed(3) + ')';
+                        r.style.transform = 'scaleX(' + (Math.random() * 0.3 + 0.7).toFixed(3) + ')';
+                    } else if (l && r) {
+                        l.style.transform = 'scaleX(0)';
+                        r.style.transform = 'scaleX(0)';
+                    }
+                    this._tickDrumScope(now);
+                }
                 requestAnimationFrame((t) => app.animateVU(t));
             }
         };

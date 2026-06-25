@@ -57,6 +57,7 @@ struct ParamEntry {
   bool echo_on_hw;      
 };
 
+/* Reference metadata for App/docs — not consulted at runtime (no firmware caller). */
 static const ParamEntry PARAM_TABLE[] = {
   /* ── GROUP 0: HARP SYNTH (cmd 0–15) ──────────────────────────────────── */
   { CMD_H_WAVE +  0, PGroup::HARP_SYNTH, "H.Waveform",        0,    true,  true  },
@@ -177,10 +178,10 @@ static const ParamEntry PARAM_TABLE[] = {
   { CMD_S_FX_IDX,  PGroup::TRANSPORT, "Seq FX",          0,    true,  true  },
   { CMD_S_FX_IDX_B,PGroup::TRANSPORT, "Seq Dyn",         0,    true,  true  },
   { CMD_M_FX_IDX,  PGroup::TRANSPORT, "Master FX",       0,    false, true  },
-  { CMD_H_FX_MIX,  PGroup::TRANSPORT, "Harp FX Mix",     0,    true,  true  },
+  { CMD_H_FX_MIX,  PGroup::TRANSPORT, "Harp FX Mix",     0,    false, false }, /* legacy 112 */
   { CMD_H_FX_TIME, PGroup::TRANSPORT, "Harp Dly Time",   4915, true,  true  },  /* 0.3 s */
   { CMD_H_FX_SIZE, PGroup::TRANSPORT, "Harp Rev Size",   8192, true,  true  },  /* 0.5   */
-  { CMD_S_FX_MIX,  PGroup::TRANSPORT, "Seq FX Mix",      0,    true,  true  },
+  { CMD_S_FX_MIX,  PGroup::TRANSPORT, "Seq FX Mix",      0,    false, false }, /* legacy 116 */
   { CMD_S_FX_TIME, PGroup::TRANSPORT, "Seq Dly Time",    4915, true,  true  },
   { CMD_S_FX_SIZE, PGroup::TRANSPORT, "Seq Rev Size",    8192, true,  true  },
   { CMD_H_DLY_MIX, PGroup::TRANSPORT, "Harp Dly Send",   0,    true,  true  },
@@ -243,7 +244,7 @@ static const ParamEntry PARAM_TABLE[] = {
 static constexpr int PARAM_TABLE_COUNT =
   (int)(sizeof(PARAM_TABLE) / sizeof(PARAM_TABLE[0]));
 
-/* Linear search in PARAM_TABLE — call at init time, not in hot path */
+/* Linear search in PARAM_TABLE — reference/tooling helper (no runtime caller). */
 static inline const ParamEntry* findParamEntry(uint8_t cmd) {
   for (int i = 0; i < PARAM_TABLE_COUNT; ++i)
     if (PARAM_TABLE[i].cmd == cmd) return &PARAM_TABLE[i];

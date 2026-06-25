@@ -252,11 +252,11 @@
  *   109 S_SCALE      (reserved — seq uses same scale as harp)
  *   110 D_FX_IDX     drumFxIndexA
  *   111 H_FX_IDX_B   harpFxIndexB
- *   112 H_FX_MIX     (unused — legacy)
+ *   112 H_FX_MIX     legacy — ganged dly+rev send (applyFxSend; use 121/122)
  *   113 H_FX_TIME    masterAuxDlyTime (shared bus)
  *   114 H_FX_SIZE    masterAuxRevSize (shared bus)
  *   115 H_FX_IDX     harpFxIndex
- *   116 S_FX_MIX     (unused — legacy)
+ *   116 S_FX_MIX     legacy — ganged dly+rev send (applyFxSend; use 123/124)
  *   117 S_FX_TIME    masterAuxDlyTime (same as 113)
  *   118 S_FX_SIZE    masterAuxRevSize (same as 114)
  *   119 S_FX_IDX     seqFxIndex

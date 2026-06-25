@@ -6,8 +6,31 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning aligns with firmware `SYSTEM_FW_VERSION` in `code_info.h`.
 
 > **Current version: [6.1.00](#610--2026-06-23)** — firmware field baseline.  
-> **OctopusApp: [6.2.00](#620--2026-06-23)** — universal MIDI Controller mode (browser-only).  
+> **OctopusApp: [6.2.06](#6206--2026-06-25)** — mode-separation hardening (browser-only).  
 > **Previous release: [6.0.01](#601--2026-06-22).**
+
+## [6.2.06] — 2026-06-25 (OctopusApp)
+
+Browser-only. **No firmware changes** (firmware stays 6.1.00). Mode-separation audit follow-up — closes the lifecycle/hygiene gaps left after the v6.2.00 dual-mode ship. Octopus linked mode is unchanged in behaviour. Rolls up the App-only 6.2.01–6.2.05 work (song mode + playhead refactor, shared-room scene presets, Link Aux toggle).
+
+### Fixed
+
+- **MIDI Controller activity scopes were frozen** — `onConnect()` armed `_syncBurstExpected = true` unconditionally. In MIDI mode `_parseDeviceSysex()` returns early, so the RX queue never drains and the flag never cleared; `animateVU`'s `gpuBusy` gate (`_syncBurstActive || _syncBurstExpected`) then permanently skipped `_tickDrumScope()`, so the seq/drum activity scopes never animated. The sync-burst gate is now armed **only** for an Octopus port (`_syncBurstExpected = oct`), and MIDI connect (`_onConnectMidi()`) clears it.
+- **Octopus shell could show empty knob panels** — with lazy DOM, the disconnected / WebMIDI-unavailable states (both render the Octopus shell) are now covered by `_ensureOctopusKnobs()` via `setAppMode` and a boot fallback.
+
+### Changed
+
+- **`onConnect()` split** into `_onConnectOctopus()` / `_onConnectMidi()` — the shared preamble does only the inbound/link reset and port open; NVS slot cache, persist-modal cleanup, sync burst, `APP_SYNC_REQ` and heartbeat run **only** in the Octopus branch.
+- **Lazy Octopus DOM** — the five knob panels (laser/harp/seq/drum/master) build on first entry into the Octopus shell via `_ensureOctopusKnobs()`; a MIDI-only session no longer builds them.
+- **Defense-in-depth** — Octopus-only setters (`setPlayMode`, `toggleMute`, `toggleDbeam`, `setDrumWave`, `setDrumKit`, `toggleLaserShow`, `toggleMidiHue`, `setHarpWave`, `setSeqWave`, `setHarpOctave`, `setPbRange`, `setPbEnable`) early-return in MIDI mode.
+
+### Added
+
+- **Confirm before hijack** — when an ★ Octopus port appears during a **live** MIDI session, the App asks (`_offerOctopusSwitch`) before reloading into Octopus mode instead of switching silently. Boot reconnect and the first-ever connect still auto-win.
+
+### Docs
+
+- `docs/midi_controller_mode.md` — "Golden rule" rewritten (notes/CC/PC use the `_midi*` helpers; `_txMidiMapped` is a permanent no-op stub), reload documented as the intentional mode boundary, new "Post-ship hardening" section; corrected `_midiClockTick` (4 ms `setInterval`, not `animateVU`).
 
 ## [6.2.00] — 2026-06-23 (OctopusApp)
 

@@ -31,10 +31,31 @@ midiController ──► octopusLinked   (Octopus plugged + sync OK)
 
 **`app._appMode`:** `'octopus'` | `'midi'` | `'disconnected'`
 
-**Golden rule:** all outbound traffic goes through `txParam(cmd, val)`:
+**Golden rule — outbound firewall:** the **parameter** path goes through `txParam(cmd, val)`:
 
-- `octopus` → `txSysex(cmd, val)` (unchanged)
-- `midi` → `_midiOut.*` (notes, CC, PC, transport bytes only)
+- `octopus` → `_txSysexOctopus(cmd, val)` — gated by `_octopusSysexAllowed()` (the real firewall)
+- `midi` → `_txMidiMapped(cmd, val)` — **a deliberate no-op stub**. Octopus SysEx params are *not* re-mapped to CC; they are simply dropped in MIDI mode.
+
+Standard MIDI traffic (the only thing that should leave the port in MIDI mode) does **not** flow through `txParam`. It uses dedicated helpers, each self-gated with `if (this._appMode !== 'midi') return`:
+
+- Notes → `_midiNoteOn` / `_midiScheduleNoteOff`
+- CC → `_midiSendCc` · Program Change → `_midiSendProgramChange`
+- Transport / clock bytes → `_midiSendRealtime` (`0xFA` / `0xFC` / `0xF8`)
+
+So the two outbound worlds never share a code path: SysEx can only leave via `_txSysexOctopus` (Octopus mode only), and standard MIDI can only leave via the `_midi*` helpers (MIDI mode only).
+
+---
+
+## Mode boundary — full reload is intentional
+
+Switching between Octopus and MIDI (either direction), and reconnecting after an NVS save/reset, performs a **full page reload** (`_requestPortBootReload` → `PORT_BOOT_KEY` in `sessionStorage`). This is by design, not a bug:
+
+- It guarantees no Octopus lifecycle state (sync burst, slot cache, persist modals, heartbeat) survives into a MIDI session, and vice-versa.
+- The reload re-runs `init()` → `setupMIDI()` → `onConnect()`, which now branches into **`_onConnectOctopus()`** or **`_onConnectMidi()`** so the two connect paths share only the inbound/port-open preamble — never the Octopus-only setup.
+- **Same mode, same class of port** → no reload; `_adoptMidiPort()` runs the lightweight path.
+- When an ★ Octopus port appears **during a live MIDI session**, the App now **asks** (`_offerOctopusSwitch`) before reloading into Octopus, instead of hijacking the session silently. Declining keeps MIDI mode; the user can still switch from the port menu.
+
+**Octopus DOM is lazy:** the five Octopus knob panels are built by `_ensureOctopusKnobs()` on first entry into the Octopus shell (`setAppMode('octopus' | 'disconnected')` or the boot fallback), so a MIDI-only session never builds them.
 
 ---
 
@@ -116,7 +137,7 @@ Each phase ends with a **verification checklist** before starting the next.
 
 **Deliverables**
 
-- [x] `txParam(cmd, val)` — octopus → `_txSysexOctopus`; midi → `_txMidiMapped` (stub until Phase 4)
+- [x] `txParam(cmd, val)` — octopus → `_txSysexOctopus`; midi → `_txMidiMapped` (a permanent no-op stub — standard MIDI uses the `_midi*` helpers, see "Golden rule" above)
 - [x] `txSysex` / `txSysexSoon` alias `txParam`
 - [x] `allNotesOff(port)` — CC 120/123 all channels; port change, mode exit, `beforeunload`
 - [x] Heartbeat beat + `_checkTransportHealth` + tab-focus resync octopus-only
@@ -131,7 +152,7 @@ Each phase ends with a **verification checklist** before starting the next.
 **Deliverables**
 
 - [x] `_applyTransportChrome()` — BPM editable; play/stop/rec active in MIDI mode
-- [x] `_midiClockTick()` in `animateVU` — 16th-note steps at BPM, drives `visStep`
+- [x] `_midiClockTick()` on a 4 ms `setInterval` (`_startMidiClock`/`_stopMidiClock`) — 16th-note steps at BPM, drives `visStep`; `animateVU` only paints
 - [x] Same `_paintPlayhead()` overlay + `_updateBeatLeds()` as Octopus mode
 - [x] MIDI Start `0xFA` / Stop `0xFC` + `allNotesOff` on stop
 - [x] Incoming STEP_SYNC/TRANSPORT/BPM ignored in MIDI mode
@@ -283,6 +304,18 @@ Each phase ends with a **verification checklist** before starting the next.
 
 ---
 
+## Post-ship hardening (separation audit follow-up)
+
+Architecture remained sound after ship; these close the lifecycle/hygiene gaps found in the separation audit:
+
+1. **`onConnect()` split** — `_onConnectOctopus()` / `_onConnectMidi()`. The shared preamble does only the inbound/link reset + port open; the Octopus-only lifecycle (`_loadSlotMeta`, persist-modal cleanup, sync burst, `_resetSlotSavedFlagsForSync`, `APP_SYNC_REQ`, heartbeat) lives in the Octopus branch and never runs in MIDI mode.
+2. **GPU fix — frozen MIDI scopes.** `_syncBurstExpected` was armed unconditionally in `onConnect()`. In MIDI mode `_parseDeviceSysex()` returns early, so the RX queue never drains and the flag stayed `true` forever — and `animateVU`'s `gpuBusy = _syncBurstActive || _syncBurstExpected` gate then froze the activity scopes. The flag is now armed only when the port is Octopus (`_syncBurstExpected = oct`).
+3. **Defense-in-depth setter guards** — `setPlayMode`, `toggleMute`, `toggleDbeam`, `setDrumWave`, `setDrumKit`, `toggleLaserShow`, `toggleMidiHue`, `setHarpWave`, `setSeqWave`, `setHarpOctave`, `setPbRange`, `setPbEnable` now early-return in MIDI mode, so a stray programmatic call can't mutate Octopus shadow state behind the hidden `.octopus-only` UI. (Shared setters — `setSeqOctave`, `setTranspose`, `setGlobalScale`, `loadSynthPat`, `loadDrumPat`, `randNotes` — keep their existing per-mode branches.)
+4. **Lazy Octopus DOM** — `_ensureOctopusKnobs()` builds the five knob panels once, on first entry into the Octopus shell (`setAppMode` for `octopus`/`disconnected`, plus a boot fallback). A MIDI-only session never builds them.
+5. **Confirm before hijack** — `_offerOctopusSwitch()` asks before reloading into Octopus when an ★ port appears during a live MIDI session (`_isActiveMidiSession()`); boot reconnect and the first-ever connect still auto-win.
+
+---
+
 ## Help content locations
 
 | Audience | Location |
@@ -295,4 +328,4 @@ Each phase ends with a **verification checklist** before starting the next.
 
 ---
 
-*© DIODAC ELECTRONICS / iSystem — OctopusApp v6.2.03 MIDI Controller mode (shipped)*
+*© DIODAC ELECTRONICS / iSystem — OctopusApp v6.2.06 MIDI Controller mode (shipped)*
