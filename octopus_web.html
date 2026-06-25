@@ -1,5 +1,5 @@
 <!--
-  Octopus PRO XL v6.1.00 — Product information page
+  Octopus PRO XL v6.1.01 — Product information page
   © 2026 DIODAC ELECTRONICS / iSystem. All Rights Reserved.
   PROPRIETARY AND CONFIDENTIAL. Unauthorized use prohibited.
 -->
@@ -8,8 +8,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Octopus PRO XL v6.1.00 | Laser-Harp Groovebox Workstation</title>
-    <meta name="description" content="Octopus PRO XL v6.1.00 — 8-beam laser harp, 24-voice groovebox, 64-step sequencer, studio FX, and zero-install OctopusApp Web MIDI console at octopus.isystem.app.">
+    <title>Octopus PRO XL v6.1.01 | Laser-Harp Groovebox Workstation</title>
+    <meta name="description" content="Octopus PRO XL v6.1.01 — 8-beam laser harp, 24-voice groovebox, 64-step sequencer, studio FX, and zero-install OctopusApp Web MIDI console at octopus.isystem.app.">
     <link rel="canonical" href="https://octopus-info.isystem.app/">
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
@@ -687,7 +687,7 @@
         <div class="flex items-center gap-4 mb-6">
             <img src="logo.jpg" alt="Octopus PRO XL" class="w-20 h-20 img-circle border-2 border-[#06b6d4]/40 shadow-[0_0_40px_rgba(6,182,212,0.45)] hero-img" width="80" height="80">
             <span class="brand tracking-[0.3em] text-sm text-gray-400">DIODAC ELECTRONICS</span>
-            <span class="pill border-[#06b6d4]/40 text-[#06b6d4]">FIRMWARE v6.1.00</span>
+            <span class="pill border-[#06b6d4]/40 text-[#06b6d4]">FIRMWARE v6.1.01</span>
         </div>
 
         <h1 class="text-5xl md:text-7xl font-black mb-6 tracking-tight text-white glow-cyan">
@@ -714,7 +714,7 @@
             <span class="pill"><i class="fa-solid fa-bolt text-[#22c55e]"></i> 8 RGB Laser Beams</span>
             <span class="pill"><i class="fa-solid fa-drum text-[#f97316]"></i> 4 Drum Kits</span>
             <span class="pill"><i class="fa-solid fa-repeat text-[#ec4899]"></i> Seq + Harp ARP</span>
-            <span class="pill"><i class="fa-solid fa-laptop-code text-[#ec4899]"></i> OctopusApp v6.1.00</span>
+            <span class="pill"><i class="fa-solid fa-laptop-code text-[#ec4899]"></i> OctopusApp v6.2.07</span>
         </div>
         <div class="flex flex-wrap gap-4 justify-center mb-6">
             <a href="https://octopus.isystem.app" target="_blank" rel="noopener noreferrer"
@@ -1115,7 +1115,7 @@
         <div class="max-w-5xl mx-auto grid md:grid-cols-2 gap-8 mb-12">
             <div class="feature-card">
                 <h4 class="text-white mb-2"><i class="fa-solid fa-floppy-disk text-[#22c55e]"></i> Save / Load to On-Board Flash</h4>
-                <p class="text-sm text-gray-400">SAVE and LOAD persist the whole session — settings, user presets, patterns, and P-lock motion — to on-board flash (NVS namespace <code class="text-gray-500">octopus</code>, CRC-checked blobs). Full/Banks reset reboots instantly and wipes on the next boot; SAVE and Settings/Motion reset commit then reboot. The App reloads and re-imports from hardware. Power-cycle and your set plays back standalone.</p>
+                <p class="text-sm text-gray-400">SAVE and LOAD persist the whole session — settings, user presets, patterns, and P-lock motion — to on-board flash (NVS namespace <code class="text-gray-500">octopus</code>, CRC-checked blobs). SAVE reboots after the commit; Full/Banks reset reboots instantly and wipes on the next boot. Settings/Motion reset (firmware 6.1.01+) apply live with <strong>no reboot</strong> — the App just reloads and re-pulls the fresh image from hardware. Power-cycle and your set plays back standalone.</p>
             </div>
             <div class="feature-card">
                 <h4 class="text-white mb-2"><i class="fa-solid fa-shield-halved text-[#22c55e]"></i> Robust Two-Way Sync</h4>
@@ -1135,7 +1135,7 @@
     <!-- ════════════════════════ UNIVERSAL MIDI CONTROLLER MODE ════════════════════════ -->
     <section id="midi-mode" class="py-24 px-6 border-t border-[#111]">
         <div class="max-w-7xl mx-auto text-center mb-12">
-            <p class="text-xs uppercase tracking-[0.25em] text-[#06b6d4] mb-3 mono">OctopusApp v6.2.05</p>
+            <p class="text-xs uppercase tracking-[0.25em] text-[#06b6d4] mb-3 mono">OctopusApp v6.2.07</p>
             <h2 class="text-3xl md:text-4xl text-white mb-4"><span class="text-[#06b6d4]">07.</span> Universal MIDI Controller Mode</h2>
             <p class="max-w-3xl mx-auto text-gray-400 leading-relaxed">
                 OctopusApp is not only a mirror for Octopus PRO XL hardware. When <strong class="text-gray-300">no Octopus is connected</strong>,
@@ -1163,6 +1163,7 @@
                     <p><span class="text-[#06b6d4]">MIDI OUT</span> — standard MIDI only, 2 tabs, App transport, browser storage</p>
                 </div>
                 <p class="text-sm text-gray-500 mt-4">Laser, D-BEAM, studio mixer, user slots, and device reset are <strong class="text-gray-400">unavailable</strong> in MIDI mode so they cannot touch Octopus settings.</p>
+                <p class="text-sm text-gray-500 mt-2"><strong class="text-gray-400">Octopus has hard priority:</strong> while a ★ Octopus port is connected the App locks to Octopus mode — MIDI Controller mode is available only when no Octopus is plugged in.</p>
             </div>
         </div>
 
@@ -1180,6 +1181,8 @@
         <div class="max-w-3xl mx-auto feature-card mb-10 border-[#06b6d4]/20">
             <h4 class="text-white mb-2"><i class="fa-solid fa-wand-magic-sparkles text-[#06b6d4]"></i> Also in v6.2.x</h4>
             <ul class="text-sm text-gray-400 space-y-2 list-disc pl-4 text-left">
+                <li><strong class="text-gray-300">Faster Settings / Motion reset</strong> (firmware 6.1.01+) — applied live with no device reboot; the App just reloads and re-pulls the fresh image. SAVE and Full / Banks+Pats reset still reboot.</li>
+                <li><strong class="text-gray-300">Octopus hard priority</strong> — a connected ★ Octopus always takes over; MIDI Controller mode is reachable only with no Octopus plugged in.</li>
                 <li><strong class="text-gray-300">Auto-reload on MIDI port connect</strong> — clean boot when you pick Octopus or a MIDI interface.</li>
                 <li><strong class="text-gray-300">Session EXP/IMP</strong> — backup patterns, chains, routing, and CC maps as JSON in the browser.</li>
                 <li><strong class="text-gray-300">Optional PayPal tip</strong> — <a href="https://www.paypal.com/donate?hosted_button_id=KX7B76V37PED8" class="text-[#06b6d4] hover:underline" target="_blank" rel="noopener noreferrer">hosted donate page</a> (TIP / DONATE chips in the App).</li>
@@ -1269,7 +1272,7 @@
                class="feature-card resource-tile block hover:border-[#22c55e] text-left no-underline">
                 <div class="text-2xl mb-2 text-[#22c55e]"><i class="fa-solid fa-plug"></i></div>
                 <h3 class="text-white font-bold mb-1">OctopusApp</h3>
-                <p class="text-sm text-gray-400">Live Web MIDI console v6.2.05 — Octopus sync or standalone MIDI Controller (no hardware required).</p>
+                <p class="text-sm text-gray-400">Live Web MIDI console v6.2.07 — Octopus sync or standalone MIDI Controller (no hardware required).</p>
             </a>
             <a href="user_manual.md" class="feature-card resource-tile block hover:border-[#a855f7] text-left no-underline">
                 <div class="text-2xl mb-2 text-[#a855f7]"><i class="fa-solid fa-book"></i></div>
@@ -1343,7 +1346,7 @@
                         <div class="spec-row"><span>Processor</span><span>ESP32-P4 · dual-core DSP + laser task</span></div>
                         <div class="spec-row"><span>Audio</span><span>24 voices · <strong>44.1 kHz</strong> · <strong>24-bit</strong> I2S</span></div>
                         <div class="spec-row"><span>Laser</span><span>8-beam galvo RGB · top sensor · D-BEAM prox.</span></div>
-                        <div class="spec-row"><span>Software</span><span>Octopus v6.1.00 · 196 SysEx · NVS</span></div>
+                        <div class="spec-row"><span>Software</span><span>Octopus v6.1.01 · 196 SysEx · NVS</span></div>
                         <div class="spec-row spec-row-full"><span>Rear I/O</span><span>TRS L/R out &amp; in · USB-C (Web MIDI SysEx) · ILDA · MicroSD</span></div>
                     </div>
                 </div>
@@ -1398,7 +1401,7 @@
                     </table>
                 </div>
             </div>
-            <p class="text-center text-xs text-gray-600 mono mt-6">Octopus v6.1.00 &middot; ESP-P4 Edition &middot; build 2026-06-23 &middot; 32&nbsp;MB PSRAM</p>
+            <p class="text-center text-xs text-gray-600 mono mt-6">Octopus v6.1.01 &middot; ESP-P4 Edition &middot; build 2026-06-25 &middot; 32&nbsp;MB PSRAM</p>
         </div>
     </section>
 

@@ -15,8 +15,8 @@
  * ─────────────────────────────────────────────────────────────────────────────
  * VERSION IDENTIFIERS
  * ─────────────────────────────────────────────────────────────────────────────
- * SYSTEM_FW_VERSION "6.1.00"
- * SYSTEM_BUILD_DATE "2026-06-23"
+ * SYSTEM_FW_VERSION "6.1.01"
+ * SYSTEM_BUILD_DATE "2026-06-25"
  * SYSTEM_ARCH_TAG   "ESP32-S3-DUALCORE-IDF5-FREERTOS"
  * SETTINGS_VERSION  0x0616   (AllSettings wire-layout ID — not firmware semver)
  * NVS_NAMESPACE     "octopus" (legacy "octopus_v5" auto-migrated on first boot)
@@ -46,8 +46,8 @@
 #ifndef CODE_INFO_H
 #define CODE_INFO_H
 
-#define SYSTEM_FW_VERSION "6.1.00"
-#define SYSTEM_BUILD_DATE "2026-06-23"
+#define SYSTEM_FW_VERSION "6.1.01"
+#define SYSTEM_BUILD_DATE "2026-06-25"
 #define SYSTEM_ARCH_TAG   "ESP32-S3-DUALCORE-IDF5-FREERTOS"
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -382,6 +382,10 @@
  *     g_restartAfterSave → settings_save_task ACK + esp_restart ~700 ms).
  *     FULL/BANKS RESET reboots immediately after arming pend_rst; the wipe runs
  *     on the next boot before tasks start (laser beam recovery without UI hang).
+ *   • [v6.1.01] SETTINGS/MOTION RESET do NOT reboot — applyResetScope() applies
+ *     them live, settings_save_task sends the CMD_SCOPED_RESET ACK and then
+ *     `continue`s (scope check skips esp_restart).  The App reloads on the ACK and
+ *     re-pulls the fresh settings/motion image via APP_SYNC_REQ (no USB re-enum).
  *   • Transport (play/stop/record/BPM) is always hardware-owned; the App only reflects it.
  *
  * ═══════════════════════════════════════════════════════════════════════════
@@ -398,8 +402,10 @@
    * 5. App PINGs every ~800 ms to hold the link "connected".
  *   6. Badge: Octopus ON / Octopus Off (two-state; no manual Connect/Disconnect).
  *   7. After SAVE / LOAD / RESET (hardware or App), the App reloads and re-imports
- *      via APP_SYNC_REQ on reconnect.  FULL/BANKS RESET reboots in ~150 ms
- *      (boot wipe); SAVE and SETTINGS/MOTION RESET wait for NvsWorker then reboot.
+ *      via APP_SYNC_REQ on reconnect.  Reboot policy [v6.1.01]:
+ *        • SAVE — waits for NvsWorker, then reboots (~700 ms).
+ *        • FULL / BANKS+PATS RESET — reboots in ~150 ms (boot-time wipe).
+ *        • SETTINGS / MOTION RESET — NO reboot; applied live, App reloads + re-pulls.
  *
  *   DISCONNECTION (heartbeat timeout):
  *   1. pollSyncHeartbeat() / isAppConnected() — no App SysEx for

@@ -4,24 +4,27 @@ Completed — see CHANGELOG.md.
 
 ---
 
-# OctopusApp v6.2.06 — Universal MIDI Controller ✅ PRODUCTION-READY
+# OctopusApp v6.2.07 · Firmware v6.1.01 — Universal MIDI Controller ✅ PRODUCTION-READY
 
 Phases **0–7** complete (shipped at v6.2.00). Deploy checklist: **[DEPLOYMENT.md](./DEPLOYMENT.md)**.
 
-> **Current `APP_VERSION`: `6.2.06`.** Post-ship work (6.2.01–6.2.06) is App-only,
-> firmware still **6.1.00**: song mode + playhead refactor, shared-room scene presets,
-> Link Aux toggle, and the mode-separation hardening pass below.
+> **Current `APP_VERSION`: `6.2.07` · `SYSTEM_FW_VERSION`: `6.1.01`.**
+> App post-ship work (6.2.01–6.2.07): song mode + playhead refactor, shared-room
+> scene presets, Link Aux toggle, mode-separation hardening, Octopus hard priority.
+> Firmware 6.1.01: SETTINGS/MOTION scoped reset no longer reboots the ESP.
 
 ## Ship checklist (before / after upload)
 
 - [ ] `OctopusApp.html` uploaded to **octopus.isystem.app** (HTTPS)
 - [ ] `octopus_web.html` + assets on **octopus-info.isystem.app**
 - [ ] HTML `Cache-Control: no-cache` (or users hard-refresh once)
-- [ ] Smoke test: title **v6.2.06**, badge **MIDI OUT**, Play → MIDI notes
+- [ ] (Firmware) Flash **v6.1.01** for no-reboot SETTINGS/MOTION reset
+- [ ] Smoke test: title **v6.2.07**, badge **MIDI OUT**, Play → MIDI notes
 - [ ] Smoke test: ★ Octopus → **Octopus ON**, SysEx sync unchanged
 - [ ] Smoke test (MIDI mode): activity scopes animate while playing (GPU gate fix)
-- [ ] Smoke test: ★ Octopus appearing mid-MIDI-session prompts before reload
-- [ ] Optional: git tag `octopusapp-v6.2.06`
+- [ ] Smoke test: ★ Octopus connected → non-Octopus port selection refused (hard priority)
+- [ ] Smoke test: RESET → Settings/Motion = App reloads, **no** device reboot; FULL/Banks = reboot
+- [ ] Optional: git tag `octopusapp-v6.2.07` · `fw-v6.1.01`
 
 ## Phase 0 — Documentation & scaffolding ✅
 ## Phase 1 — Mode flag + shell swap ✅
@@ -40,8 +43,17 @@ Details: **[docs/midi_controller_mode.md](./docs/midi_controller_mode.md)** → 
 - [x] **GPU fix** — `_syncBurstExpected` no longer stuck `true` in MIDI mode (was freezing the activity scopes via `animateVU`'s `gpuBusy` gate)
 - [x] Defense-in-depth `_appMode === 'midi'` guards on Octopus-only setters
 - [x] Lazy Octopus knob DOM (`_ensureOctopusKnobs()`) — MIDI-only session skips it
-- [x] Confirm (`_offerOctopusSwitch`) before hijacking a live MIDI session into Octopus
+- [x] **Octopus hard priority / MIDI lockout** — while a ★ Octopus port is connected, auto-switch to Octopus + refuse non-Octopus port selection (MIDI mode only with no Octopus present)
 - [x] Docs: `_txMidiMapped` clarified as a no-op stub; reload documented as the intentional mode boundary
+
+## Reset reboot policy ✅ (firmware v6.1.01 + App v6.2.07)
+
+Details: [docs/midi_controller_mode.md](./docs/midi_controller_mode.md) → *Scoped-reset reboot policy*.
+
+- [x] **SETTINGS / MOTION reset without ESP reboot** — `audio.cpp`: `if (isReset)` sends ACK, then reboots only for FULL/BANKS and `continue`s for SETTINGS/MOTION (no `esp_restart`); `OctopusApp.html`: scope-aware `CMD.SCOPED_RESET` ACK (`_resetReboots()` → reload + re-pull for SETTINGS/MOTION, reboot-wait for FULL/BANKS).
+- [x] SAVE and FULL / BANKS+PATS reset keep their reboot.
+- [x] Confirm dialog, Help modal, RESET popup, `code_info.h`, `octopus_web.html` updated per-scope.
+- [ ] **Reflash firmware v6.1.01** to devices (the no-reboot behaviour needs the new firmware; App tolerates old firmware too).
 
 ---
 

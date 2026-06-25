@@ -1,4 +1,4 @@
-# Deployment — Octopus PRO XL v6.1 + OctopusApp v6.2.00
+# Deployment — Octopus PRO XL firmware v6.1.01 + OctopusApp v6.2.07
 
 Production hosting for the **browser App** and **product site**. Firmware is flashed via USB (not covered here).
 
@@ -7,7 +7,7 @@ Production hosting for the **browser App** and **product site**. Firmware is fla
 | **OctopusApp** | [octopus.isystem.app](https://octopus.isystem.app) | `OctopusApp.html` |
 | **Product site** | [octopus-info.isystem.app](https://octopus-info.isystem.app) | `octopus_web.html` → `index.html` |
 
-**Versions:** Firmware **6.1.00** · OctopusApp **6.2.05** (includes Universal MIDI Controller mode).
+**Versions:** Firmware **6.1.01** · OctopusApp **6.2.07** (Universal MIDI Controller mode, Octopus hard priority, no-reboot Settings/Motion reset).
 
 ---
 
@@ -166,7 +166,7 @@ sudo cp /var/www/octopus.isystem.app/index.html \
   /var/www/octopus.isystem.app/index.html.bak.$(date +%Y%m%d)
 ```
 
-**Confirm live version:** open `https://octopus.isystem.app` → log line or title must show **OctopusApp v6.2.05**. Hard refresh once (`Ctrl+Shift+R`) if the tab was already open.
+**Confirm live version:** open `https://octopus.isystem.app` → log line or title must show **OctopusApp v6.2.07**. Hard refresh once (`Ctrl+Shift+R`) if the tab was already open.
 
 **Cloudflare:** if you use edge cache, purge `octopus.isystem.app` after upload (or keep cache bypass rule from §0).
 
@@ -199,7 +199,7 @@ Run in **Google Chrome** (or Edge) on **HTTPS**:
 
 | # | Test | Pass criteria |
 |---|------|----------------|
-| 1 | Page loads | Title shows **OctopusApp v6.2.05** |
+| 1 | Page loads | Title shows **OctopusApp v6.2.07** |
 | 2 | Octopus mode | With ★ port connected → badge **Octopus ON**; 3 tabs; transport read-only |
 | 3 | MIDI mode | Badge **MIDI OUT**; transport unlocked; **🔗** chain + pattern dropdowns |
 | 4 | Song mode | 🔗 ON → EDIT chain → Play cycles banks per chain row + repeats |
@@ -241,11 +241,14 @@ Run in **Google Chrome** (or Edge) on **HTTPS**:
 Tag release when production deploy is verified:
 
 ```bash
-git tag -a octopusapp-v6.2.00 -m "OctopusApp v6.2.00 — Universal MIDI Controller mode"
-git push origin octopusapp-v6.2.00
+git tag -a octopusapp-v6.2.07 -m "OctopusApp v6.2.07 — Octopus hard priority + no-reboot Settings/Motion reset"
+git push origin octopusapp-v6.2.07
+# firmware patch (reflash needed):
+git tag -a fw-v6.1.01 -m "Firmware 6.1.01 — SETTINGS/MOTION scoped reset no longer reboots"
+git push origin fw-v6.1.01
 ```
 
-Keep `CHANGELOG.md` [6.2.00] entry aligned with the live App.
+Keep `CHANGELOG.md` [6.2.07] / [6.1.01] entries aligned with the live App + firmware.
 
 ---
 

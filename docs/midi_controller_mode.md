@@ -53,7 +53,14 @@ Switching between Octopus and MIDI (either direction), and reconnecting after an
 - It guarantees no Octopus lifecycle state (sync burst, slot cache, persist modals, heartbeat) survives into a MIDI session, and vice-versa.
 - The reload re-runs `init()` → `setupMIDI()` → `onConnect()`, which now branches into **`_onConnectOctopus()`** or **`_onConnectMidi()`** so the two connect paths share only the inbound/port-open preamble — never the Octopus-only setup.
 - **Same mode, same class of port** → no reload; `_adoptMidiPort()` runs the lightweight path.
-- When an ★ Octopus port appears **during a live MIDI session**, the App now **asks** (`_offerOctopusSwitch`) before reloading into Octopus, instead of hijacking the session silently. Declining keeps MIDI mode; the user can still switch from the port menu.
+
+### Octopus hard priority (lockout)
+
+Octopus is the flagship: **while any live ★ Octopus port exists, the App is locked to Octopus mode** and MIDI Controller mode is unavailable.
+
+- `_pickAutoOutput()` ranks ★ Octopus ports first, so auto-connect (boot / device-appear) always lands on Octopus — including when a second, non-Octopus interface is plugged in at the same time.
+- If an Octopus appears mid-MIDI-session, the App **auto-switches** (reload into Octopus) — no decline option.
+- Manually selecting a non-Octopus port from the picker while an Octopus is present is **refused**: the selection reverts to the Octopus port with a log message. MIDI mode is reachable only when **no** Octopus port is connected (unplug Octopus to drive third-party gear).
 
 **Octopus DOM is lazy:** the five Octopus knob panels are built by `_ensureOctopusKnobs()` on first entry into the Octopus shell (`setAppMode('octopus' | 'disconnected')` or the boot fallback), so a MIDI-only session never builds them.
 
@@ -312,7 +319,23 @@ Architecture remained sound after ship; these close the lifecycle/hygiene gaps f
 2. **GPU fix — frozen MIDI scopes.** `_syncBurstExpected` was armed unconditionally in `onConnect()`. In MIDI mode `_parseDeviceSysex()` returns early, so the RX queue never drains and the flag stayed `true` forever — and `animateVU`'s `gpuBusy = _syncBurstActive || _syncBurstExpected` gate then froze the activity scopes. The flag is now armed only when the port is Octopus (`_syncBurstExpected = oct`).
 3. **Defense-in-depth setter guards** — `setPlayMode`, `toggleMute`, `toggleDbeam`, `setDrumWave`, `setDrumKit`, `toggleLaserShow`, `toggleMidiHue`, `setHarpWave`, `setSeqWave`, `setHarpOctave`, `setPbRange`, `setPbEnable` now early-return in MIDI mode, so a stray programmatic call can't mutate Octopus shadow state behind the hidden `.octopus-only` UI. (Shared setters — `setSeqOctave`, `setTranspose`, `setGlobalScale`, `loadSynthPat`, `loadDrumPat`, `randNotes` — keep their existing per-mode branches.)
 4. **Lazy Octopus DOM** — `_ensureOctopusKnobs()` builds the five knob panels once, on first entry into the Octopus shell (`setAppMode` for `octopus`/`disconnected`, plus a boot fallback). A MIDI-only session never builds them.
-5. **Confirm before hijack** — `_offerOctopusSwitch()` asks before reloading into Octopus when an ★ port appears during a live MIDI session (`_isActiveMidiSession()`); boot reconnect and the first-ever connect still auto-win.
+5. **Octopus hard priority / MIDI lockout** — while a live ★ Octopus port exists, the App auto-switches to Octopus and refuses non-Octopus port selection (see "Octopus hard priority" above). MIDI mode is available only with no Octopus connected.
+
+---
+
+## Scoped-reset reboot policy (firmware ≥ 6.1.01)
+
+Reset/save reboot behaviour by scope:
+
+| Action | Reboots ESP? | App after the ACK |
+|--------|--------------|-------------------|
+| **SAVE** (any scope) | ✅ yes (`requestScopedSave` → `g_restartAfterSave` → `esp_restart` ~700 ms) | reconnect after USB re-enum → reload + re-import |
+| **RESET — FULL / BANKS+PATS** | ✅ yes (deferred boot reset: `handleScopedReset` → `settings_arm_pending_reset` → `esp_restart`, wipe on next boot, `interface.cpp`) | wait for USB drop → reconnect → reload |
+| **RESET — SETTINGS / MOTION** | ❌ **no** (firmware 6.1.01) | reload (no USB drop) → re-pull via `APP_SYNC_REQ` |
+
+**Firmware (`audio.cpp`, `settings_save_task`):** the `if (isReset)` branch sends the `CMD_SCOPED_RESET` ACK, then reboots only for FULL / BANKS+PATS (`scope` check); for SETTINGS / MOTION it `continue`s the task loop — no `esp_restart()`. The scope was already applied live by `applyResetScope()`.
+
+**App (`OctopusApp.html`):** `resetScoped()` stores `_persistResetScope`; `_resetReboots()` returns true only for FULL(0)/BANKS(1). The `CMD.SCOPED_RESET` ACK path then either takes the reboot-wait path (`_persistFinished(true, true)` → `_prepareForDeviceReboot`) or the reload path (`_persistFinished(true, false)` → `_scheduleAppReload` → reconnect → `APP_SYNC_REQ` re-pull). After a SETTINGS/MOTION reset the device stays up, so the reload reconnects to the same port immediately and re-pulls the fresh settings/motion image from the blobs — "what other preloads do".
 
 ---
 
@@ -328,4 +351,4 @@ Architecture remained sound after ship; these close the lifecycle/hygiene gaps f
 
 ---
 
-*© DIODAC ELECTRONICS / iSystem — OctopusApp v6.2.06 MIDI Controller mode (shipped)*
+*© DIODAC ELECTRONICS / iSystem — OctopusApp v6.2.07 · firmware v6.1.01 — MIDI Controller mode (shipped)*

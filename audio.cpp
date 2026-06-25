@@ -373,11 +373,23 @@ void settings_save_task(void* pvParameters) {
 
     if (isReset) {
       g_resetInProgress.store(false, std::memory_order_release);
+      g_beamRecover.store(true, std::memory_order_release);
       if (isAppConnected())
         txSysex(CMD_SCOPED_RESET, ok ? 16383u : 0u);
-      g_beamRecover.store(true, std::memory_order_release);
-      delay(400);
-      esp_restart();
+      /* Reboot policy by scope:
+       *   FULL / BANKS+PATS — reboot (they normally take the deferred boot-reset
+       *     path in handleScopedReset() and don't reach here at runtime; kept here
+       *     defensively so they still reboot if the flow ever routes through).
+       *   SETTINGS / MOTION — applied live by applyResetScope(); do NOT reboot.
+       *     The App reloads on this ACK and re-pulls the fresh settings/motion
+       *     image via APP_SYNC_REQ (same blob path as LOAD / connect). */
+      const bool rebootReset =
+          (scope == ResetScope::FULL || scope == ResetScope::BANKS_PATTERNS);
+      if (rebootReset) {
+        delay(400);
+        esp_restart();
+      }
+      continue;  /* no reboot: skip the save-ACK path below, await next request */
     }
 
     if (ok && isAppConnected()) {

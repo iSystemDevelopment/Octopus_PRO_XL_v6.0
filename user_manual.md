@@ -118,8 +118,8 @@ All parameter writes funnel through **`patches.h`** apply-functions so hardware 
 |-------|------|------|-------|
 | **Full** | Entire device state → NVS + reboot | Reload all blobs (no reboot) | `pend_rst` flag + instant reboot → boot wipe |
 | **Banks+Pats** | Pattern grids, user slots, bank deltas → NVS + reboot | Re-seed factory banks + overlay stored blobs | `pend_rst` flag + instant reboot → boot wipe |
-| **Motion** | P-lock lanes → NVS + reboot | Clear matrix + overlay motion blob | NvsWorker erase + reboot |
-| **Settings** | Mix, MIDI, laser, D-BEAM, songs → NVS + reboot | Reload settings blob only | NvsWorker factory settings + reboot |
+| **Motion** | P-lock lanes → NVS + reboot | Clear matrix + overlay motion blob | NvsWorker erase, applied live — **no reboot** (fw ≥ 6.1.01) |
+| **Settings** | Mix, MIDI, laser, D-BEAM, songs → NVS + reboot | Reload settings blob only | NvsWorker factory settings, applied live — **no reboot** (fw ≥ 6.1.01) |
 
 **NVS keys:** `settings`, `patterns`, `banks`, `usrnames`, `usrpat`, `usrpatnames`, `motion`, plus control key `pend_rst` (u8) for deferred FULL/BANKS reset.
 
@@ -149,7 +149,7 @@ To restore factory defaults:
 3. Apply power while holding both buttons for approximately **150 ms** until the reset routine begins.
 4. The unit arms a deferred reset, reboots, and on the next boot restores factory state before any audio or laser tasks start.
 
-Runtime **Full Reset** and **Banks+Pats Reset** arm an NVS flag and reboot immediately (under ~200 ms). The actual wipe runs at the start of the next boot — the same safe window as the button combo above. **Settings Reset** and **Motion Clear** complete on the running device via a short NvsWorker commit, then reboot.
+Runtime **Full Reset** and **Banks+Pats Reset** arm an NVS flag and reboot immediately (under ~200 ms). The actual wipe runs at the start of the next boot — the same safe window as the button combo above. **Settings Reset** and **Motion Clear** apply live on the running device via a short NvsWorker commit and, from firmware **6.1.01**, do **not** reboot — OctopusApp simply reloads and re-pulls the fresh settings/motion image from the device.
 
 Scoped resets are also available under **RESET** in the main menu ([§8.14](#814-reset)).
 
@@ -754,10 +754,10 @@ Four scopes mirror SAVE/LOAD. L2 click → confirm → execute.
 |-------|-------------------|
 | **Full Reset** | Arms NVS `pend_rst` → immediate reboot → boot kernel wipes all blobs + factory settings |
 | **Banks+Pats** | Same deferred path — clears patterns, banks, user slots; keeps settings & motion |
-| **Motion Clr** | Clears P-lock matrix in RAM + NVS via NvsWorker → reboot |
-| **Settings** | Factory knob/mixer/laser defaults in RAM + NVS via NvsWorker → reboot |
+| **Motion Clr** | Clears P-lock matrix in RAM + NVS via NvsWorker — applied live, **no reboot** (fw ≥ 6.1.01) |
+| **Settings** | Factory knob/mixer/laser defaults in RAM + NVS via NvsWorker — applied live, **no reboot** (fw ≥ 6.1.01) |
 
-After reboot the OLED returns to the normal dashboard; OctopusApp reloads and re-imports via `APP_SYNC_REQ`.
+After a **Full** / **Banks+Pats** reset the device reboots and the OLED returns to the normal dashboard; **Motion** / **Settings** reset stay running (no reboot). Either way, OctopusApp reloads and re-imports via `APP_SYNC_REQ`.
 
 ---
 

@@ -5,9 +5,33 @@ All notable changes to Octopus PRO XL firmware and OctopusApp are documented her
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning aligns with firmware `SYSTEM_FW_VERSION` in `code_info.h`.
 
-> **Current version: [6.1.00](#610--2026-06-23)** — firmware field baseline.  
-> **OctopusApp: [6.2.06](#6206--2026-06-25)** — mode-separation hardening (browser-only).  
+> **Current version: [6.1.01](#6101--2026-06-25)** — scoped-reset reboot policy.  
+> **OctopusApp: [6.2.07](#6207--2026-06-25)** — Octopus hard priority + no-reboot Settings/Motion reset.  
 > **Previous release: [6.0.01](#601--2026-06-22).**
+
+## [6.1.01] — 2026-06-25 (Firmware)
+
+Small firmware patch — reboot policy only. Pairs with OctopusApp [6.2.07](#6207--2026-06-25). Reflash required to get the no-reboot behaviour; the shipped App tolerates both old and new firmware.
+
+### Changed
+
+- **SETTINGS / MOTION scoped reset no longer reboots the ESP.** They were already applied live by `applyResetScope()`, but `settings_save_task` (`audio.cpp`) still called `esp_restart()` afterwards. The `if (isReset)` branch now sends the `CMD_SCOPED_RESET` ACK and reboots **only** for `ResetScope::FULL` / `BANKS_PATTERNS`; for SETTINGS / MOTION it skips the restart and `continue`s. The App reloads on the ACK and re-pulls the fresh settings/motion image via `APP_SYNC_REQ`. SAVE and FULL / BANKS+PATS reset keep their reboot.
+
+### Unchanged
+
+- SAVE (`requestScopedSave` → `g_restartAfterSave` → reboot ~700 ms) and the FULL / BANKS+PATS deferred boot-reset path are unchanged.
+
+## [6.2.07] — 2026-06-25 (OctopusApp)
+
+Browser-only, pairs with firmware [6.1.01](#6101--2026-06-25).
+
+### Added
+
+- **Octopus hard priority (MIDI lockout)** — while any live ★ Octopus port exists, the App locks to Octopus mode: auto-switch to Octopus (no decline prompt) and refuse selection of non-Octopus ports (reverts the picker with a message). MIDI Controller mode is reachable only with no Octopus connected. (This supersedes the v6.2.06 confirm-to-switch dialog.)
+
+### Changed
+
+- **Settings / Motion reset = no device reboot** (with firmware ≥ 6.1.01) — `resetScoped()` stores the scope; `_resetReboots()` gates the `CMD.SCOPED_RESET` ACK path: FULL/BANKS take the reboot-wait path, SETTINGS/MOTION reload the App and re-pull from the device. Confirm dialog + Help + RESET popup text now state the per-scope behaviour.
 
 ## [6.2.06] — 2026-06-25 (OctopusApp)
 
@@ -26,11 +50,15 @@ Browser-only. **No firmware changes** (firmware stays 6.1.00). Mode-separation a
 
 ### Added
 
-- **Confirm before hijack** — when an ★ Octopus port appears during a **live** MIDI session, the App asks (`_offerOctopusSwitch`) before reloading into Octopus mode instead of switching silently. Boot reconnect and the first-ever connect still auto-win.
+- **Octopus hard priority (MIDI lockout)** — while any live ★ Octopus port exists, the App is locked to Octopus mode: it auto-switches to Octopus (no decline prompt) and refuses selection of non-Octopus ports (reverts the picker with a message). MIDI Controller mode is reachable only when no Octopus is connected. `_pickAutoOutput` already ranks ★ ports first, so a simultaneously-connected third-party interface never wins.
 
 ### Docs
 
-- `docs/midi_controller_mode.md` — "Golden rule" rewritten (notes/CC/PC use the `_midi*` helpers; `_txMidiMapped` is a permanent no-op stub), reload documented as the intentional mode boundary, new "Post-ship hardening" section; corrected `_midiClockTick` (4 ms `setInterval`, not `animateVU`).
+- `docs/midi_controller_mode.md` — "Golden rule" rewritten (notes/CC/PC use the `_midi*` helpers; `_txMidiMapped` is a permanent no-op stub), reload documented as the intentional mode boundary, "Octopus hard priority" + "Post-ship hardening" sections, and a "Pending (firmware-gated) — scoped-reset reboot policy" note; corrected `_midiClockTick` (4 ms `setInterval`, not `animateVU`).
+
+### Known / pending (firmware-gated)
+
+- **SETTINGS / MOTION reset still reboots the ESP** — resolved the same day in firmware [6.1.01](#6101--2026-06-25) + App [6.2.07](#6207--2026-06-25).
 
 ## [6.2.00] — 2026-06-23 (OctopusApp)
 

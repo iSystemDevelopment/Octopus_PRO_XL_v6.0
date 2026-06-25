@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <!--
-  OctopusApp v6.2.05 — Octopus PRO XL Web MIDI Console
+  OctopusApp v6.2.07 — Octopus PRO XL Web MIDI Console
   © 2026 DIODAC ELECTRONICS / iSystem. All Rights Reserved.
   PROPRIETARY AND CONFIDENTIAL. Unauthorized use prohibited.
 -->
@@ -9,7 +9,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>OctopusApp v6.2.05 — OCTOPUS PRO XL</title>
+    <title>OctopusApp v6.2.07 — OCTOPUS PRO XL</title>
     <meta name="description" content="OctopusApp — zero-install Web MIDI console for Octopus PRO XL. 64-step sequencer, Universal MIDI Controller mode, song chains. Free in Chrome or Edge at octopus.isystem.app.">
     <meta name="theme-color" content="#020203">
     <link rel="canonical" href="https://octopus.isystem.app/">
@@ -1962,6 +1962,11 @@
                 • <b>App telemetry</b> — CPU load in header; SYSEX MON panel (FILTER hides PING / STEP / CPU streams).<br>
                 • <b>USB-only MIDI</b> — DIN MIDI removed; v6.0 SysEx protocol (manufacturer 0x7C device→App, 0x7D App→device).</p>
 
+                <p style="margin-top:10px"><b style="color:var(--green)">WHAT'S NEW IN v6.2.07 (APP) · v6.1.01 (FIRMWARE)</b><br>
+                • <b>Settings / Motion reset — no reboot</b> (firmware ≥ 6.1.01): they apply live; the App just reloads and re-pulls the fresh image from the device. SAVE and Full / Banks+Pats reset still reboot.<br>
+                • <b>Octopus hard priority</b> — while a ★ Octopus port is connected the App locks to Octopus mode; non-Octopus ports can't be selected (unplug Octopus to use MIDI Controller mode).<br>
+                • <b>Mode-separation hardening</b> — Octopus and MIDI connect paths fully split; MIDI activity scopes no longer freeze; Octopus knob panels build lazily.</p>
+
                 <p style="margin-top:10px"><b style="color:var(--green)">WHAT'S NEW IN v6.2.00 (APP)</b><br>
                 • <b>MIDI Controller mode</b> — no Octopus hardware required; badge <b>MIDI OUT</b>; standard MIDI to any USB interface.<br>
                 • See Help tab <b>MIDI CONTROLLER</b> for Mac / Windows / DAW setup (beginner guide).</p>
@@ -1985,7 +1990,7 @@
                 TR-909 / TR-808 / Trap / House — kit selection loads per-voice tuning (drum knobs follow). CC 70 on the drum MIDI channel switches kit live.</p>
 
                 <p style="margin-top:10px"><b style="color:var(--orange)">SAVE · LOAD · RESET · CLR</b><br>
-                Popups mirror hardware scopes: <b>Full</b> / <b>Banks+Pats</b> / <b>Motion</b> / <b>Settings</b>. <b>SAVE</b> and <b>Settings/Motion reset</b> commit via NvsWorker then reboot; the App reloads and re-imports. <b>Full/Banks reset</b> arm an NVS flag and reboot in ~150 ms — the wipe runs on the next boot (same as OC+SCALE combo). <b>LOAD</b> reloads RAM with no reboot, then the App reloads. Only one persist action at a time. CLR = hardware Clear (active grid + P-locks + both sounds → preset 0). All destructive actions use YES/NO confirm.</p>
+                Popups mirror hardware scopes: <b>Full</b> / <b>Banks+Pats</b> / <b>Motion</b> / <b>Settings</b>. <b>SAVE</b> commits via NvsWorker then reboots; the App reloads and re-imports. <b>Full/Banks reset</b> arm an NVS flag and reboot in ~150 ms — the wipe runs on the next boot (same as OC+SCALE combo). <b>Settings/Motion reset</b> (firmware ≥ 6.1.01) apply live with <b>no reboot</b> — the App reloads and re-pulls the fresh settings/motion image from the device. <b>LOAD</b> reloads RAM with no reboot, then the App reloads. Only one persist action at a time. CLR = hardware Clear (active grid + P-locks + both sounds → preset 0). All destructive actions use YES/NO confirm.</p>
 
                 <p style="margin-top:10px"><b style="color:var(--purple)">USER SLOTS</b><br>
                 Header <b>SLOTS</b> — 64 harp sounds, 64 seq sounds, 64 patterns. Save / load / rename; custom names persist via SysEx name blobs and echo on connect.</p>
@@ -2146,7 +2151,7 @@
                 <button class="btn active-red" onclick="app.closeResetModal()">CLOSE</button>
             </div>
             <div style="display:flex;flex-direction:column;gap:10px">
-                <div style="color:#666;font-size:9px">Scoped reset — same four scopes as the hardware RESET menu. <b>Full</b> and <b>Banks+Pats</b> reboot immediately; factory wipe runs on the next boot. <b>Settings</b> and <b>Motion</b> commit on-device then reboot. Each action is confirmed before sending. The App reloads after completion.</div>
+                <div style="color:#666;font-size:9px">Scoped reset — same four scopes as the hardware RESET menu. <b>Full</b> and <b>Banks+Pats</b> reboot the device (factory wipe runs on the next boot). <b>Settings</b> and <b>Motion</b> apply live with <b>no reboot</b> — the App just reloads and re-pulls the fresh image from the device. Each action is confirmed before sending.</div>
                 <button class="btn" style="color:var(--red);border-color:var(--red)" onclick="app.resetScoped(0)"><i class="fa-solid fa-rotate-left"></i>FULL RESET</button>
                 <button class="btn" style="color:var(--red);border-color:var(--red)" onclick="app.resetScoped(1)">BANKS + PATS RESET</button>
                 <button class="btn" style="color:var(--purple);border-color:var(--purple)" onclick="app.resetScoped(2)">MOTION CLEAR</button>
@@ -2200,7 +2205,7 @@
      JAVASCRIPT
 ═══════════════════════════════════════════════════════════════════════════ -->
     <script>
-        const APP_VERSION = '6.2.06';
+        const APP_VERSION = '6.2.07';
         const PAYPAL_DONATE_URL = 'https://www.paypal.com/donate?hosted_button_id=KX7B76V37PED8';
         const MIDI_SESSION_KEY = 'octopusapp_midi_session_v1';
         const PORT_BOOT_KEY = 'octopusapp_port_boot_v1';
@@ -3817,6 +3822,7 @@
             _linkDegradedUntil: 0, // cooldown after auto APP_SYNC_REQ
             _persistBusy: false,      // one save / reset / load at a time (mirrors firmware)
             _persistKind: '',         // 'save' | 'reset' | 'load'
+            _persistResetScope: 0,    // last RESET scope: 0 FULL,1 BANKS,2 MOTION,3 SETTINGS
             _persistSince: 0,
             _persistTimeoutId: null,  // auto-clear safety timeout handle
             _persistAwaitReboot: false, // USB dropped mid save/reset — wait for reconnect
@@ -3834,7 +3840,6 @@
 
             _octopusRescanPending: false,
             _octopusKnobsBuilt: false,        // [LAZY-DOM] Octopus knob panels built once
-            _octopusSwitchOfferedFor: null,   // [UX] port id we already asked to switch to
             _midiClockTimer: null,
             _midiMotionFullWarned: false,
             /* Per-bank CC automation lanes (MIDI mode): up to 4 CCs × 64 steps. */
@@ -3931,31 +3936,6 @@
             },
             _portIsOctopus(port) {
                 return this._isOctopusPortName((port || this.midiOut)?.name);
-            },
-            /** True while the user is actively running a standalone MIDI Controller session
-             *  (live non-Octopus port).  Used to confirm before auto-hijacking into Octopus. */
-            _isActiveMidiSession() {
-                return this._appMode === 'midi' && this.midiOut && this._portLive(this.midiOut);
-            },
-            /** [UX] An Octopus port appeared mid-MIDI-session.  Octopus normally auto-wins,
-             *  but hijacking a live session with a silent reload is abrupt — so ask first.
-             *  Accept → reload into Octopus (the intentional mode boundary); decline → stay,
-             *  and don't nag again until this Octopus port re-appears. */
-            _offerOctopusSwitch(port, sel) {
-                if (!port) return false;
-                if (this._octopusSwitchOfferedFor === port.id) return false; // ask once per appearance
-                this._octopusSwitchOfferedFor = port.id;
-                const name = port.name || 'Octopus';
-                const go = window.confirm(
-                    '★ ' + name + ' detected.\n\n' +
-                    'Switch from MIDI Controller mode to Octopus linked mode?\n' +
-                    'The App will reload. Your MIDI session is saved automatically.');
-                if (go) {
-                    this._connectMidiPort(port, sel, 'user accepted Octopus switch');
-                    return true;
-                }
-                this.log('Staying in MIDI Controller mode — choose ★ ' + name + ' from the port menu to switch later.');
-                return false;
             },
             /** [LAZY-DOM] Build the five Octopus knob panels once, on first Octopus entry.
              *  Idempotent: cheap no-op on every later call.  knobStates must be populated
@@ -4754,19 +4734,18 @@
                             }
                         }
                         const hasOctopus = outList.some(o => this._isOctopusPortName(o.name));
-                        if (!hasOctopus) this._octopusSwitchOfferedFor = null; // re-offer on replug
                         if (preferred) {
                             if (this.midiOut && this.midiOut.id === preferred.id) {
                                 if (sel) sel.value = preferred.id;
                                 await this._bindMidiInputs(access);
-                            } else if (octopusOut && this._isActiveMidiSession()) {
-                                // Octopus appeared while a MIDI session is live — confirm
-                                // before the (intentional) reload instead of auto-hijacking.
-                                this._offerOctopusSwitch(octopusOut, sel);
                             } else {
-                                await this._connectMidiPort(preferred, sel, 'auto connect');
+                                // [LOCKOUT] _pickAutoOutput ranks ★ Octopus first, so when an
+                                // Octopus is present `preferred` IS the Octopus port — auto-win
+                                // (reload into Octopus mode), with no decline option.  MIDI mode
+                                // is reachable only when no Octopus port exists.
+                                await this._connectMidiPort(preferred, sel, hasOctopus ? 'octopus priority' : 'auto connect');
                             }
-                            if (!octopusOut && !hasOctopus)
+                            if (!hasOctopus)
                                 this._scheduleOctopusRescan();
                         } else if (outList.length) {
                             this.log(`MIDI: ${outList.length} out / ${access.inputs.size} in — pick a port (★ = Octopus)`);
@@ -4797,6 +4776,19 @@
                         const next = access.outputs.get(e.target.value);
                         if (!next) return;
                         if (this.midiOut && this.midiOut.id === next.id) return;
+                        // [LOCKOUT] Octopus has hard priority: while any live ★ Octopus port
+                        // exists, non-Octopus ports cannot be selected — revert to Octopus.
+                        if (!this._isOctopusPortName(next.name)) {
+                            const octo = [...access.outputs.values()]
+                                .find(o => this._isOctopusPortName(o.name) && this._portLive(o));
+                            if (octo) {
+                                this.log('★ Octopus connected — MIDI Controller mode is locked out. Unplug Octopus to use other MIDI gear.');
+                                if (sel) sel.value = octo.id;
+                                if (!this.midiOut || this.midiOut.id !== octo.id)
+                                    await this._connectMidiPort(octo, sel, 'octopus priority');
+                                return;
+                            }
+                        }
                         await this._connectMidiPort(next, sel, 'manual port pick');
                     };
                 } catch (e) {
@@ -5703,16 +5695,23 @@
                     [CMD.SCOPED_RESET]: v14 => {
                         if (v14 === 16383) {
                             if (this._persistBusy && this._persistKind === 'reset')
-                                this._persistFinished(true, true);
+                                // FULL/BANKS → reboot+reconnect; SETTINGS/MOTION → reload+re-pull.
+                                this._persistFinished(true, this._resetReboots());
                             else if (!this._persistBusy)
+                                /* Hardware-initiated: reload either way (device may reboot or not). */
                                 this._scheduleAppReload('hardware reset');
                         } else if (v14 === 0) {
-                            /* Firmware always reboots after reset — wait for USB drop. */
                             if (this._persistBusy && this._persistKind === 'reset') {
-                                this._persistAwaitReboot = true;
-                                if (this._persistTimeoutId) {
-                                    clearTimeout(this._persistTimeoutId);
-                                    this._persistTimeoutId = null;
+                                if (this._resetReboots()) {
+                                    /* FULL/BANKS — firmware reboots; wait for the USB drop. */
+                                    this._persistAwaitReboot = true;
+                                    if (this._persistTimeoutId) {
+                                        clearTimeout(this._persistTimeoutId);
+                                        this._persistTimeoutId = null;
+                                    }
+                                } else {
+                                    /* SETTINGS/MOTION — no reboot; 0 means the commit failed. */
+                                    this._persistFinished(false, false);
                                 }
                             } else if (this._persistBusy || this._persistKind === 'reset')
                                 this._persistFinished(false, false);
@@ -6154,13 +6153,24 @@
             closeResetModal() {
                 document.getElementById('resetModal').style.display = 'none';
             },
+            /** FULL(0) / BANKS+PATS(1) reboot the device; MOTION(2) / SETTINGS(3) are
+             *  applied live (firmware ≥ 6.1.01) — no reboot, the App just reloads + re-pulls. */
+            _resetReboots(scope) {
+                const s = (scope == null ? this._persistResetScope : scope) | 0;
+                return s === 0 || s === 1;
+            },
             resetScoped(scope) {
                 if (!this._requireOctopusHardware('RESET')) return;
-                const name = this._scopeName(scope);
-                if (!confirm('RESET ' + name + '\nWipe RAM, persist, and reboot?')) return;
+                const s = (+scope) & 3;
+                const name = this._scopeName(s);
+                const tail = this._resetReboots(s)
+                    ? '\nWipe RAM, persist, and reboot?'
+                    : '\nApply live (no reboot) — the App reloads and re-pulls from the device?';
+                if (!confirm('RESET ' + name + tail)) return;
                 if (!this._armPersist('reset')) return;
-                this._showPersistWait('reset', scope);
-                this.txParam(CMD.SCOPED_RESET, this._encodePersistScope(scope));
+                this._persistResetScope = s;
+                this._showPersistWait('reset', s);
+                this.txParam(CMD.SCOPED_RESET, this._encodePersistScope(s));
             },
 
             // ── SLOTS popup (user sound + pattern library, 1:1 with hardware) ─────────
