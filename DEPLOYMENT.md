@@ -99,21 +99,22 @@ How the live App chooses mode (no manual “mode switch” button):
 
 **Auto-connect rules**
 
-1. If a ★ Octopus USB port exists → App **prefers Octopus** and syncs via SysEx.
+1. If a ★ Octopus USB port exists → App **prefers Octopus** and syncs via SysEx (**Octopus hard priority**).
 2. If **no** ★ port → App auto-picks the **first available MIDI output** → **MIDI OUT** mode.
-3. You can **always override** with the header **MIDI** dropdown (★ = Octopus, anything else = MIDI Controller).
+3. **Octopus lockout (v6.2.07+):** while any live ★ Octopus port is connected, the header **MIDI** dropdown **cannot** switch to a non-★ port — the picker reverts to Octopus with a log message. **Unplug Octopus** (or wait until ★ disappears from the list) to use MIDI Controller mode. If both ★ Octopus and a third-party interface are plugged in, ★ always wins auto-connect.
 
-**Reload on connect (v6.2.01+)**
+**Reload on connect (v6.2.01+, refined v6.2.07)**
 
-Selecting or auto-detecting a port does a **short full page reload**, then opens in the correct shell:
+A **full page reload** runs only when the App must swap shells or after a persist/reconnect handshake — **not** on every USB attach:
 
 | Trigger | After reload |
 |---------|----------------|
-| ★ Octopus auto-detected or chosen | **Octopus ON** — 3 tabs, SysEx sync, locked transport |
-| Non-★ port chosen / auto-picked | **MIDI OUT** — GRID + INSTRUMENTS, unlocked transport |
-| Octopus returns after unplug / save reboot | Reload → **Octopus ON** again |
+| ★ Octopus ↔ non-★ port change (either direction) | Correct shell: **Octopus ON** (3 tabs) or **MIDI OUT** (2 tabs) |
+| Octopus returns after unplug, SAVE, or FULL/BANKS reset | **Octopus ON** + `APP_SYNC_REQ` re-import |
+| SETTINGS / MOTION reset (fw ≥ 6.1.01, no USB drop) | Reload → same ★ port → re-pull fresh image |
+| Same mode, same class of port (lightweight reconnect) | **No reload** — `_adoptMidiPort()` only |
 
-MIDI patterns are saved to `localStorage` before reload; Octopus state comes from the device after sync.
+MIDI patterns are saved to `localStorage` before a reload; Octopus state comes from the device after sync.
 
 **Song mode + patterns (v6.2.03+, MIDI OUT only)**
 
@@ -129,8 +130,8 @@ Song chains persist in `localStorage` and **EXP** JSON (`songData`, `isSongMode`
 
 **When Octopus is unplugged**
 
-- App re-scans ports. If ★ is gone, it reloads into **MIDI OUT** on the next available output.
-- Plug Octopus back in → auto-pick or select ★ → reload → **Octopus ON**.
+- App re-scans ports. If ★ is gone, it may reload into **MIDI OUT** on the next available output (or stay disconnected until you pick a port).
+- Plug Octopus back in → auto-pick ★ → reload → **Octopus ON** (MIDI Controller mode is locked out again while ★ is live).
 
 **Transport**
 
@@ -211,13 +212,14 @@ Run in **Google Chrome** (or Edge) on **HTTPS**:
 | 10 | Persistence | Reload → pattern + song chain restored; **EXP** includes `songData` |
 | 11 | Help | **HELP** → **MIDI CONTROLLER** tab documents song mode + patterns |
 | 12 | Regression | Reconnect ★ Octopus → full SysEx sync identical to v6.1 behaviour |
+| 13 | Octopus lockout | With ★ + another port plugged in, picking non-★ reverts to ★; unplug ★ → MIDI OUT available |
 
 ### MIDI Controller production notes
 
 - **No server-side code** — all MIDI runs in the browser via Web MIDI API.
 - **No firmware flash** required for v6.2 App features.
 - Patterns + **song chains** persist in browser `localStorage` key `octopusapp_midi_session_v1` (not on device NVS).
-- Document for users: [User Manual §9.4](./user_manual.md#94-universal-midi-controller-mode-octopusapp-v6203--shipped).
+- Document for users: [User Manual §9.4](./user_manual.md#94-universal-midi-controller-mode-octopusapp-v6207--shipped).
 
 ---
 

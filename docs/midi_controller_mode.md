@@ -24,9 +24,9 @@ Authoritative build plan for the dual-mode App: **Octopus linked** (current v6.1
 
 ```
 disconnected ──► octopusLinked     (★ port + SysEx echo within grace period)
-disconnected ──► midiController    (user picks non-Octopus port OR explicit choice)
-octopusLinked  ──► midiController  (user changes port — confirm if needed)
-midiController ──► octopusLinked   (Octopus plugged + sync OK)
+disconnected ──► midiController    (no ★ port — auto-pick first MIDI out OR manual pick)
+octopusLinked  ──► midiController  (★ unplugged — only then; non-★ pick refused while ★ live)
+midiController ──► octopusLinked   (★ appears — auto-switch + reload, no decline prompt)
 ```
 
 **`app._appMode`:** `'octopus'` | `'midi'` | `'disconnected'`
@@ -206,7 +206,7 @@ Each phase ends with a **verification checklist** before starting the next.
 1. Build `#view-midi-inst` DOM:
    - **Left:** Seq synth — channel, PC, 8× CC knobs, octave, scale, **seq activity canvas** (GPU-isolated).
    - **Right:** Drum machine — channel, per-row note, PC optional, **reuse drum-scope canvas** (move or clone host from mixer).
-2. `buildKnobs()` skipped for Octopus panels in MIDI mode; build `MIDI_KNOBS` CC config instead.
+2. Octopus knob panels built lazily via `_ensureOctopusKnobs()` (first Octopus/disconnected shell entry only); MIDI mode builds `MIDI_KNOBS` CC config instead.
 3. CC/PC changes call `_midiSendCc` / `_midiSendPc` only.
 4. Activity canvases pulse on outbound note/CC (cosmetic).
 
@@ -318,7 +318,7 @@ Architecture remained sound after ship; these close the lifecycle/hygiene gaps f
 1. **`onConnect()` split** — `_onConnectOctopus()` / `_onConnectMidi()`. The shared preamble does only the inbound/link reset + port open; the Octopus-only lifecycle (`_loadSlotMeta`, persist-modal cleanup, sync burst, `_resetSlotSavedFlagsForSync`, `APP_SYNC_REQ`, heartbeat) lives in the Octopus branch and never runs in MIDI mode.
 2. **GPU fix — frozen MIDI scopes.** `_syncBurstExpected` was armed unconditionally in `onConnect()`. In MIDI mode `_parseDeviceSysex()` returns early, so the RX queue never drains and the flag stayed `true` forever — and `animateVU`'s `gpuBusy = _syncBurstActive || _syncBurstExpected` gate then froze the activity scopes. The flag is now armed only when the port is Octopus (`_syncBurstExpected = oct`).
 3. **Defense-in-depth setter guards** — `setPlayMode`, `toggleMute`, `toggleDbeam`, `setDrumWave`, `setDrumKit`, `toggleLaserShow`, `toggleMidiHue`, `setHarpWave`, `setSeqWave`, `setHarpOctave`, `setPbRange`, `setPbEnable` now early-return in MIDI mode, so a stray programmatic call can't mutate Octopus shadow state behind the hidden `.octopus-only` UI. (Shared setters — `setSeqOctave`, `setTranspose`, `setGlobalScale`, `loadSynthPat`, `loadDrumPat`, `randNotes` — keep their existing per-mode branches.)
-4. **Lazy Octopus DOM** — `_ensureOctopusKnobs()` builds the five knob panels once, on first entry into the Octopus shell (`setAppMode` for `octopus`/`disconnected`, plus a boot fallback). A MIDI-only session never builds them.
+4. **Lazy Octopus DOM** — `_ensureOctopusKnobs()` builds the five knob panels once, on first entry into the Octopus shell (`setAppMode` for `octopus`/`disconnected`, plus a boot fallback). A pure **MIDI OUT** session never builds them; **disconnected** still shows the Octopus shell preview and builds knobs once.
 5. **Octopus hard priority / MIDI lockout** — while a live ★ Octopus port exists, the App auto-switches to Octopus and refuses non-Octopus port selection (see "Octopus hard priority" above). MIDI mode is available only with no Octopus connected.
 
 ---

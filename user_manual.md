@@ -1,12 +1,12 @@
 # Octopus PRO XL v6.1 — User Manual
 
-**Laser Harp Groovebox · Firmware 6.1.00**
+**Laser Harp Groovebox · Firmware 6.1.01**
 
 | Field | Value |
 |-------|-------|
 | Document type | End-user & integrator reference |
-| Firmware | `6.1.00` · NVS namespace `octopus` · `SETTINGS_VERSION 0x0615` (struct layout) |
-| Companion app | [octopus.isystem.app](https://octopus.isystem.app) (Web MIDI / SysEx · **v6.2.03** MIDI Controller mode) |
+| Firmware | `6.1.01` · NVS namespace `octopus` · `SETTINGS_VERSION 0x0616` (struct layout) |
+| Companion app | [octopus.isystem.app](https://octopus.isystem.app) (Web MIDI / SysEx · **v6.2.07** — Octopus linked + MIDI Controller mode) |
 | Hardware UI | SH1106 OLED · rotary encoder · SCALE · OC |
 
 This manual describes the Octopus PRO XL from initial setup through complete operation of the hardware menu system, companion application, signal routing, and musical tools (sequencer topology, arpeggiator layouts, D-BEAM response curves, and effects character). Menu labels and category order match the on-device OLED display exactly (`display.h`).
@@ -787,18 +787,20 @@ Header **PLAY / STOP / REC** and **BPM** field are **read-only reflectors**. Har
 
 SAVE · LOAD · RESET · SLOTS · CPY/PST · RND-H/RND-D · CLR · mutes · DBEAM · MIDI routing · MON · HELP
 
-### 9.4 Universal MIDI Controller mode *(OctopusApp v6.2.03 — shipped)*
+### 9.4 Universal MIDI Controller mode *(OctopusApp v6.2.07 — shipped)*
 
-When **no Octopus PRO XL** is connected, OctopusApp operates as a **universal MIDI controller** in the browser — **no firmware update** required. Open **[octopus.isystem.app](https://octopus.isystem.app)** in **Google Chrome** (or Microsoft Edge) over **HTTPS**.
+When **no Octopus PRO XL** is connected (★ port absent from the MIDI list), OctopusApp operates as a **universal MIDI controller** in the browser — **no firmware update** required for MIDI mode itself. Open **[octopus.isystem.app](https://octopus.isystem.app)** in **Google Chrome** (or Microsoft Edge) over **HTTPS**.
 
 | | Octopus linked | MIDI Controller |
 |--|----------------|-----------------|
-| **Trigger** | ★ Octopus USB port + SysEx echo | Any other MIDI output, or no Octopus echo |
+| **Trigger** | ★ Octopus USB port + SysEx echo | Non-★ MIDI output when **no** ★ port is connected |
 | **Badge** | Octopus ON | MIDI OUT |
 | **Tabs** | INSTRUMENTS · MIXER · SEQUENCER | INSTRUMENTS · SEQUENCER only |
 | **Outbound** | Octopus SysEx (196 commands) | MIDI note on/off, CC, Program Change |
 | **Transport** | Hardware SCALE / OC / encoder | App play · stop · BPM |
 | **Persistence** | Device NVS (SAVE/LOAD) | Browser `localStorage` + EXP/IMP JSON |
+
+**Octopus hard priority (v6.2.07):** while a ★ Octopus port is connected, the App **locks to Octopus mode**. You cannot pick a non-★ port from the dropdown — unplug Octopus to drive third-party MIDI gear. If Octopus and another interface are both plugged in, ★ always wins auto-connect.
 
 **INSTRUMENTS (MIDI mode)** — seq synth panel (channel, program change, 8 CC knobs, activity canvas) and drum machine panel (per-row GM notes, scope canvas). No laser, D-BEAM, or studio mixer.
 
@@ -817,15 +819,16 @@ Octopus-only actions (SAVE, LOAD, RESET, SLOTS, CPU telemetry) are hidden in MID
 
 #### 9.4.2 Quick start (any platform)
 
-1. Open **Chrome** → [octopus.isystem.app](https://octopus.isystem.app).
-2. When Chrome asks **“Allow MIDI devices?”** → click **Allow** (required once per site).
-3. In the header **MIDI** dropdown, pick your output port (anything **without** ★ = MIDI Controller mode).
-4. Confirm the badge shows **MIDI OUT** (cyan).
-5. **INSTRUMENTS** tab → set melody channel (default Ch 1), drum channel (default Ch 10), Program Change if needed, CC knobs.
-6. **SEQUENCER** tab → click cells to enter notes (rows 1–8 melody, 9–16 drums). Use banks **A–D** and pages **P1–P4** for up to 64 steps.
-7. Optional: **🔗** song mode → **PAT/EDIT** chain editor → program bank order + repeats. **MELODY PATTERNS** / **DRUM PATTERNS** load factory grooves into the active bank.
-8. Set **BPM** in the header (editable in MIDI mode), press **▶ Play**. External gear receives notes; optional **CLK** sends MIDI clock (24 PPQN).
-9. Press **■ Stop** — all notes off. Patterns auto-save in the browser; use **EXP** / **IMP** in the routing bar to back up JSON (includes song chains).
+1. **Unplug Octopus** (or ensure no ★ port appears in the list) if you want MIDI Controller mode — see **Octopus hard priority** above.
+2. Open **Chrome** → [octopus.isystem.app](https://octopus.isystem.app).
+3. When Chrome asks **“Allow MIDI devices?”** → click **Allow** (required once per site).
+4. In the header **MIDI** dropdown, pick your output port (anything **without** ★). If ★ is present, the App stays on Octopus — unplug hardware first.
+5. Confirm the badge shows **MIDI OUT** (cyan).
+6. **INSTRUMENTS** tab → set melody channel (default Ch 1), drum channel (default Ch 10), Program Change if needed, CC knobs.
+7. **SEQUENCER** tab → click cells to enter notes (rows 1–8 melody, 9–16 drums). Use banks **A–D** and pages **P1–P4** for up to 64 steps.
+8. Optional: **🔗** song mode → **PAT/EDIT** chain editor → program bank order + repeats. **MELODY PATTERNS** / **DRUM PATTERNS** load factory grooves into the active bank.
+9. Set **BPM** in the header (editable in MIDI mode), press **▶ Play**. External gear receives notes; optional **CLK** sends MIDI clock (24 PPQN).
+10. Press **■ Stop** — all notes off. Patterns auto-save in the browser; use **EXP** / **IMP** in the routing bar to back up JSON (includes song chains).
 
 #### 9.4.3 macOS + Google Chrome
 
@@ -854,7 +857,7 @@ Chrome cannot talk to a DAW directly; you need a **virtual MIDI bus** on the Mac
 **Tips (Mac)**
 
 - If no ports appear: unplug/replug USB, refresh the page, check **System Settings → Privacy & Security** did not block Chrome.
-- One **★ Octopus** tab is enough for hardware mode; MIDI mode works with any port and does not need SysEx.
+- One **★ Octopus** tab is enough for hardware mode; for **MIDI OUT**, ensure ★ is **unplugged** (lockout while ★ is live).
 - Use **EXP** before clearing browser data — `localStorage` holds your patterns.
 
 #### 9.4.4 Windows + Google Chrome
@@ -922,10 +925,10 @@ If OctopusApp or the hardware helps your music, you can leave an optional tip vi
 
 | Component | Version |
 |-----------|---------|
-| Firmware (hardware) | **6.1.00** |
-| OctopusApp (browser) | **6.2.00** (includes MIDI Controller mode) |
+| Firmware (hardware) | **6.1.01** |
+| OctopusApp (browser) | **6.2.07** (Octopus linked + MIDI Controller mode) |
 
-Octopus **linked** mode behaviour matches firmware **6.1.00**. MIDI Controller mode is browser-only and does not change flash on the device.
+Octopus **linked** mode matches firmware **6.1.01** (including SETTINGS/MOTION reset with no reboot). MIDI Controller mode is browser-only and does not change flash on the device. While ★ Octopus is connected, the App locks to Octopus mode (v6.2.07 hard priority).
 
 ---
 
@@ -951,12 +954,13 @@ Octopus **linked** mode behaviour matches firmware **6.1.00**. MIDI Controller m
 
 ### 10.4 MIDI Controller mode (no Octopus hardware)
 
-1. **Chrome** → [octopus.isystem.app](https://octopus.isystem.app) → allow MIDI.
-2. **Mac:** enable **IAC Driver** in Audio MIDI Setup · **Windows:** install **loopMIDI** if routing into a DAW.
-3. App MIDI dropdown → virtual bus or USB interface; badge **MIDI OUT**.
-4. **INSTRUMENTS** → channels, PC, CC · **SEQUENCER** → pattern · optional **🔗** song chain · **MELODY/DRUM PATTERNS** · **▶ Play**.
-5. DAW: instrument track MIDI input = same bus as App output; match MIDI channels.
-6. **EXP** JSON backup before clearing browser data. Full guide: [§9.4](#94-universal-midi-controller-mode-octopusapp-v6203--shipped).
+1. **Unplug Octopus** (or confirm no ★ in the MIDI list) — MIDI mode is locked out while ★ is connected.
+2. **Chrome** → [octopus.isystem.app](https://octopus.isystem.app) → allow MIDI.
+3. **Mac:** enable **IAC Driver** in Audio MIDI Setup · **Windows:** install **loopMIDI** if routing into a DAW.
+4. App MIDI dropdown → virtual bus or USB interface; badge **MIDI OUT**.
+5. **INSTRUMENTS** → channels, PC, CC · **SEQUENCER** → pattern · optional **🔗** song chain · **MELODY/DRUM PATTERNS** · **▶ Play**.
+6. DAW: instrument track MIDI input = same bus as App output; match MIDI channels.
+7. **EXP** JSON backup before clearing browser data. Full guide: [§9.4](#94-universal-midi-controller-mode-octopusapp-v6207--shipped).
 
 ---
 
@@ -972,7 +976,8 @@ Octopus **linked** mode behaviour matches firmware **6.1.00**. MIDI Controller m
 | Chrome shows no MIDI ports | Click Allow on MIDI prompt · refresh · replug USB · Windows: check interface driver |
 | Wrong notes / silent synth | Match melody/drum **channels** in INSTRUMENTS · check plugin MIDI channel · press Stop (all notes off) |
 | Lost MIDI pattern after refresh | Patterns live in browser `localStorage` — use **EXP** before clearing site data |
-| Badge stuck Octopus OFF | Normal without hardware · pick any non-★ port for MIDI OUT |
+| Cannot pick non-★ MIDI port | **Expected** while Octopus is plugged in (v6.2.07 lockout) — unplug ★ to use MIDI Controller mode |
+| Badge stuck Octopus OFF | No port selected, or waiting for sync — pick ★ for Octopus ON; with no ★, pick any output for MIDI OUT |
 | Lost pattern after power | Perform SAVE → Full Save |
 | Stuck notes | Short SCALE on HARP dashboard (panic) |
 | Factory restore | Boot with OC+SCALE held, or RESET → Full Reset (instant reboot, wipe on next boot) |
@@ -1012,9 +1017,10 @@ Authoritative list: **`code_info.h` §9**. Targets for the next upgrade:
 | 1.1 | 2026-06-23 | v6.1.00 — deferred boot reset (FULL/BANKS+PATS), auto-connect App, 7-view TELEMETRY |
 | 1.2 | 2026-06-23 | Planned §9.4 — OctopusApp universal MIDI Controller mode (v6.2) |
 | 1.3 | 2026-06-23 | §9.4 shipped — MIDI Controller beginner guides (Mac/Windows/DAW); OctopusApp v6.2.00 |
+| 1.4 | 2026-06-25 | v6.2.07 / fw 6.1.01 — Octopus hard priority, mode-separation hardening, SETTINGS/MOTION reset no reboot |
 
 ---
 
-*Octopus PRO XL v6.1 — © DIODAC ELECTRONICS / iSystem. Firmware labels: `display.h`. Protocol: `sysex.h`.*
+*Octopus PRO XL v6.1.01 — © DIODAC ELECTRONICS / iSystem. Firmware labels: `display.h`. Protocol: `sysex.h`.*
 
 **Optional support:** [PayPal donate](https://www.paypal.com/donate?hosted_button_id=KX7B76V37PED8) · `diodac.electronics@gmail.com`

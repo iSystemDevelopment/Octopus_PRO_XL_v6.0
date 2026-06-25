@@ -2009,21 +2009,22 @@
                 </p>
             </div>
             <div id="helpBodyMidi" style="display:none;font-size:10px;color:#aaa;overflow-y:auto;flex:1;line-height:1.65;padding-right:4px">
-                <p style="color:#fff;font-size:9px;border-bottom:1px solid #1c1c2e;padding-bottom:4px;margin-bottom:8px;font-family:'Orbitron',sans-serif">OCTOPUSAPP v6.2.00 — UNIVERSAL MIDI CONTROLLER</p>
+                <p style="color:#fff;font-size:9px;border-bottom:1px solid #1c1c2e;padding-bottom:4px;margin-bottom:8px;font-family:'Orbitron',sans-serif">OCTOPUSAPP v6.2.07 — UNIVERSAL MIDI CONTROLLER</p>
                 <p style="margin-top:0;font-size:9px;margin-bottom:10px">
                     <a href="https://octopus-info.isystem.app#midi-mode" target="_blank" rel="noopener" style="color:var(--cyan)">Product site — MIDI Mode</a>
-                    · <a href="https://github.com/iSystemDevelopment/Octopus_PRO_XL_v6.0/blob/main/user_manual.md#94-universal-midi-controller-mode-octopusapp-v6200--shipped" target="_blank" rel="noopener" style="color:#aaa">User manual §9.4</a>
+                    · <a href="https://github.com/iSystemDevelopment/Octopus_PRO_XL_v6.0/blob/main/user_manual.md#94-universal-midi-controller-mode-octopusapp-v6207--shipped" target="_blank" rel="noopener" style="color:#aaa">User manual §9.4</a>
                 </p>
 
                 <p style="margin-top:0"><b style="color:var(--cyan)">BEGINNER — WHAT IS THIS?</b><br>
                 OctopusApp in <b>MIDI Controller mode</b> is a <b>step sequencer in your browser</b>. It sends normal MIDI (notes, knobs, program changes) to a synth, drum machine, or DAW. You do <b>not</b> need Octopus PRO XL hardware. Use <b>Google Chrome</b> (or Edge) at <a href="https://octopus.isystem.app" style="color:var(--cyan)">octopus.isystem.app</a> — not Safari or Firefox.</p>
 
                 <p style="margin-top:10px"><b style="color:var(--green)">QUICK START (3 MINUTES)</b><br>
-                1. Open Chrome → <b>octopus.isystem.app</b> → click <b>Allow</b> when asked for MIDI.<br>
-                2. Header <b>MIDI</b> menu → pick your output (anything without ★). Badge = <b style="color:var(--cyan)">MIDI OUT</b>.<br>
-                3. Tab <b>INSTRUMENTS</b> → melody Ch 1, drums Ch 10, set Program Change if needed.<br>
-                4. Tab <b>SEQUENCER</b> → click grid cells (rows 1–8 tune, 9–16 drums) → set BPM → <b>▶ Play</b>.<br>
-                5. <b>■ Stop</b> sends all notes off. Pattern auto-saves in this browser.</p>
+                1. <b>Unplug Octopus</b> (or ensure no ★ in the MIDI list) — MIDI mode is locked out while ★ is connected.<br>
+                2. Open Chrome → <b>octopus.isystem.app</b> → click <b>Allow</b> when asked for MIDI.<br>
+                3. Header <b>MIDI</b> menu → pick your output (anything without ★). Badge = <b style="color:var(--cyan)">MIDI OUT</b>.<br>
+                4. Tab <b>INSTRUMENTS</b> → melody Ch 1, drums Ch 10, set Program Change if needed.<br>
+                5. Tab <b>SEQUENCER</b> → click grid cells (rows 1–8 tune, 9–16 drums) → set BPM → <b>▶ Play</b>.<br>
+                6. <b>■ Stop</b> sends all notes off. Pattern auto-saves in this browser.</p>
 
                 <p style="margin-top:10px"><b style="color:var(--purple)">macOS + GOOGLE CHROME</b><br>
                 <b>Direct to hardware synth</b><br>
@@ -2053,8 +2054,8 @@
                 • <b>EXP</b> / <b>IMP</b> in routing bar = backup/restore full session JSON.</p>
 
                 <p style="margin-top:10px"><b style="color:var(--green)">TWO MODES</b><br>
-                • <b>Octopus ON</b> — ★ port + hardware SysEx. Full 3-tab editor, hardware transport.<br>
-                • <b>MIDI OUT</b> — this guide. 2 tabs only. App play/stop/BPM. No SAVE/LOAD to device flash.</p>
+                • <b>Octopus ON</b> — ★ port + hardware SysEx. Full 3-tab editor, hardware transport. <b>Hard priority:</b> while ★ is connected you cannot switch to MIDI OUT — unplug Octopus first.<br>
+                • <b>MIDI OUT</b> — this guide. 2 tabs only. App play/stop/BPM. No SAVE/LOAD to device flash. Available only when no ★ port is connected.</p>
 
                 <p style="margin-top:10px"><b style="color:var(--green)">TABS IN MIDI MODE</b><br>
                 • <b>SEQUENCER</b> — 64 steps (P1–P4), banks A–D, CPY/PST/RND/CLR, <b>🔗 song chain</b>, factory melody/drum patterns.<br>
@@ -2068,6 +2069,7 @@
 
                 <p style="margin-top:10px"><b style="color:var(--orange)">TROUBLESHOOTING</b><br>
                 • No ports listed → Allow MIDI · refresh · replug USB · Windows: check driver.<br>
+                • Cannot pick non-★ port → <b>expected</b> while Octopus is plugged in — unplug ★ for MIDI Controller mode.<br>
                 • DAW silent → same virtual port on App + track input · matching MIDI channel · plugin armed.<br>
                 • Stuck notes → press Stop in App (sends all notes off).<br>
                 • Lost pattern → cleared browser data wipes localStorage — use EXP first.</p>
@@ -2076,7 +2078,7 @@
                 OctopusApp &amp; firmware are free to use. If they help your music, an optional <a href="https://www.paypal.com/donate?hosted_button_id=KX7B76V37PED8" target="_blank" rel="noopener noreferrer" style="color:#7eb8e8">PayPal donation</a> to <b>DIODAC ELECTRONICS</b> is appreciated — also via the <b>TIP</b> chip in the routing bar.</p>
 
                 <p style="margin-top:10px"><b style="color:var(--purple)">BACK TO OCTOPUS HARDWARE</b><br>
-                Plug in USB → select ★ Octopus port → badge <b>Octopus ON</b>. MIDI-mode patterns stay in browser storage separately.</p>
+                Plug in USB → App auto-picks ★ Octopus → badge <b>Octopus ON</b> (reload). MIDI-mode patterns stay in browser storage separately.</p>
             </div>
         </div>
     </div>
@@ -4872,8 +4874,7 @@
                     }
                     this.closeAllPersistModals();
                 }
-                this._syncBurstExpected = true;
-                this._syncBurstActive = false;
+                /* _syncBurstExpected / _syncBurstActive already set in onConnect preamble (oct=true). */
                 this._resetSlotSavedFlagsForSync();
                 this._linkGraceUntil = Date.now() + 4000;
                 this.setAppMode('octopus');
@@ -6493,7 +6494,7 @@
             // ── Harp play mode (POLY8 / STRINGS / SOLO) ─────────────────────────────────
             // tx=false when reflecting a device echo (CMD.PLAY_MODE) — no loop-back.
             setPlayMode(m, tx = true) {
-                if (this._appMode === 'midi') return;   // [SEPARATION] Octopus-only setter
+                if (this._appMode === 'midi' && tx) return;   // [SEPARATION] Octopus-only; tx=false = device echo
                 let pm = (+m) | 0;
                 if (pm < 0 || pm > 2) pm = 0;
                 this.playMode = pm;
