@@ -1,12 +1,12 @@
 /* ═════════════════════════════════════════════════════════════════════════════
- * Octopus PRO XL v6.1.00 — Laser Harp Groovebox
+ * Octopus PRO XL v6.1.01 — Laser Harp Groovebox
  * © 2026 DIODAC ELECTRONICS / iSystem. All Rights Reserved.
  *
  * PROPRIETARY AND CONFIDENTIAL. Unauthorized copying, distribution, modification,
  * or use of this software or firmware, in whole or in part, is strictly prohibited
  * without prior written permission from DIODAC ELECTRONICS.
  * ═════════════════════════════════════════════════════════════════════════════
- * settings.h — v6.1.00  NVS PERSISTENT STATE + FACTORY DEFAULTS
+ * settings.h — v6.1.01  NVS PERSISTENT STATE + FACTORY DEFAULTS
  *
  * Four NVS blobs in namespace "octopus" (legacy "octopus_v5" auto-migrated once):
  *   "settings"     — AllSettings struct (SETTINGS_VERSION 0x0616 = wire layout ID)
@@ -151,7 +151,6 @@ struct SeqSettings {
 /* ── Drum kit — per-voice tune/decay/volume/noise + wave_idx[8] ─────────── */
 /* TR-909 inspired factory calibration (not flat 0.5 placeholders):
  *   KICK: long decay + low noise → deep sub punch
- *   SNARE: balanced body/rattle noise
  *   SNARE: body wavetable + bandpassed rattle; Tune = snap brightness, Noise = wires
  *   CLAP: bandpassed noise triple-burst; Tune = filter centre, Noise = layer level
  *   HATS: 6-osc inharmonic metal + noise; Tune = HPF cutoff, Noise = wash amount

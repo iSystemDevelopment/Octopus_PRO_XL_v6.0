@@ -11,15 +11,18 @@ Versioning aligns with firmware `SYSTEM_FW_VERSION` in `code_info.h`.
 
 ## [6.1.01] — 2026-06-25 (Firmware)
 
-Small firmware patch — reboot policy only. Pairs with OctopusApp [6.2.07](#6207--2026-06-25). Reflash required to get the no-reboot behaviour; the shipped App tolerates both old and new firmware.
+Firmware patch — scoped-reset reboot policy plus a same-day **drum-voice refinement** pass for more classic-sounding metals, clap and snare. Pairs with OctopusApp [6.2.07](#6207--2026-06-25). Reflash required to get the no-reboot behaviour and the new drum voicing; the shipped App tolerates both old and new firmware.
 
 ### Changed
 
 - **SETTINGS / MOTION scoped reset no longer reboots the ESP.** They were already applied live by `applyResetScope()`, but `settings_save_task` (`audio.cpp`) still called `esp_restart()` afterwards. The `if (isReset)` branch now sends the `CMD_SCOPED_RESET` ACK and reboots **only** for `ResetScope::FULL` / `BANKS_PATTERNS`; for SETTINGS / MOTION it skips the restart and `continue`s. The App reloads on the ACK and re-pulls the fresh settings/motion image via `APP_SYNC_REQ`. SAVE and FULL / BANKS+PATS reset keep their reboot.
+- **Drum synthesis — classic snare / clap / metal-hat voicing.** Reworked the three noise-heavy voices in `groovebox.h` and added per-kit character tables in `globals.h`: snare is now a **body wavetable + bandpassed rattle + short click transient** (`KIT_SNARE_BODY_LO/HI`, `KIT_SNARE_SNAP_FC`, `KIT_SNARE_RATTLE_DELTA`, `KIT_SNARE_PITCH_MUL`, `KIT_SNARE_CLICK`, `KIT_SNARE_DECAY_SCALE`, `KIT_SNARE_WAVE`); clap is a **per-kit bandpass triple-burst with a Noise-knob layer** (`KIT_CLAP_BURST1/2/3`, `KIT_CLAP_FILTER_LP/HP`) — the Noise knob now drives the clap layer level (previously ignored); hats use a **per-kit 6-osc metal amplitude** (`KIT_HAT_METAL_AMP`) and tuned base frequencies. `applyDrumKit()` also loads the kit snare wavetable (`drumWaveIdx[1]`) and echoes it via `CMD_DRUM_WAVE` so App knobs follow. Updated `DrumSettings` factory defaults + `DRUM_KIT_*` tables to match. Knob mapping per voice (snare: Tune = snap brightness / Noise = wires; clap: Tune = filter centre / Noise = layer; hats: Tune = HPF cutoff / Noise = wash) is documented in `code_info.h` §8.I.
+- **Drum pitch normalisation.** Snare body + hats normalise through `DRUM_PITCH_FACTORY` (×0.60) so the default Drm Pitch keeps classic TR voicing while kick/toms/perc still track the global knob directly.
 
 ### Unchanged
 
 - SAVE (`requestScopedSave` → `g_restartAfterSave` → reboot ~700 ms) and the FULL / BANKS+PATS deferred boot-reset path are unchanged.
+- **NVS layout** — the drum pass changes default *values* only, not the `AllSettings` struct layout, so `SETTINGS_VERSION` stays **`0x0616`** (no migration; existing saves keep their stored drum knobs).
 
 ## [6.2.07] — 2026-06-25 (OctopusApp)
 
@@ -44,6 +47,11 @@ Browser-only, pairs with firmware [6.1.01](#6101--2026-06-25).
 
 - **P2–P4 appeared dead** when LEN=16 — `pointer-events: none` removed; all pages always editable.
 - **Parse error blocked App boot** — duplicate `page` binding in `_clearGridPageOctopusTx()`.
+- **Song-mode logic fixtures** — hardened the song ↔ pattern toggle and chain-loop playback: the song editor defers DOM via the `_songEditorDirty` rAF, returning to the GRID re-measures the playhead, and a pending STEP_SYNC step is restored when the grid stage is hidden. In MIDI Controller mode the 🔗 chain advances locally through `_midiAdvanceSongChain()` / `_midiResetSongPlayback()` (repeats + bank-per-row, no device SysEx). Inbound `SONG_POS` joins STEP_SYNC/TRANSPORT/BPM in the MIDI-mode RX block so a stray echo can't move the local playhead. Authoritative checklist: [docs/app_god_rules.md](./docs/app_god_rules.md).
+
+### Docs
+
+- **Doc/codebase consistency pass** — aligned `code_info.h` (manifest now describes v6.1.01; SysEx table header `0–195`; added missing entries 165 `PLAY_MODE`, 166 `H_PITCH`, 171 `SOFT_RESET`, 190–193 drum FX / `SEQ_RESTART`; new §8.I drum-voice synthesis section), corrected the stale `SETTINGS_VERSION 0x0615 → 0x0616` in `README.md`, refreshed the in-app **DRUM KITS** Help with the new classic voicing, and removed a duplicate snare comment in `settings.h`. Verified App ↔ firmware 1:1 for the `CMD` map, scale tables (`SCALE_MIDI_NOTES` ↔ `SCALES_NOTES`), `GM_DRUM_MAP`, and drum-kit names.
 
 ## [6.2.06] — 2026-06-25 (OctopusApp)
 

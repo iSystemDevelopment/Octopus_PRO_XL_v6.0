@@ -1,12 +1,12 @@
 /* ═════════════════════════════════════════════════════════════════════════════
- * Octopus PRO XL v6.1.00 — Laser Harp Groovebox
+ * Octopus PRO XL v6.1.01 — Laser Harp Groovebox
  * © 2026 DIODAC ELECTRONICS / iSystem. All Rights Reserved.
  *
  * PROPRIETARY AND CONFIDENTIAL. Unauthorized copying, distribution, modification,
  * or use of this software or firmware, in whole or in part, is strictly prohibited
  * without prior written permission from DIODAC ELECTRONICS.
  * ═════════════════════════════════════════════════════════════════════════════
- * display.h — v6.1.00  OLED DECLARATIONS + MENU LABEL TABLES
+ * display.h — v6.1.01  OLED DECLARATIONS + MENU LABEL TABLES
  *
  * SH1106 128×64 layout constants, menu name arrays, telemetry views,
  * DRAW_* helpers.  Runtime drawing in display.cpp → renderUIState() only.

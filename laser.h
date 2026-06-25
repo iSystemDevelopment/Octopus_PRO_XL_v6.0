@@ -1,12 +1,12 @@
 /* ═════════════════════════════════════════════════════════════════════════════
- * Octopus PRO XL v6.1.00 — Laser Harp Groovebox
+ * Octopus PRO XL v6.1.01 — Laser Harp Groovebox
  * © 2026 DIODAC ELECTRONICS / iSystem. All Rights Reserved.
  *
  * PROPRIETARY AND CONFIDENTIAL. Unauthorized copying, distribution, modification,
  * or use of this software or firmware, in whole or in part, is strictly prohibited
  * without prior written permission from DIODAC ELECTRONICS.
  * ═════════════════════════════════════════════════════════════════════════════
- * laser.h — v6.1.00  MCPWM LASER KERNEL + BEAM DETECTION PRIMITIVES
+ * laser.h — v6.1.01  MCPWM LASER KERNEL + BEAM DETECTION PRIMITIVES
  *
  * IRAM_ATTR inline helpers for laser_sweep_task (Core 1).  Implementation of
  * setupMCPWM, initLaserSPI, tickAnimation, laser_sweep_task → laser.cpp.

@@ -10,7 +10,7 @@ This repository is **proprietary** (see [LICENSE](./LICENSE)). Public visibility
 
 Open a [GitHub Issue](../../issues/new?template=bug_report.md) and include:
 
-- Firmware version (`6.1.00` or `SYSTEM_FW_VERSION` from Serial boot)
+- Firmware version (`6.1.01` or `SYSTEM_FW_VERSION` from Serial boot)
 - Hardware variant (ESP32-S3 module, flash/PSRAM if known)
 - Whether **OctopusApp** was connected ([octopus.isystem.app](https://octopus.isystem.app))
 - Product docs: [octopus-info.isystem.app](https://octopus-info.isystem.app) · [GitHub](https://github.com/iSystemDevelopment/Octopus_PRO_XL_v6.0) · [Facebook](https://www.facebook.com/diodac.co.uk/)

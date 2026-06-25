@@ -1,12 +1,12 @@
 /* ═════════════════════════════════════════════════════════════════════════════
- * Octopus PRO XL v6.1.00 — Laser Harp Groovebox
+ * Octopus PRO XL v6.1.01 — Laser Harp Groovebox
  * © 2026 DIODAC ELECTRONICS / iSystem. All Rights Reserved.
  *
  * PROPRIETARY AND CONFIDENTIAL. Unauthorized copying, distribution, modification,
  * or use of this software or firmware, in whole or in part, is strictly prohibited
  * without prior written permission from DIODAC ELECTRONICS.
  * ═════════════════════════════════════════════════════════════════════════════
- * patches.h — v6.1.00  RUNTIME SSOT + WIRE AUTHORITY
+ * patches.h — v6.1.01  RUNTIME SSOT + WIRE AUTHORITY
  *
  * Atomics (globals.h) are the single source of truth for live sound/state.
  * livePatch[] arrays are derived via syncLivePatchFromAtomics() — never stored

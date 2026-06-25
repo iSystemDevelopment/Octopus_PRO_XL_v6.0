@@ -1,12 +1,12 @@
 /* ═════════════════════════════════════════════════════════════════════════════
- * Octopus PRO XL v6.1.00 — Laser Harp Groovebox
+ * Octopus PRO XL v6.1.01 — Laser Harp Groovebox
  * © 2026 DIODAC ELECTRONICS / iSystem. All Rights Reserved.
  *
  * PROPRIETARY AND CONFIDENTIAL. Unauthorized copying, distribution, modification,
  * or use of this software or firmware, in whole or in part, is strictly prohibited
  * without prior written permission from DIODAC ELECTRONICS.
  * ═════════════════════════════════════════════════════════════════════════════
- * code_info.h — v6.1.00  ARCHITECTURE MANIFEST, SSOT BLUEPRINT & DEVELOPER GUIDE
+ * code_info.h — v6.1.01  ARCHITECTURE MANIFEST, SSOT BLUEPRINT & DEVELOPER GUIDE
  *
  * PURPOSE: This file contains NO executable code.  It is the authoritative
  * reference document for any developer (human or AI) maintaining or extending
@@ -22,10 +22,10 @@
  * NVS_NAMESPACE     "octopus" (legacy "octopus_v5" auto-migrated on first boot)
  * CMD_COUNT         196       (sysex indices 0-195; 194=AUX_SCENE 195=LINK_AUX)
  *
- * Release history: CHANGELOG.md.  Architecture below describes v6.1.00 as-shipped.
+ * Release history: CHANGELOG.md.  Architecture below describes v6.1.01 as-shipped.
  *
  * ─────────────────────────────────────────────────────────────────────────────
- * v6.1.00 HIGHLIGHTS
+ * v6.1 HIGHLIGHTS  (6.1.00 base · 6.1.01 patch · same-day drum-voice refinements)
  * ─────────────────────────────────────────────────────────────────────────────
  *   • Auto-connect OctopusApp, Octopus ON/Off badge, reload after SAVE/LOAD/RESET
  *   • Persist scope decode fix + SCOPED_RESET ACK; hardware LOAD → full App sync
@@ -40,6 +40,13 @@
  *     RAM-only with full App re-sync, no reboot
  *   • TELEMETRY menu: seven L2 views aligned with TelemetryView 1–7 (AC scope,
  *     DC bias, DAC threshold, D-BEAM expression, SNR, system report, fog reject)
+ *   • [6.1.01] SETTINGS / MOTION scoped reset applies live with NO reboot
+ *     (settings_save_task ACKs then `continue`s; only FULL / BANKS+PATS restart)
+ *   • [drum-voice refinements, same-day] Classic-leaning snare / clap / metal-hat
+ *     synthesis: snare = body wavetable + bandpassed rattle + click transient;
+ *     clap = per-kit bandpass triple-burst with a noise layer; hats = per-kit
+ *     6-osc metal amplitude.  Per-kit character tables live in globals.h
+ *     (KIT_SNARE_*, KIT_CLAP_*, KIT_HAT_*); see §8.I.  No NVS layout change.
  * ═════════════════════════════════════════════════════════════════════════════
  */
 #pragma once
@@ -151,7 +158,7 @@
  *         loadFactorySynthPattern (companion preset).
  *
  * ═══════════════════════════════════════════════════════════════════════════ 
- * 3. SYSEX COMMAND TABLE (CMD 0–189, canonical as of v6.1.00)
+ * 3. SYSEX COMMAND TABLE (CMD 0–195, canonical as of v6.1.01)
  *
  *   Wire format: [0xF0] [ID] [sub] [cmd_wire] [hi7] [lo7] [0xF7]
  *   ID = 0x7D  App → device  (only ID the firmware RX accepts)
@@ -338,8 +345,13 @@
  *   157 SESSION_LOAD App requests NVS load + full echo
  *   158 DRUM_KIT     applyDrumKit(): 0=TR-909 1=TR-808 2=Trap 3=House. Loads the
  *                    kit tuning into drumLivePatch+atomics (echoes all 32 drum
- *                    params) and sets kick pitch-sweep + hat base character.
- *                    Persisted in DrumSettings.kit (SETTINGS_VERSION 0x0532).
+ *                    params) AND sets the snare body wavetable (drumWaveIdx[1] =
+ *                    KIT_SNARE_WAVE[kit], echoed via CMD_DRUM_WAVE so App knobs
+ *                    follow).  The rest of the per-kit synthesis character (kick
+ *                    pitch-sweep, hat base/metal, snare/clap voicing) is applied
+ *                    per voice in fire_tuned_drum/drum_fill_buf — see §8.I.
+ *                    Persisted in DrumSettings.kit (drum default-value changes do
+ *                    not alter the struct layout — no SETTINGS_VERSION bump).
  *                    Live-switchable from an external controller via MIDI CC 70
  *                    (Sound Variation) on the drum channel: kit = value>>5 (0-3).
  *                    handleControlChange() drum-channel block, midi.cpp. The active
@@ -359,6 +371,21 @@
  *                    [v6.1] 14-bit-safe packing: bits 0-6 = load % (0–100),
  *                    bits 7-12 = out-ring drop count (saturating 0–63), bit 13 =
  *                    P-lock lanes-full flag.  (bit 14 is unaddressable in 14 bits.)
+ *
+ *   ── Bidirectional play-mode / pitch + retired soft reset (165–166, 171) ───
+ *   165 PLAY_MODE    currentPlayMode 0=POLY8 1=STRINGS 2=SOLO.  Device echoes on
+ *                    the hardware OC-cycle so the App mirrors it.
+ *   166 H_PITCH      harp manual tune; v14 centre 8192 = unity, ±1 octave.
+ *   171 SOFT_RESET   RETIRED v6.1 — accepted-and-ignored on RX (kept for old App
+ *                    builds; use RESET → Settings for factory knob/mixer defaults).
+ *
+ *   ── Drum insert-A live FX + post-randomise restart (190–193) ──────────────
+ *   190 D_FX_WET     drum insert-A fx_mix          v14 0–16383 → 0..1
+ *   191 D_FX_P1      drum insert-A p1 (rate/time)  v14 0–16383 → 0..30
+ *   192 D_FX_P2      drum insert-A p2 (depth/swing) v14 0–16383 → 0..250
+ *   193 SEQ_RESTART  App→device: seq_restart_rt() zeroes the step counter without
+ *                    stopping playback (sent after App RND-H / RND-D so the new
+ *                    random pattern is heard from beat 1; no-op when stopped).
  *
  * ═══════════════════════════════════════════════════════════════════════════
  * 4. ADDING A NEW GLOBAL PARAMETER (step-by-step)
@@ -677,10 +704,36 @@
  *      buckets = threshold only; the digital latch = the only trigger source;
  *      fog reject reads its OWN copy and gates, never feeds back.
  *
+ *   I. DRUM VOICE SYNTHESIS  (groovebox.h fire_tuned_drum / drum_fill_buf)
+ *      8 voices, one DrumVoice each: KICK(0) SNARE(1) CLAP(2) HH-C(3) HH-O(4)
+ *      TOM-H(5) TOM-L(6) PERC(7).  fire_tuned_drum() snapshots drumLivePatch
+ *      [ch*4+0..3] = Tune/Decay/Vol/Noise under patchMux, resets every phase +
+ *      filter to 0 (no carry between hits), records the kit snapshot in d->kit,
+ *      then arms d->active LAST behind a release fence.  drum_fill_buf() ages the
+ *      env per sample and frees the voice when env_amp hits 0.
+ *
+ *      Per-kit CHARACTER is data, not branches — constexpr tables in globals.h,
+ *      indexed by d->kit (NOT persisted; only DrumSettings.kit is in NVS):
+ *        KIT_KICK_SWEEP[]        pitch-sweep depth (deep 808/Trap vs snappy 909)
+ *        KIT_HAT_BASE_HZ[] / KIT_HAT_METAL_AMP[]   6-osc inharmonic metal cluster
+ *        KIT_SNARE_BODY_LO/HI[] · KIT_SNARE_WAVE[] · KIT_SNARE_SNAP_FC[] ·
+ *          KIT_SNARE_RATTLE_DELTA[] · KIT_SNARE_PITCH_MUL[] · KIT_SNARE_CLICK[] ·
+ *          KIT_SNARE_DECAY_SCALE[]   body wavetable + bandpassed rattle + click
+ *        KIT_CLAP_BURST1/2/3[] · KIT_CLAP_FILTER_LP/HP[]   triple-burst bandpass
+ *      Knob meaning per voice (after the same-day refinement):
+ *        SNARE  Tune = body pitch + snap-filter brightness; Noise = wire amount.
+ *        CLAP   Tune = bandpass centre; Noise = layer level (was previously ignored).
+ *        HATS   Tune = HPF cutoff; Noise = metal↔noise wash.
+ *      PITCH NORMALISE: kick/toms/perc track drumPitchMult directly; snare body +
+ *      hats normalise through DRUM_PITCH_FACTORY (0.60) so the default Drm Pitch
+ *      ×0.60 keeps classic TR voicing while the global knob still sweeps them.
+ *      Default tuning lives in settings.h DrumSettings (kit-0 == TR-909 factory);
+ *      DRUM_KIT_TUNE/DECAY/VOL/NOISE[kit][8] (globals.h) reload via applyDrumKit.
+ *
  * ═══════════════════════════════════════════════════════════════════════════
  * 9. FUTURE WORK
  *
- *   Planned for the next upgrade (not in v6.1.00 as-shipped):
+ *   Planned for the next upgrade (not in v6.1.01 as-shipped):
  *
  *   • Hardware SEQ MATRIX step pages — pattern length supports up to 64 steps, but
  *     the OLED matrix editor shows only 16 at a time (steps 17–63 today: OctopusApp

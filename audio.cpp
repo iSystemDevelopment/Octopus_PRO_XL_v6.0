@@ -1,12 +1,12 @@
 /* ═════════════════════════════════════════════════════════════════════════════
- * Octopus PRO XL v6.1.00 — Laser Harp Groovebox
+ * Octopus PRO XL v6.1.01 — Laser Harp Groovebox
  * © 2026 DIODAC ELECTRONICS / iSystem. All Rights Reserved.
  *
  * PROPRIETARY AND CONFIDENTIAL. Unauthorized copying, distribution, modification,
  * or use of this software or firmware, in whole or in part, is strictly prohibited
  * without prior written permission from DIODAC ELECTRONICS.
  * ═════════════════════════════════════════════════════════════════════════════
- * audio.cpp — v6.1.00  I2S DSP LOOP + FREERTOS TASK SPAWN
+ * audio.cpp — v6.1.01  I2S DSP LOOP + FREERTOS TASK SPAWN
  *
  * Owns the real-time audio path and all Core-0 service tasks:
  *   • init_audio_system()  — heap alloc, fx_init, I2S enable, xTaskCreatePinnedToCore

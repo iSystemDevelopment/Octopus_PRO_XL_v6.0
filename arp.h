@@ -1,12 +1,12 @@
 /* ═════════════════════════════════════════════════════════════════════════════
- * Octopus PRO XL v6.1.00 — Laser Harp Groovebox
+ * Octopus PRO XL v6.1.01 — Laser Harp Groovebox
  * © 2026 DIODAC ELECTRONICS / iSystem. All Rights Reserved.
  *
  * PROPRIETARY AND CONFIDENTIAL. Unauthorized copying, distribution, modification,
  * or use of this software or firmware, in whole or in part, is strictly prohibited
  * without prior written permission from DIODAC ELECTRONICS.
  * ═════════════════════════════════════════════════════════════════════════════
- * arp.h — v6.1.00  SHARED ARPEGGIATOR ENGINE  (seq + harp adapters)
+ * arp.h — v6.1.01  SHARED ARPEGGIATOR ENGINE  (seq + harp adapters)
  *
  * Single Engine struct used by groovebox (seq melody, voice 7) and harp.
  * Cross-core reset uses reset_pending (Core 1/MIDI → Core 0 audio via

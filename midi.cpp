@@ -1,12 +1,12 @@
 /* ═════════════════════════════════════════════════════════════════════════════
- * Octopus PRO XL v6.1.00 — Laser Harp Groovebox
+ * Octopus PRO XL v6.1.01 — Laser Harp Groovebox
  * © 2026 DIODAC ELECTRONICS / iSystem. All Rights Reserved.
  *
  * PROPRIETARY AND CONFIDENTIAL. Unauthorized copying, distribution, modification,
  * or use of this software or firmware, in whole or in part, is strictly prohibited
  * without prior written permission from DIODAC ELECTRONICS.
  * ═════════════════════════════════════════════════════════════════════════════
- * midi.cpp — v6.1.00  USB MIDI RX/TX + OCTOPUS SYSEX DISPATCH
+ * midi.cpp — v6.1.01  USB MIDI RX/TX + OCTOPUS SYSEX DISPATCH
  *
  * midi_usb_event_task (Core 1, prio 6): parses USB MIDI stream, routes App SysEx
  * (0x7D) to handleSysexCommand() and channel voice to internal engines.

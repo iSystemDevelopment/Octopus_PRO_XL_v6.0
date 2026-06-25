@@ -674,7 +674,7 @@ Melody engine parameters — **21 items** (synth core + preset/slots; no harp ar
 
 | Item | Function |
 |------|----------|
-| Drum Kit | TR-909 · TR-808 · Trap · House — reloads per-voice tuning + clap/hat synthesis character |
+| Drum Kit | TR-909 · TR-808 · Trap · House — reloads per-voice tuning + snare/clap/hat synthesis character (body+rattle snare, bandpass clap, 6-osc metal hats) |
 | Drm Pitch | Global drum tuning. Kick/toms/perc follow directly; snare body + hats normalize to factory ×0.60 at default |
 
 ---

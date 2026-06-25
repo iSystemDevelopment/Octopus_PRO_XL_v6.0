@@ -2035,7 +2035,8 @@
                 • <b>Mode-separation hardening</b> — Octopus and MIDI connect paths fully split; MIDI activity scopes no longer freeze; Octopus knob panels build lazily.<br>
                 • <b>GOD playhead</b> — dedicated GPU layer; smooth during hover, repaints, and P-page switches (STEP_SYNC in Octopus mode).<br>
                 • <b>P-page grid tools</b> — CPY, PST, CLR, RND-H, RND-D, and factory pattern loads affect the <b>active P page only</b> (16 steps). Click P1–P4 to lock the grid view while playing.<br>
-                • <b>MIXER drum scope</b> — fits the percussion panel with no scroll bar.</p>
+                • <b>MIXER drum scope</b> — fits the percussion panel with no scroll bar.<br>
+                • <b>Drum voicing (firmware 6.1.01)</b> — classic-leaning snare, clap and metal hats per kit (body+rattle snare, bandpass clap with noise layer, 6-osc metal hats). Reflash to hear it; see <b>DRUM KITS &amp; VOICING</b> below.</p>
 
                 <p style="margin-top:10px"><b style="color:var(--green)">WHAT'S NEW IN v6.2.00 (APP)</b><br>
                 • <b>MIDI Controller mode</b> — no Octopus hardware required; badge <b>MIDI OUT</b>; standard MIDI to any USB interface.<br>
@@ -2056,8 +2057,9 @@
                 <b>Playhead:</b> switch to the <b>SEQUENCER</b> tab while playing — the cyan bar tracks the hardware step <b>1:1</b> (discrete, driven directly by STEP_SYNC, exactly like the device's 16-box bar). It never drifts or stutters when you move the mouse or the UI is busy. BPM range 40–240. ▶ / ■ / REC mirror device state only (clicking shows a hint).
                 <b>No inbound echo?</b> Close other OctopusApp tabs, hard-refresh (Ctrl+Shift+R), open MON with FILTER off — you must see ← lines when moving hardware controls.</p>
 
-                <p style="margin-top:10px"><b style="color:var(--orange)">DRUM KITS</b><br>
-                TR-909 / TR-808 / Trap / House — kit selection loads per-voice tuning (drum knobs follow). CC 70 on the drum MIDI channel switches kit live.</p>
+                <p style="margin-top:10px"><b style="color:var(--orange)">DRUM KITS &amp; VOICING</b><br>
+                TR-909 / TR-808 / Trap / House — kit selection loads per-voice tuning <b>and</b> the kit's synthesis character (drum knobs follow). CC 70 on the drum MIDI channel switches kit live.<br>
+                The classic voices are hand-tuned per kit: <b>snare</b> = body wavetable + bandpassed rattle + click (Tune = snap brightness, Noise = wires), <b>clap</b> = bandpass triple-burst with a noise layer (Tune = filter centre, Noise = layer), <b>hats</b> = 6-osc inharmonic metal (Tune = HPF cutoff, Noise = wash). <b>Drm Pitch</b> sweeps the whole bus; kick/toms/perc track it directly while snare body + hats normalise to the classic ×0.60 default.</p>
 
                 <p style="margin-top:10px"><b style="color:var(--orange)">SAVE · LOAD · RESET · CLR</b><br>
                 Popups mirror hardware scopes: <b>Full</b> / <b>Banks+Pats</b> / <b>Motion</b> / <b>Settings</b>. <b>SAVE</b> commits via NvsWorker then reboots; the App reloads and re-imports. <b>Full/Banks reset</b> arm an NVS flag and reboot in ~150 ms — the wipe runs on the next boot (same as OC+SCALE combo). <b>Settings/Motion reset</b> (firmware ≥ 6.1.01) apply live with <b>no reboot</b> — the App reloads and re-pulls the fresh settings/motion image from the device. <b>LOAD</b> reloads RAM with no reboot, then the App reloads. Only one persist action at a time. Header <b>CLR</b> clears the <b>active P page only</b> (16 steps) — not hardware SEQ SETUP → Clear. All destructive persist actions use YES/NO confirm.</p>

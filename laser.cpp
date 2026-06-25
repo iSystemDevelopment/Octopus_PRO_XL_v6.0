@@ -1,12 +1,12 @@
 /* ═════════════════════════════════════════════════════════════════════════════
- * Octopus PRO XL v6.1.00 — Laser Harp Groovebox
+ * Octopus PRO XL v6.1.01 — Laser Harp Groovebox
  * © 2026 DIODAC ELECTRONICS / iSystem. All Rights Reserved.
  *
  * PROPRIETARY AND CONFIDENTIAL. Unauthorized copying, distribution, modification,
  * or use of this software or firmware, in whole or in part, is strictly prohibited
  * without prior written permission from DIODAC ELECTRONICS.
  * ═════════════════════════════════════════════════════════════════════════════
- * laser.cpp — v6.1.00  GALVO SWEEP + BEAM TRIGGER (Core 1, prio 24)
+ * laser.cpp — v6.1.01  GALVO SWEEP + BEAM TRIGGER (Core 1, prio 24)
  *
  * laser_sweep_task: MCPWM galvo timing, LT1016 digital trigger latch, per-string
  * note on/off → harp.cpp, fog reject gate, D-BEAM expression read, hue/laser show.

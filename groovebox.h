@@ -1,12 +1,12 @@
 /* ═════════════════════════════════════════════════════════════════════════════
- * Octopus PRO XL v6.1.00 — Laser Harp Groovebox
+ * Octopus PRO XL v6.1.01 — Laser Harp Groovebox
  * © 2026 DIODAC ELECTRONICS / iSystem. All Rights Reserved.
  *
  * PROPRIETARY AND CONFIDENTIAL. Unauthorized copying, distribution, modification,
  * or use of this software or firmware, in whole or in part, is strictly prohibited
  * without prior written permission from DIODAC ELECTRONICS.
  * ═════════════════════════════════════════════════════════════════════════════
- * groovebox.h — v6.1.00  MELODY SEQUENCER + DRUM ENGINE — PUBLIC INTERFACE
+ * groovebox.h — v6.1.01  MELODY SEQUENCER + DRUM ENGINE — PUBLIC INTERFACE
  *
  * Seq melody synth (8 voices, voice 7 = arp output), TR-909 drum engine,
  * pattern/transport/grid UI hooks.  HARP is in harp.h — not here.

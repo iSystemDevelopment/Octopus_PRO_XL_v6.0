@@ -1,12 +1,12 @@
 /* ═════════════════════════════════════════════════════════════════════════════
- * Octopus PRO XL v6.1.00 — Laser Harp Groovebox
+ * Octopus PRO XL v6.1.01 — Laser Harp Groovebox
  * © 2026 DIODAC ELECTRONICS / iSystem. All Rights Reserved.
  *
  * PROPRIETARY AND CONFIDENTIAL. Unauthorized copying, distribution, modification,
  * or use of this software or firmware, in whole or in part, is strictly prohibited
  * without prior written permission from DIODAC ELECTRONICS.
  * ═════════════════════════════════════════════════════════════════════════════
- * dbeam.cpp — v6.1.00  D-BEAM ADC + EXPRESSION
+ * dbeam.cpp — v6.1.01  D-BEAM ADC + EXPRESSION
  *
  * adc_dma_processing_task (Core 0, prio 19): continuous ADC DMA, per-string Kalman,
  * peak envelope → g_dbeam_global_ac for Core-1 laser expression reads.

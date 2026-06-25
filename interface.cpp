@@ -1,12 +1,12 @@
 /* ═════════════════════════════════════════════════════════════════════════════
- * Octopus PRO XL v6.1.00 — Laser Harp Groovebox
+ * Octopus PRO XL v6.1.01 — Laser Harp Groovebox
  * © 2026 DIODAC ELECTRONICS / iSystem. All Rights Reserved.
  *
  * PROPRIETARY AND CONFIDENTIAL. Unauthorized copying, distribution, modification,
  * or use of this software or firmware, in whole or in part, is strictly prohibited
  * without prior written permission from DIODAC ELECTRONICS.
  * ═════════════════════════════════════════════════════════════════════════════
- * interface.cpp — v6.1.00  HARDWARE CONTROL SURFACE
+ * interface.cpp — v6.1.01  HARDWARE CONTROL SURFACE
  *
  * Encoder + OC/SCALE buttons @ 200 Hz (control_surface_task, Core 0).
  *   • initHardwareInterface() — GPIO, encoder ISR on Core 1, boot factory-reset hold

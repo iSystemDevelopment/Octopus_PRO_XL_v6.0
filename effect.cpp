@@ -1,12 +1,12 @@
 /* ═════════════════════════════════════════════════════════════════════════════
- * Octopus PRO XL v6.1.00 — Laser Harp Groovebox
+ * Octopus PRO XL v6.1.01 — Laser Harp Groovebox
  * © 2026 DIODAC ELECTRONICS / iSystem. All Rights Reserved.
  *
  * PROPRIETARY AND CONFIDENTIAL. Unauthorized copying, distribution, modification,
  * or use of this software or firmware, in whole or in part, is strictly prohibited
  * without prior written permission from DIODAC ELECTRONICS.
  * ═════════════════════════════════════════════════════════════════════════════
- * effect.cpp — v6.1.00  FX ENGINE — OUT-OF-LINE DEFINITIONS
+ * effect.cpp — v6.1.01  FX ENGINE — OUT-OF-LINE DEFINITIONS
  *
  * Single compile unit for FxChain: PROGMEM preset tables, fx_init, buffer alloc,
  * and IRAM fx_process_multi_buf_safe (3-engine mix → inserts → aux → master FX).

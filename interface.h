@@ -1,12 +1,12 @@
 /* ═════════════════════════════════════════════════════════════════════════════
- * Octopus PRO XL v6.1.00 — Laser Harp Groovebox
+ * Octopus PRO XL v6.1.01 — Laser Harp Groovebox
  * © 2026 DIODAC ELECTRONICS / iSystem. All Rights Reserved.
  *
  * PROPRIETARY AND CONFIDENTIAL. Unauthorized copying, distribution, modification,
  * or use of this software or firmware, in whole or in part, is strictly prohibited
  * without prior written permission from DIODAC ELECTRONICS.
  * ═════════════════════════════════════════════════════════════════════════════
- * interface.h — v6.1.00  HARDWARE INTERFACE + MENU ARCHITECTURE
+ * interface.h — v6.1.01  HARDWARE INTERFACE + MENU ARCHITECTURE
  *
  * GPIO map, ButtonPoll/EncoderPoll, menu L1/L2 tables, gesture timing.
  * Implementation: interface.cpp (control_surface_task @ 200 Hz, Core 0).

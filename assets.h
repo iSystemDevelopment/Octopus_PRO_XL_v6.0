@@ -1,12 +1,12 @@
 /* ═════════════════════════════════════════════════════════════════════════════
- * Octopus PRO XL v6.1.00 — Laser Harp Groovebox
+ * Octopus PRO XL v6.1.01 — Laser Harp Groovebox
  * © 2026 DIODAC ELECTRONICS / iSystem. All Rights Reserved.
  *
  * PROPRIETARY AND CONFIDENTIAL. Unauthorized copying, distribution, modification,
  * or use of this software or firmware, in whole or in part, is strictly prohibited
  * without prior written permission from DIODAC ELECTRONICS.
  * ═════════════════════════════════════════════════════════════════════════════
- * assets.h — v6.1.00  PROGMEM WAVETABLES + FACTORY SOUND BANK (declarations)
+ * assets.h — v6.1.01  PROGMEM WAVETABLES + FACTORY SOUND BANK (declarations)
  *
  * Wave data and SOUND_BANK live in assets.cpp (PROGMEM).  wavetables_init_ram()
  * mirrors all 25 tables into WAVE_TABLE_RAM at boot for deterministic DSP reads.

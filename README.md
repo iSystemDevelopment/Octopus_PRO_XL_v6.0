@@ -43,7 +43,7 @@ Octopus PRO XL is a performance-oriented **laser harp** and **groovebox** with r
 
 When USB is connected, OctopusApp **auto-links** to the device, imports the full hardware state (knobs, grid, transport), and reloads after SAVE / LOAD / RESET so the UI always mirrors the device. **Full** and **Banks+Pats** reset arm an NVS flag and reboot immediately; the wipe runs on the next boot before audio starts. **Settings** and **Motion** reset apply live with **no reboot** (firmware ≥ 6.1.01) — the App just reloads and re-pulls the fresh image. A connected ★ Octopus has hard priority: the App locks to Octopus mode (MIDI Controller mode is available only with no Octopus plugged in). Transport (play, stop, record arm, tempo) remains **hardware-owned** (SCALE / OC short / encoder).
 
-NVS flash uses namespace **`octopus`** (`SETTINGS_VERSION 0x0615` for struct layout). Upgrading from earlier builds migrates saved data automatically from the legacy `octopus_v5` namespace on first boot.
+NVS flash uses namespace **`octopus`** (`SETTINGS_VERSION 0x0616` for struct layout). Upgrading from earlier builds migrates saved data automatically from the legacy `octopus_v5` namespace on first boot.
 
 ---
 
@@ -134,7 +134,7 @@ Flash via USB after field-testing **6.1.01** on hardware. Include `partitions.cs
 ## Contributing & support
 
 - [CONTRIBUTING.md](./CONTRIBUTING.md) · [SECURITY.md](./SECURITY.md) · [CHANGELOG.md](./CHANGELOG.md)
-- GitHub Issues — firmware **`6.1.00`**, OctopusApp **`6.2.00`**, App connected Y/N, repro steps
+- GitHub Issues — firmware **`6.1.01`**, OctopusApp **`6.2.07`**, App connected Y/N, repro steps
 
 ---
 

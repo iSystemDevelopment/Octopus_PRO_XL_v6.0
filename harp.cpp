@@ -1,12 +1,12 @@
 /* ═════════════════════════════════════════════════════════════════════════════
- * Octopus PRO XL v6.1.00 — Laser Harp Groovebox
+ * Octopus PRO XL v6.1.01 — Laser Harp Groovebox
  * © 2026 DIODAC ELECTRONICS / iSystem. All Rights Reserved.
  *
  * PROPRIETARY AND CONFIDENTIAL. Unauthorized copying, distribution, modification,
  * or use of this software or firmware, in whole or in part, is strictly prohibited
  * without prior written permission from DIODAC ELECTRONICS.
  * ═════════════════════════════════════════════════════════════════════════════
- * harp.cpp — v6.1.00  LASER-HARP INSTRUMENT — IMPLEMENTATION
+ * harp.cpp — v6.1.01  LASER-HARP INSTRUMENT — IMPLEMENTATION
  *
  * Self-contained wavetable synth for the 8-beam laser harp (harp.h public API).
  * Private DSP in anonymous namespace: SVF, ADSR, soft-clip, safe_sinf, arp latch.

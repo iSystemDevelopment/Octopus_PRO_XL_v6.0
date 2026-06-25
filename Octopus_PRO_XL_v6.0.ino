@@ -1,12 +1,12 @@
 /* ═════════════════════════════════════════════════════════════════════════════
- * Octopus PRO XL v6.1.00 — Laser Harp Groovebox
+ * Octopus PRO XL v6.1.01 — Laser Harp Groovebox
  * © 2026 DIODAC ELECTRONICS / iSystem. All Rights Reserved.
  *
  * PROPRIETARY AND CONFIDENTIAL. Unauthorized copying, distribution, modification,
  * or use of this software or firmware, in whole or in part, is strictly prohibited
  * without prior written permission from DIODAC ELECTRONICS.
  * ═════════════════════════════════════════════════════════════════════════════
- * Octopus_PRO_XL_v6.0.ino — v6.1.00  BOOT KERNEL
+ * Octopus_PRO_XL_v6.0.ino — v6.1.01  BOOT KERNEL
  *
  * setup() phases: serial diag → loadSettings (NVS "octopus") → peripherals →
  * init_audio_system() (spawns all FreeRTOS tasks — see audio.cpp) → g_systemReady.
