@@ -1488,8 +1488,7 @@ static inline void applyDbeamRoute(uint8_t mode_v14) {
     dbeamVolBaseHarp.store(mixHarpVol.load(std::memory_order_relaxed), std::memory_order_relaxed);
     dbeamVolBaseSeq .store(mixSeqVol .load(std::memory_order_relaxed), std::memory_order_relaxed);
   } else if (mode != DbeamRoute::VOLUME && prev == DbeamRoute::VOLUME) {
-    mixHarpVol.store(dbeamVolBaseHarp.load(std::memory_order_relaxed), std::memory_order_release);
-    mixSeqVol .store(dbeamVolBaseSeq .load(std::memory_order_relaxed), std::memory_order_release);
+    dbeamVolumeRestoreEngagedBuses();
   }
   currentDbeamRoute.store(mode, std::memory_order_release);
   dbeam_svf_cutoff.store(0, std::memory_order_release);
@@ -1508,8 +1507,7 @@ static inline void applyDbeamTarget(uint8_t target_v14) {
    * baseline before switching synth so the engine we leave isn't stuck dipped;
    * routeDbeamExpression then re-adopts the baseline for the new target.        */
   if (currentDbeamRoute.load(std::memory_order_relaxed) == DbeamRoute::VOLUME) {
-    mixHarpVol.store(dbeamVolBaseHarp.load(std::memory_order_relaxed), std::memory_order_release);
-    mixSeqVol .store(dbeamVolBaseSeq .load(std::memory_order_relaxed), std::memory_order_release);
+    dbeamVolumeRestoreEngagedBuses();
   }
   currentDbeamTarget.store((DbeamTarget)(target_v14 & 1u), std::memory_order_release);
   dbeam_svf_cutoff.store(0, std::memory_order_release);

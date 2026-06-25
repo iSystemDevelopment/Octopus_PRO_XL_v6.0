@@ -1009,9 +1009,9 @@ Octopus **linked** mode matches firmware **6.1.01** (including SETTINGS/MOTION r
 | Lost MIDI pattern after refresh | Patterns live in browser `localStorage` — use **EXP** before clearing site data |
 | Cannot pick non-★ MIDI port | **Expected** while Octopus is plugged in (v6.2.07 lockout) — unplug ★ to use MIDI Controller mode |
 | Badge stuck Octopus OFF | No port selected, or waiting for sync — pick ★ for Octopus ON; with no ★, pick any output for MIDI OUT |
-| OLED stuck **APP CONNECTED** after closing the App tab | Known issue — heartbeat may not release immediately; wait ~5 s or power-cycle. Tracked in `todo.md` |
-| App stale after reconnect / Octopus switch | Known issue — full `APP_SYNC_REQ` reload may not run; try hard refresh or replug. Tracked in `todo.md` |
-| Harp beams affect sequencer sound | Known issue — laser/D-BEAM crosstalk under investigation. Tracked in `todo.md` |
+| OLED stuck **APP CONNECTED** after closing the App tab | Fixed v6.2.08 — App stops heartbeat on tab close; allow ~5 s if an old tab is still open |
+| App stale after reconnect / Octopus switch | Fixed v6.2.08 — same-port resync sends `APP_SYNC_REQ`; Octopus↔MIDI still uses full page reload |
+| Harp beams affect sequencer sound | Fixed fw — D-BEAM VOLUME route no longer resets the untouched engine's mix level on exit |
 | Lost pattern after power | Perform SAVE → Full Save |
 | Stuck notes | Short SCALE on HARP dashboard (panic) |
 | Factory restore | Boot with OC+SCALE held, or RESET → Full Reset (instant reboot, wipe on next boot) |
@@ -1042,13 +1042,13 @@ Authoritative list: **`code_info.h` §9**. Targets for the next upgrade:
 2. **External MIDI OUT** — channel-voice output via a WiFi/BLE coprocessor path.
 3. **OctopusApp motion-matrix editor** — per-step P-lock editing in the browser.
 
-### D. Known open issues (App ↔ hardware link)
+### D. Known open issues (App ↔ hardware link) — fixed 2026-06-25
 
-Tracked in **`todo.md`** — adversarial verification pending:
+Previously tracked in **`todo.md`**. Root causes and surgical fixes:
 
-1. **Heartbeat after App close** — hardware OLED may stay **APP CONNECTED** when the browser tab closes (`beforeunload` does not call `stopHeartbeat()`; firmware timeout is 4.5 s).
-2. **Connect / mode-switch sync** — switching to Octopus or reconnecting may not pull live blobs / reload the App shell (`APP_SYNC_REQ` path).
-3. **Harp → sequencer crosstalk** — breaking laser beams reportedly alters sequencer sound setup; engines should be independent (`applyHarpParam` / `applySeqParam`, D-BEAM routing).
+1. **Heartbeat after App close** — App now calls `_teardownOctopusLink()` on `beforeunload`/`pagehide` (stops worker PING, reconnect poll, silent AudioContext).
+2. **Connect / mode-switch sync** — `_octopusResync()` when the same ★ port is re-selected or USB `onstatechange` fires without a new port id.
+3. **Harp → sequencer crosstalk** — firmware `dbeamVolumeRestoreEngagedBuses()` only restores mix buses the D-BEAM volume pedal actually dipped.
 
 ### E. Document revision
 

@@ -2280,7 +2280,7 @@
      JAVASCRIPT
 ═══════════════════════════════════════════════════════════════════════════ -->
     <script>
-        const APP_VERSION = '6.2.07';
+        const APP_VERSION = '6.2.08';
         const PAYPAL_DONATE_URL = 'https://www.paypal.com/donate?hosted_button_id=KX7B76V37PED8';
         const MIDI_SESSION_KEY = 'octopusapp_midi_session_v1';
         const PORT_BOOT_KEY = 'octopusapp_port_boot_v1';
@@ -3992,6 +3992,16 @@
                 if (!port || !this._portLive(port)) return false;
                 if (this.midiOut && this.midiOut.id === port.id) {
                     if (sel) sel.value = port.id;
+                    /* Same USB id — WebMIDI onstatechange often fires without a new
+                     * port object.  Re-run full sync when offline or Octopus was stale. */
+                    if (this._isOctopusPortName(port.name) &&
+                        (this._appMode !== 'octopus' || !this._connOnline)) {
+                        await this._adoptMidiPort(port, sel);
+                        return true;
+                    }
+                    if (this._isOctopusPortName(port.name) && this._appMode === 'octopus') {
+                        this._octopusResync(reason || 'same port');
+                    }
                     return true;
                 }
                 if (this._reloadAfterReconnect) {
@@ -4010,6 +4020,33 @@
                     return true;
                 }
                 return this._adoptMidiPort(port, sel);
+            },
+            _octopusResync(reason) {
+                if (this._appMode === 'midi' || !this._portIsOctopus() || !this.midiOut) return;
+                this._sxRxBuf = null;
+                this._connOnline = false;
+                this._linkWarned = false;
+                this._lastDeviceRxMs = 0;
+                this._rxQueue.length = 0;
+                this._rxDrainScheduled = false;
+                this._gridModelDirty = false;
+                this._syncBurstExpected = true;
+                this._syncBurstActive = false;
+                this._linkGraceUntil = Date.now() + 4000;
+                this._resetSlotSavedFlagsForSync();
+                this.updateConnBadge(false);
+                this.txParam(CMD.PING, 0);
+                this.txParam(CMD.APP_SYNC_REQ, 0);
+                if (!this.hbTimer && !this._hbWorker) this.startHeartbeat();
+                this.log('Re-syncing with Octopus' + (reason ? ' (' + reason + ')' : '') + '…');
+            },
+            _teardownOctopusLink() {
+                this.stopHeartbeat();
+                this._stopReconnectPoll();
+                try {
+                    if (this._acOsc) { this._acOsc.stop(); this._acOsc = null; }
+                    if (this._ac) { this._ac.close(); this._ac = null; }
+                } catch (e) {}
             },
             _scheduleOctopusRescan() {
                 if (this._octopusRescanPending) return;
@@ -4053,7 +4090,7 @@
                 document.body.dataset.appMode = next === 'midi' ? 'midi' : 'octopus';
 
                 if (next === 'midi') {
-                    this.stopHeartbeat();
+                    this._teardownOctopusLink();
                     this._connOnline = false;
                     this._midiSyncInstBar();
                     this._reflectMidiArpUi();
@@ -4066,8 +4103,12 @@
                     if (this.isPlaying) this._setTransport(false, false);
                     const onMidiInst = document.getElementById('view-midi-inst')?.classList.contains('active');
                     if (onMidiInst) this.switchView(1);
-                    if (next === 'disconnected' || !this._connOnline)
+                    if (next === 'disconnected') {
+                        this._teardownOctopusLink();
                         this.updateConnBadge(false);
+                    } else if (!this._connOnline) {
+                        this.updateConnBadge(false);
+                    }
                 }
                 this._applyTransportChrome();
             },
@@ -4635,10 +4676,12 @@
                 });
                 window.addEventListener('beforeunload', () => {
                     if (this._appMode === 'midi') this._persistMidiSession();
+                    else this._teardownOctopusLink();
                     this.allNotesOff();
                 });
                 window.addEventListener('pagehide', () => {
                     if (this._appMode === 'midi') this._persistMidiSession();
+                    else this._teardownOctopusLink();
                     this.allNotesOff();
                 });
                 this.log('OctopusApp v' + APP_VERSION + ' · ' + location.origin);
@@ -4879,6 +4922,10 @@
                             if (this.midiOut && this.midiOut.id === preferred.id) {
                                 if (sel) sel.value = preferred.id;
                                 await this._bindMidiInputs(access);
+                                if (this._isOctopusPortName(preferred.name) &&
+                                    this._appMode === 'octopus' && !this._connOnline) {
+                                    this._octopusResync('MIDI rescan');
+                                }
                             } else {
                                 // [LOCKOUT] _pickAutoOutput ranks ★ Octopus first, so when an
                                 // Octopus is present `preferred` IS the Octopus port — auto-win
@@ -4916,7 +4963,11 @@
                         }
                         const next = access.outputs.get(e.target.value);
                         if (!next) return;
-                        if (this.midiOut && this.midiOut.id === next.id) return;
+                        if (this.midiOut && this.midiOut.id === next.id) {
+                            if (this._isOctopusPortName(next.name) && this._appMode === 'octopus')
+                                this._octopusResync('port re-select');
+                            return;
+                        }
                         // [LOCKOUT] Octopus has hard priority: while any live ★ Octopus port
                         // exists, non-Octopus ports cannot be selected — revert to Octopus.
                         if (!this._isOctopusPortName(next.name)) {

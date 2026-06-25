@@ -268,13 +268,11 @@ None of these block MIDI Controller mode production.
 
 **Hardware SEQ MATRIX step pages (steps 17–64)** — shipped in current firmware source (`groovebox.cpp` `seqUI_stepPage`). Smoke test on device: set LEN 64 → SEQ MATRIX → encoder past column 16 shows **P2/4** and steps 17–32.
 
-### 4.1 Known open issues (verify before closing tickets)
+### 4.1 Link issues (fixed App v6.2.08 / fw)
 
-See **`todo.md`** and **`user_manual.md` §12.D**:
-
-1. OLED **APP CONNECTED** may persist ~5 s+ after closing the App tab (heartbeat / `stopHeartbeat` on unload).
-2. Octopus reconnect or ★ switch may not trigger full App reload / `APP_SYNC_REQ` pull.
-3. Harp laser beams may crosstalk into sequencer sound parameters.
+1. Tab close — App `_teardownOctopusLink()` stops PING (was leaving heartbeat running).
+2. Same-port USB replug — `_octopusResync()` when `onstatechange` keeps the same port id.
+3. Harp→seq volume — `dbeamVolumeRestoreEngagedBuses()` on D-BEAM VOLUME route exit.
 
 ---
 

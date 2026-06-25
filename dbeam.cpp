@@ -25,6 +25,23 @@ SensorHealth            g_health         [MAX_STRINGS];
 SensorData              g_last_good_data [MAX_STRINGS];
 DACThresholdCalibration dac_calibration  [MAX_STRINGS];
 
+/* VOLUME-pedal engagement — shared by routeDbeamExpression() and route-exit helpers. */
+static bool s_dbeamVolEngagedHarp = false;
+static bool s_dbeamVolEngagedSeq  = false;
+
+void dbeamVolumeRestoreEngagedBuses() {
+  if (s_dbeamVolEngagedHarp) {
+    mixHarpVol.store(dbeamVolBaseHarp.load(std::memory_order_relaxed),
+                     std::memory_order_release);
+    s_dbeamVolEngagedHarp = false;
+  }
+  if (s_dbeamVolEngagedSeq) {
+    mixSeqVol.store(dbeamVolBaseSeq.load(std::memory_order_relaxed),
+                    std::memory_order_release);
+    s_dbeamVolEngagedSeq = false;
+  }
+}
+
 /* ── Private file-scope state ────────────────────────────────────────────── */
 /* [beam] 4-byte aligned so the DMA parse loop can load each TYPE2 frame as one
  * uint32_t (SOC_ADC_DIGI_RESULT_BYTES == 4) without unaligned-load faults. */
@@ -705,40 +722,38 @@ void IRAM_ATTR routeDbeamExpression(float norm01) {
      * routeDbeamExpression() runs on Core 1 (laser task) only, so the per-target
      * engaged flags are single-threaded and need no atomics.                     */
     constexpr float kRestEps = 0.01f;   /* (name avoids the Xtensa EPS macro) */
-    static bool s_volEngagedHarp = false;
-    static bool s_volEngagedSeq  = false;
     if (toSeq) {
       if (norm01 <= kRestEps) {
-        if (s_volEngagedSeq) {   /* lift edge → restore the full user level */
+        if (s_dbeamVolEngagedSeq) {   /* lift edge → restore the full user level */
           mixSeqVol.store(dbeamVolBaseSeq.load(std::memory_order_relaxed),
                           std::memory_order_release);
-          s_volEngagedSeq = false;
+          s_dbeamVolEngagedSeq = false;
         }
         dbeamVolBaseSeq.store(mixSeqVol.load(std::memory_order_relaxed),
                               std::memory_order_relaxed);  /* knob owns rest level */
       } else {
-        if (!s_volEngagedSeq) {  /* press edge → capture true (un-dipped) rest level */
+        if (!s_dbeamVolEngagedSeq) {  /* press edge → capture true (un-dipped) rest level */
           dbeamVolBaseSeq.store(mixSeqVol.load(std::memory_order_relaxed),
                                 std::memory_order_relaxed);
-          s_volEngagedSeq = true;
+          s_dbeamVolEngagedSeq = true;
         }
         mixSeqVol.store(dbeamVolBaseSeq.load(std::memory_order_relaxed) * (1.0f - norm01),
                         std::memory_order_release);
       }
     } else {
       if (norm01 <= kRestEps) {
-        if (s_volEngagedHarp) {  /* lift edge → restore the full user level */
+        if (s_dbeamVolEngagedHarp) {  /* lift edge → restore the full user level */
           mixHarpVol.store(dbeamVolBaseHarp.load(std::memory_order_relaxed),
                            std::memory_order_release);
-          s_volEngagedHarp = false;
+          s_dbeamVolEngagedHarp = false;
         }
         dbeamVolBaseHarp.store(mixHarpVol.load(std::memory_order_relaxed),
                                std::memory_order_relaxed); /* knob owns rest level */
       } else {
-        if (!s_volEngagedHarp) { /* press edge → capture true (un-dipped) rest level */
+        if (!s_dbeamVolEngagedHarp) { /* press edge → capture true (un-dipped) rest level */
           dbeamVolBaseHarp.store(mixHarpVol.load(std::memory_order_relaxed),
                                  std::memory_order_relaxed);
-          s_volEngagedHarp = true;
+          s_dbeamVolEngagedHarp = true;
         }
         mixHarpVol.store(dbeamVolBaseHarp.load(std::memory_order_relaxed) * (1.0f - norm01),
                          std::memory_order_release);

@@ -22,11 +22,21 @@ Firmware patch — scoped-reset reboot policy plus a same-day **drum-voice refin
 - **SETTINGS / MOTION scoped reset no longer reboots the ESP.** They were already applied live by `applyResetScope()`, but `settings_save_task` (`audio.cpp`) still called `esp_restart()` afterwards. The `if (isReset)` branch now sends the `CMD_SCOPED_RESET` ACK and reboots **only** for `ResetScope::FULL` / `BANKS_PATTERNS`; for SETTINGS / MOTION it skips the restart and `continue`s. The App reloads on the ACK and re-pulls the fresh settings/motion image via `APP_SYNC_REQ`. SAVE and FULL / BANKS+PATS reset keep their reboot.
 - **Drum synthesis — classic snare / clap / metal-hat voicing.** Reworked the three noise-heavy voices in `groovebox.h` and added per-kit character tables in `globals.h`: snare is now a **body wavetable + bandpassed rattle + short click transient** (`KIT_SNARE_BODY_LO/HI`, `KIT_SNARE_SNAP_FC`, `KIT_SNARE_RATTLE_DELTA`, `KIT_SNARE_PITCH_MUL`, `KIT_SNARE_CLICK`, `KIT_SNARE_DECAY_SCALE`, `KIT_SNARE_WAVE`); clap is a **per-kit bandpass triple-burst with a Noise-knob layer** (`KIT_CLAP_BURST1/2/3`, `KIT_CLAP_FILTER_LP/HP`) — the Noise knob now drives the clap layer level (previously ignored); hats use a **per-kit 6-osc metal amplitude** (`KIT_HAT_METAL_AMP`) and tuned base frequencies. `applyDrumKit()` also loads the kit snare wavetable (`drumWaveIdx[1]`) and echoes it via `CMD_DRUM_WAVE` so App knobs follow. Updated `DrumSettings` factory defaults + `DRUM_KIT_*` tables to match. Knob mapping per voice (snare: Tune = snap brightness / Noise = wires; clap: Tune = filter centre / Noise = layer; hats: Tune = HPF cutoff / Noise = wash) is documented in `code_info.h` §8.I.
 - **Drum pitch normalisation.** Snare body + hats normalise through `DRUM_PITCH_FACTORY` (×0.60) so the default Drm Pitch keeps classic TR voicing while kick/toms/perc still track the global knob directly.
+- **D-BEAM VOLUME — harp/seq independence** — leaving the VOLUME route or switching D-BEAM target no longer restores the untouched engine's `mixSeqVol` / `mixHarpVol` from a stale entry snapshot; only buses the pedal actually dipped are restored (`dbeamVolumeRestoreEngagedBuses()`).
 
 ### Unchanged
 
 - SAVE (`requestScopedSave` → `g_restartAfterSave` → reboot ~700 ms) and the FULL / BANKS+PATS deferred boot-reset path are unchanged.
 - **NVS layout** — the drum pass changes default *values* only, not the `AllSettings` struct layout, so `SETTINGS_VERSION` stays **`0x0616`** (no migration; existing saves keep their stored drum knobs).
+
+## [6.2.08] — 2026-06-25 (OctopusApp)
+
+Browser-only link fixes, pairs with firmware [6.1.01](#6101--2026-06-25) (reflash for D-BEAM fix #3).
+
+### Fixed
+
+- **OLED stuck APP CONNECTED after tab close** — `_teardownOctopusLink()` stops the heartbeat worker, reconnect poller, and silent AudioContext on `beforeunload`/`pagehide` (was leaving PING running).
+- **Stale UI after USB replug / same-port reconnect** — `_octopusResync()` when WebMIDI `onstatechange` keeps the same port id; `_connectMidiPort()` no longer skips sync when `_connOnline` is false.
 
 ## [6.2.07] — 2026-06-25 (OctopusApp)
 

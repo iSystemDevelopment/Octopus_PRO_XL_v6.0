@@ -141,6 +141,9 @@ uint16_t IRAM_ATTR getHardwareDACThreshold(int stringIdx);
 
 
 /* ── Expression routing helpers ──────────────────────────────────────────── */
+/** VOLUME route exit / target switch: restore only buses the pedal actually dipped. */
+void dbeamVolumeRestoreEngagedBuses();
+
 /** Set the D-BEAM routing target (DbeamRoute: 0=OFF 1=MOD 2=VOL 3=CUT).
  *  Clears DSP accumulators when switching to OFF.                            */
 static inline void applyDbeamRouteHW(uint8_t mode_v14) {
@@ -151,8 +154,7 @@ static inline void applyDbeamRouteHW(uint8_t mode_v14) {
     dbeamVolBaseHarp.store(mixHarpVol.load(std::memory_order_relaxed), std::memory_order_relaxed);
     dbeamVolBaseSeq .store(mixSeqVol .load(std::memory_order_relaxed), std::memory_order_relaxed);
   } else if (mode != DbeamRoute::VOLUME && prev == DbeamRoute::VOLUME) {
-    mixHarpVol.store(dbeamVolBaseHarp.load(std::memory_order_relaxed), std::memory_order_release);
-    mixSeqVol .store(dbeamVolBaseSeq .load(std::memory_order_relaxed), std::memory_order_release);
+    dbeamVolumeRestoreEngagedBuses();
   }
   currentDbeamRoute.store(mode, std::memory_order_release);
   /* Clear harp + seq addends on every route change (no stale modulation). */
