@@ -1156,15 +1156,19 @@ static void oledStatusLines(const char* line1, const char* line2) {
   xSemaphoreGive(i2cMutex);
 }
 
-/* handleScopedReset — FULL/BANKS+PATS: arm NVS flag + reboot (wipe on next boot).
- * SETTINGS/MOTION: apply + NvsWorker commit + reboot.  Boot OC+SCALE: sync wipe. */
+/* handleScopedReset — runtime: arm NVS pend_rst + reboot (wipe on next boot).
+ * Boot OC+SCALE / pre-scheduler: synchronous apply + commit + reboot.          */
 void handleScopedReset(ResetScope scope) {
   const bool runtime = g_systemReady.load(std::memory_order_acquire);
-  const bool deferred =
-      runtime && (scope == ResetScope::FULL || scope == ResetScope::BANKS_PATTERNS);
 
-  if (deferred) {
-    const char* line1 = (scope == ResetScope::FULL) ? "FULL RESET" : "BANKS+PATTERNS";
+  if (runtime) {
+    const char* line1 = "RESET";
+    switch (scope) {
+      case ResetScope::FULL:           line1 = "FULL RESET";     break;
+      case ResetScope::BANKS_PATTERNS: line1 = "BANKS+PATTERNS"; break;
+      case ResetScope::MOTION:         line1 = "MOTION CLEAR";   break;
+      case ResetScope::SETTINGS:       line1 = "SETTINGS RESET"; break;
+    }
     oledStatusLines(line1, "REBOOT...");
     if (!settings_arm_pending_reset(scope)) {
       g_saveFailFlashMs.store(millis() + 1500u, std::memory_order_relaxed);
@@ -1178,37 +1182,14 @@ void handleScopedReset(ResetScope scope) {
     return;
   }
 
-  if (g_resetInProgress.exchange(true, std::memory_order_acq_rel))
-    return;
-
-  recoverWedgedPersistFlags();
-  waitNvsWorkerIdle(4000u);
-  saveForceUnlock();
-
-  const char* line1 = "RESET";
-  switch (scope) {
-    case ResetScope::FULL:           line1 = "FULL RESET";    break;
-    case ResetScope::BANKS_PATTERNS: line1 = "BANKS+PATTERNS"; break;
-    case ResetScope::MOTION:         line1 = "MOTION CLEAR";  break;
-    case ResetScope::SETTINGS:       line1 = "SETTINGS RESET"; break;
-  }
+  /* Pre-scheduler boot path (OC+SCALE combo) — no pend_rst needed. */
+  const char* line1 = "FULL RESET";
   oledStatusLines(line1, "PLEASE WAIT...");
-
   applyResetScope(scope);
-
-  if (!runtime) {
-    settings_commit_reset_scoped(scope);
-    if (isAppConnected()) txSysex(CMD_SCOPED_RESET, 16383u);
-    delay(300);
-    esp_restart();
-    return;
-  }
-
-  g_persistAckCmd.store(CMD_SCOPED_RESET, std::memory_order_relaxed);
-  g_persistScope.store((uint8_t)scope, std::memory_order_release);
-  g_restartAfterSave.store(false, std::memory_order_release);
-  g_saveRequest.store(true, std::memory_order_release);
-  displayDirty.store(true, std::memory_order_relaxed);
+  settings_commit_reset_scoped(scope);
+  if (isAppConnected()) txSysex(CMD_SCOPED_RESET, 16383u);
+  delay(300);
+  esp_restart();
 }
 
 /* handleScopedSave — menu / App scoped save (persist + reboot). */

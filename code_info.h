@@ -36,12 +36,12 @@
  *   • Deferred boot reset for FULL / BANKS+PATS (pend_rst flag + instant reboot;
  *     heavy NVS wipe runs before tasks start — same safe window as OC+SCALE combo)
  *   • Scoped SAVE reboots after NVS commit; FULL/BANKS RESET uses deferred boot
- *     wipe (pend_rst); SETTINGS/MOTION RESET uses NvsWorker + reboot; hardware LOAD is
+ *     wipe (pend_rst); all scoped RESET scopes use pend_rst + reboot; hardware LOAD is
  *     RAM-only with full App re-sync, no reboot
  *   • TELEMETRY menu: seven L2 views aligned with TelemetryView 1–7 (AC scope,
  *     DC bias, DAC threshold, D-BEAM expression, SNR, system report, fog reject)
- *   • [6.1.01] SETTINGS / MOTION scoped reset applies live with NO reboot
- *     (settings_save_task ACKs then `continue`s; only FULL / BANKS+PATS restart)
+ *   • [6.2.09] All scoped RESET (FULL/BANKS/MOTION/SETTINGS) use deferred pend_rst +
+ *     reboot; wipe runs at boot before tasks start (fixes MOTION/SETTINGS hang)
  *   • Hardware SEQ MATRIX step pages — `seqUI_stepPage` (0–3) pages the 16×8 OLED
  *     window across the full pattern (up to 64 steps, bounded by LEN); encoder
  *     L/R at column 0/15 changes page before bank wrap; status bar shows
@@ -143,8 +143,9 @@
  *       settings_execute_pending_reset_at_boot() reads pend_rst, clears it,
  *       applyResetScope() + settings_commit_reset_scoped() (factory settings blob
  *       + erase patterns/banks/usrpat/motion keys), then loadSettings().
- *     SETTINGS / MOTION (runtime):
- *       applyResetScope() + settings_commit_reset_scoped() on NvsWorker + reboot.
+ *     Runtime (all scopes): settings_arm_pending_reset() + ACK + esp_restart().
+ *     Boot kernel executes MOTION (erase motion) / SETTINGS (factory settings blob)
+ *     / FULL / BANKS per scope — same pend_rst path for all four.
  *     OC+SCALE @ boot (initHardwareInterface, !g_systemReady):
  *       synchronous applyResetScope(FULL) + settings_commit_reset_scoped() + reboot.
  *     LOAD: RAM-only settings_load_scoped() — never reboots.
@@ -291,7 +292,7 @@
  *   134 HUE_REL      hueRelease         0..16383 → 0..4 s
  *   167 LSR_ANIM     laserShowAnim      0..3: Pulse/Chase/Strobe/Wave  [v2]
  *   168 LSR_DRUMFLASH laserDrumFlash    0..1 drum-flash depth          [v2]
- *   169 SCOPED_RESET handleScopedReset  FULL/BANKS→pend_rst+reboot; boot wipe; SETTINGS/MOTION→NvsWorker
+ *   169 SCOPED_RESET handleScopedReset  all scopes→pend_rst+reboot; boot wipe
  *   170 SEQ_CLEAR    seqClearActive…    clear active grid+P-locks+sounds→preset0
  *   172 USR_SND_SAVE saveLiveToUserSlot v14=(eng<<13)|slot; live→slot 128+slot +persist
  *   173 USR_SND_LOAD loadUserSlotToLive v14=(eng<<13)|slot; recall user slot→live
@@ -414,10 +415,8 @@
  *     g_restartAfterSave → settings_save_task ACK + esp_restart ~700 ms).
  *     FULL/BANKS RESET reboots immediately after arming pend_rst; the wipe runs
  *     on the next boot before tasks start (laser beam recovery without UI hang).
- *   • [v6.1.01] SETTINGS/MOTION RESET do NOT reboot — applyResetScope() applies
- *     them live, settings_save_task sends the CMD_SCOPED_RESET ACK and then
- *     `continue`s (scope check skips esp_restart).  The App reloads on the ACK and
- *     re-pulls the fresh settings/motion image via APP_SYNC_REQ (no USB re-enum).
+ *   • [v6.2.09] All scoped RESET reboot — pend_rst at runtime, wipe at boot
+ *     (MOTION/SETTINGS no longer use the NvsWorker path that could hang OLED).
  *   • Transport (play/stop/record/BPM) is always hardware-owned; the App only reflects it.
  *
  * ═══════════════════════════════════════════════════════════════════════════
@@ -437,7 +436,7 @@
  *      via APP_SYNC_REQ on reconnect.  Reboot policy [v6.1.01]:
  *        • SAVE — waits for NvsWorker, then reboots (~700 ms).
  *        • FULL / BANKS+PATS RESET — reboots in ~150 ms (boot-time wipe).
- *        • SETTINGS / MOTION RESET — NO reboot; applied live, App reloads + re-pulls.
+ *        • All scoped RESET — reboot; wipe on next boot; App reloads after reconnect.
  *
  *   DISCONNECTION (heartbeat timeout):
  *   1. pollSyncHeartbeat() / isAppConnected() — no App SysEx for

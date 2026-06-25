@@ -338,7 +338,7 @@ void settings_save_task(void* pvParameters) {
     const bool isReset = (ackCmd == CMD_SCOPED_RESET);
     const ResetScope scope =
         (ResetScope)(g_persistScope.load(std::memory_order_relaxed) & 3u);
-    /* FULL / BANKS+PATS use deferred boot reset — only SETTINGS/MOTION here. */
+    /* Runtime scoped RESET uses deferred boot reset — only reached pre-scheduler. */
     const bool ok = isReset ? settings_commit_reset_scoped(scope)
                             : settings_save_scoped(scope);
     esp_task_wdt_reset();
@@ -376,20 +376,11 @@ void settings_save_task(void* pvParameters) {
       g_beamRecover.store(true, std::memory_order_release);
       if (isAppConnected())
         txSysex(CMD_SCOPED_RESET, ok ? 16383u : 0u);
-      /* Reboot policy by scope:
-       *   FULL / BANKS+PATS — reboot (they normally take the deferred boot-reset
-       *     path in handleScopedReset() and don't reach here at runtime; kept here
-       *     defensively so they still reboot if the flow ever routes through).
-       *   SETTINGS / MOTION — applied live by applyResetScope(); do NOT reboot.
-       *     The App reloads on this ACK and re-pulls the fresh settings/motion
-       *     image via APP_SYNC_REQ (same blob path as LOAD / connect). */
-      const bool rebootReset =
-          (scope == ResetScope::FULL || scope == ResetScope::BANKS_PATTERNS);
-      if (rebootReset) {
-        delay(400);
-        esp_restart();
-      }
-      continue;  /* no reboot: skip the save-ACK path below, await next request */
+      /* All scoped RESET paths reboot (runtime uses deferred pend_rst; this is
+       * the pre-scheduler safety net). */
+      delay(400);
+      esp_restart();
+      continue;
     }
 
     if (ok && isAppConnected()) {

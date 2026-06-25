@@ -29,6 +29,18 @@ Firmware patch — scoped-reset reboot policy plus a same-day **drum-voice refin
 - SAVE (`requestScopedSave` → `g_restartAfterSave` → reboot ~700 ms) and the FULL / BANKS+PATS deferred boot-reset path are unchanged.
 - **NVS layout** — the drum pass changes default *values* only, not the `AllSettings` struct layout, so `SETTINGS_VERSION` stays **`0x0616`** (no migration; existing saves keep their stored drum knobs).
 
+## [6.2.09] — 2026-06-25 (OctopusApp + firmware)
+
+### Fixed
+
+- **Sequencer matrix P2–P4** — `toggleCell()` read `gridData[r][col]` instead of absolute step `page×16+col`; steps 17–64 appeared dead or toggled the wrong cell.
+- **MOTION / SETTINGS reset hang (hardware)** — runtime reset now uses deferred `pend_rst` + reboot + boot-time wipe (same reliable kernel as FULL/BANKS), replacing the NvsWorker path that could stall on "PLEASE WAIT…".
+- **App RESET policy** — all four scopes reboot the ESP and reload the App (SAVE already did).
+
+### Firmware (reflash)
+
+- `pend_rst` values 3=MOTION, 4=SETTINGS; `handleScopedReset()` always defers at runtime.
+
 ## [6.2.08] — 2026-06-25 (OctopusApp)
 
 Browser-only link fixes, pairs with firmware [6.1.01](#6101--2026-06-25) (reflash for D-BEAM fix #3).

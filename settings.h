@@ -1398,8 +1398,8 @@ static inline void persisted_extras_load() {
  *   FULL / BANKS_PATTERNS — settings_arm_pending_reset() + esp_restart(); the wipe
  *     and NVS commit run in settings_execute_pending_reset_at_boot() before tasks
  *     start (mirrors the reliable OC+SCALE boot-time factory reset).
- *   SETTINGS / MOTION     — applyResetScope() + settings_commit_reset_scoped() via
- *     NvsWorker (small NVS writes, safe while running).
+ *   SETTINGS / MOTION     — same deferred boot path as FULL/BANKS (pend_rst +
+ *     reboot; wipe + NVS commit in settings_execute_pending_reset_at_boot()).
  * ═══════════════════════════════════════════════════════════════════════════ */
 enum class ResetScope : uint8_t {
   FULL = 0,
@@ -1615,14 +1615,14 @@ static inline bool settings_commit_reset_scoped(ResetScope scope) {
   return ok;
 }
 
-/* ── deferred reset (FULL / BANKS+PATS) ─────────────────────────────────────
- * NVS key "pend_rst" (u8): 0=none, 1=FULL, 2=BANKS_PATTERNS.
+/* ── deferred reset (all scopes) ────────────────────────────────────────────
+ * NVS key "pend_rst" (u8): 0=none, 1=FULL, 2=BANKS, 3=MOTION, 4=SETTINGS.
  * Runtime arms the flag + reboots; boot kernel executes before loadSettings(). */
 
 static constexpr const char* NVS_KEY_PENDING_RESET = "pend_rst";
 
 static inline bool settings_arm_pending_reset(ResetScope scope) {
-  if (scope != ResetScope::FULL && scope != ResetScope::BANKS_PATTERNS) return false;
+  if ((uint8_t)scope > (uint8_t)ResetScope::SETTINGS) return false;
   nvs_handle_t h;
   if (nvs_open_octopus(NVS_READWRITE, &h) != ESP_OK) return false;
   const uint8_t v = (uint8_t)scope + 1u;
@@ -1648,7 +1648,7 @@ static inline void settings_execute_pending_reset_at_boot() {
   nvs_commit(h);
   nvs_close(h);
 
-  if (v < 1u || v > 2u) return; /* only FULL(1) or BANKS_PATTERNS(2) */
+  if (v < 1u || v > 4u) return; /* FULL(1) … SETTINGS(4) */
 
   const ResetScope scope = (ResetScope)(v - 1u);
   ESP_LOGI("settings", "deferred reset executing scope %u", (unsigned)v);

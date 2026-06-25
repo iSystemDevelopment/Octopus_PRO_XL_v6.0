@@ -2030,7 +2030,7 @@
                 • <b>USB-only MIDI</b> — DIN MIDI removed; v6.0 SysEx protocol (manufacturer 0x7C device→App, 0x7D App→device).</p>
 
                 <p style="margin-top:10px"><b style="color:var(--green)">WHAT'S NEW IN v6.2.07 (APP) · v6.1.01 (FIRMWARE)</b><br>
-                • <b>Settings / Motion reset — no reboot</b> (firmware ≥ 6.1.01): they apply live; the App just reloads and re-pulls the fresh image from the device. SAVE and Full / Banks+Pats reset still reboot.<br>
+                • <b>SAVE / RESET</b> — all scopes reboot the ESP; wipe runs on next boot; App reloads after reconnect.<br>
                 • <b>Octopus hard priority</b> — while a ★ Octopus port is connected the App locks to Octopus mode; non-Octopus ports can't be selected (unplug Octopus to use MIDI Controller mode).<br>
                 • <b>Mode-separation hardening</b> — Octopus and MIDI connect paths fully split; MIDI activity scopes no longer freeze; Octopus knob panels build lazily.<br>
                 • <b>GOD playhead</b> — dedicated GPU layer; smooth during hover, repaints, and P-page switches (STEP_SYNC in Octopus mode).<br>
@@ -2062,7 +2062,7 @@
                 The classic voices are hand-tuned per kit: <b>snare</b> = body wavetable + bandpassed rattle + click (Tune = snap brightness, Noise = wires), <b>clap</b> = bandpass triple-burst with a noise layer (Tune = filter centre, Noise = layer), <b>hats</b> = 6-osc inharmonic metal (Tune = HPF cutoff, Noise = wash). <b>Drm Pitch</b> sweeps the whole bus; kick/toms/perc track it directly while snare body + hats normalise to the classic ×0.60 default.</p>
 
                 <p style="margin-top:10px"><b style="color:var(--orange)">SAVE · LOAD · RESET · CLR</b><br>
-                Popups mirror hardware scopes: <b>Full</b> / <b>Banks+Pats</b> / <b>Motion</b> / <b>Settings</b>. <b>SAVE</b> commits via NvsWorker then reboots; the App reloads and re-imports. <b>Full/Banks reset</b> arm an NVS flag and reboot in ~150 ms — the wipe runs on the next boot (same as OC+SCALE combo). <b>Settings/Motion reset</b> (firmware ≥ 6.1.01) apply live with <b>no reboot</b> — the App reloads and re-pulls the fresh settings/motion image from the device. <b>LOAD</b> reloads RAM with no reboot, then the App reloads. Only one persist action at a time. Header <b>CLR</b> clears the <b>active P page only</b> (16 steps) — not hardware SEQ SETUP → Clear. All destructive persist actions use YES/NO confirm.</p>
+                Popups mirror hardware scopes: <b>Full</b> / <b>Banks+Pats</b> / <b>Motion</b> / <b>Settings</b>. <b>SAVE</b> commits via NvsWorker then reboots; the App reloads and re-imports. <b>All RESET scopes</b> arm an NVS flag and reboot — the wipe runs on the next boot (same reliable path as OC+SCALE combo). <b>LOAD</b> reloads RAM with no reboot, then the App reloads. Only one persist action at a time. Header <b>CLR</b> clears the <b>active P page only</b> (16 steps) — not hardware SEQ SETUP → Clear. All destructive persist actions use YES/NO confirm.</p>
 
                 <p style="margin-top:10px"><b style="color:var(--purple)">USER SLOTS</b><br>
                 Header <b>SLOTS</b> — 64 harp sounds, 64 seq sounds, 64 patterns. Save / load / rename; custom names persist via SysEx name blobs and echo on connect.</p>
@@ -2226,7 +2226,7 @@
                 <button class="btn active-red" onclick="app.closeResetModal()">CLOSE</button>
             </div>
             <div style="display:flex;flex-direction:column;gap:10px">
-                <div style="color:#666;font-size:9px">Scoped reset — same four scopes as the hardware RESET menu. <b>Full</b> and <b>Banks+Pats</b> reboot the device (factory wipe runs on the next boot). <b>Settings</b> and <b>Motion</b> apply live with <b>no reboot</b> — the App just reloads and re-pulls the fresh image from the device. Each action is confirmed before sending.</div>
+                <div style="color:#666;font-size:9px">Scoped reset — same four scopes as the hardware RESET menu. All scopes arm an NVS flag and <b>reboot</b> (~150 ms); the wipe runs on the next boot, then the App reloads. Each action is confirmed before sending.</div>
                 <button class="btn" style="color:var(--red);border-color:var(--red)" onclick="app.resetScoped(0)"><i class="fa-solid fa-rotate-left"></i>FULL RESET</button>
                 <button class="btn" style="color:var(--red);border-color:var(--red)" onclick="app.resetScoped(1)">BANKS + PATS RESET</button>
                 <button class="btn" style="color:var(--purple);border-color:var(--purple)" onclick="app.resetScoped(2)">MOTION CLEAR</button>
@@ -2280,7 +2280,7 @@
      JAVASCRIPT
 ═══════════════════════════════════════════════════════════════════════════ -->
     <script>
-        const APP_VERSION = '6.2.08';
+        const APP_VERSION = '6.2.09';
         const PAYPAL_DONATE_URL = 'https://www.paypal.com/donate?hosted_button_id=KX7B76V37PED8';
         const MIDI_SESSION_KEY = 'octopusapp_midi_session_v1';
         const PORT_BOOT_KEY = 'octopusapp_port_boot_v1';
@@ -4294,14 +4294,6 @@
                     requestAnimationFrame(() => this._finishPostSyncIfReady());
                     return;
                 }
-                if (kind === 'reset' && !reboot) {
-                    this._syncBurstExpected = true;
-                    this._resetSlotSavedFlagsForSync();
-                    this._pendingPostSyncReload = 'reset sync complete';
-                    this.log('Reset complete — updating from device…');
-                    requestAnimationFrame(() => this._finishPostSyncIfReady());
-                    return;
-                }
                 this._scheduleAppReload(kind + ' complete');
             },
             _clearPersist() {
@@ -6084,25 +6076,11 @@
                     [CMD.SCOPED_RESET]: v14 => {
                         if (v14 === 16383) {
                             if (this._persistBusy && this._persistKind === 'reset')
-                                // FULL/BANKS → reboot+reconnect; SETTINGS/MOTION → reload+re-pull.
-                                this._persistFinished(true, this._resetReboots());
+                                this._persistFinished(true, true);
                             else if (!this._persistBusy)
-                                /* Hardware-initiated: reload either way (device may reboot or not). */
                                 this._scheduleAppReload('hardware reset');
                         } else if (v14 === 0) {
-                            if (this._persistBusy && this._persistKind === 'reset') {
-                                if (this._resetReboots()) {
-                                    /* FULL/BANKS — firmware reboots; wait for the USB drop. */
-                                    this._persistAwaitReboot = true;
-                                    if (this._persistTimeoutId) {
-                                        clearTimeout(this._persistTimeoutId);
-                                        this._persistTimeoutId = null;
-                                    }
-                                } else {
-                                    /* SETTINGS/MOTION — no reboot; 0 means the commit failed. */
-                                    this._persistFinished(false, false);
-                                }
-                            } else if (this._persistBusy || this._persistKind === 'reset')
+                            if (this._persistBusy || this._persistKind === 'reset')
                                 this._persistFinished(false, false);
                         }
                     },
@@ -6560,20 +6538,15 @@
             closeResetModal() {
                 document.getElementById('resetModal').style.display = 'none';
             },
-            /** FULL(0) / BANKS+PATS(1) reboot the device; MOTION(2) / SETTINGS(3) are
-             *  applied live (firmware ≥ 6.1.01) — no reboot, the App just reloads + re-pulls. */
-            _resetReboots(scope) {
-                const s = (scope == null ? this._persistResetScope : scope) | 0;
-                return s === 0 || s === 1;
+            /** All scoped RESET paths reboot the ESP (deferred wipe on next boot). */
+            _resetReboots() {
+                return true;
             },
             resetScoped(scope) {
                 if (!this._requireOctopusHardware('RESET')) return;
                 const s = (+scope) & 3;
                 const name = this._scopeName(s);
-                const tail = this._resetReboots(s)
-                    ? '\nWipe RAM, persist, and reboot?'
-                    : '\nApply live (no reboot) — the App reloads and re-pulls from the device?';
-                if (!confirm('RESET ' + name + tail)) return;
+                if (!confirm('RESET ' + name + '\nWipe RAM, persist, and reboot?')) return;
                 if (!this._armPersist('reset')) return;
                 this._persistResetScope = s;
                 this._showPersistWait('reset', s);
@@ -7394,7 +7367,8 @@
 
             // ── Grid model helpers (per-bank source of truth) ─────────────────────────
             toggleCell(r, c) {
-                this.setCell(r, c, !this.gridData[this.bankIdx][r][c]);
+                const abs = (this.gridPageIdx * 16) + ((c | 0) & 15);
+                this.setCell(r, c, !this.gridData[this.bankIdx][r][abs]);
             },
             // Set one cell; sends GRID_TOG with absolute step index 0–63.
             setCell(r, c, on) {

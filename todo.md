@@ -170,9 +170,15 @@ Details: **[docs/app_god_rules.md](./docs/app_god_rules.md)** · **[CHANGELOG.md
 
 ## Link issues — fixed (App + firmware, 2026-06-25)
 
-1. **APP CONNECTED after tab close** — **Cause:** heartbeat worker + silent AudioContext kept PINGing after unload. **Fix:** `_teardownOctopusLink()` on `beforeunload`/`pagehide` (`OctopusApp.html`).
-2. **Stale App on reconnect** — **Cause:** `_connectMidiPort()` early-return when USB port id unchanged (common on replug). **Fix:** `_octopusResync()` + `_adoptMidiPort()` when offline (`OctopusApp.html`).
-3. **Harp → seq crosstalk** — **Cause:** D-BEAM VOLUME route exit restored both `mixHarpVol` and `mixSeqVol` even when only harp engaged. **Fix:** `dbeamVolumeRestoreEngagedBuses()` (`dbeam.cpp`, `patches.h`, `dbeam.h`).
+1. **APP CONNECTED after tab close** — `_teardownOctopusLink()` on unload (`OctopusApp.html` v6.2.08).
+2. **Stale App on reconnect** — `_octopusResync()` for same-port USB replug (v6.2.08).
+3. **Harp → seq crosstalk** — `dbeamVolumeRestoreEngagedBuses()` (firmware).
+
+## Persist / matrix — fixed (v6.2.09)
+
+4. **MOTION / SETTINGS reset hang (hardware)** — deferred `pend_rst` + reboot on boot wipe (same as FULL/BANKS).
+5. **App SAVE/RESET** — all scopes reboot ESP + App reload.
+6. **Matrix P2–P4 clicks** — `toggleCell()` used column index instead of absolute step.
 
 ## Remaining §9 future work
 
