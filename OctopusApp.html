@@ -11138,36 +11138,43 @@
                 if (gp) gp.value = String(this.midiMap.globalPitch || 0);
                 if (gpl) gpl.textContent = String(this.midiMap.globalPitch || 0);
             },
-            /** 3 groups × (2 rows × 4 CC) — scale chips to visible panel. */
+            /** 6 macro-groups (3-col × 2-row CSS grid), each group has 2-col × 2-row chip grid.
+             *  Chip dimensions: chipW = panel_w / 3_cols / 2_chips_per_col
+             *                   chipH = panel_h / 2_rows / 2_chips_per_row
+             *  Scale is applied only to the groups container (never to individual chips).
+             *  Transform-origin: top left — no pointer-event offset artefacts. */
             _layoutMidiCcGrid(groupsEl) {
                 const root = document.getElementById('midi-seq-knobs');
                 if (!root || !groupsEl) return;
                 const w = groupsEl.clientWidth;
                 const h = groupsEl.clientHeight;
                 if (w < 48 || h < 20) return;
+                /* Always clear previous scale first so measurements reflect natural layout */
                 groupsEl.style.transform = '';
                 groupsEl.style.width = '';
                 groupsEl.style.height = '';
-                const chipW = (w / 3) / 4;
-                const chipH = h / 2;
-                const micro = chipW < 58 || chipH < 14;
-                const compact = micro || chipW < 72 || chipH < 16;
+                /* Chip size: panel / (3 group-cols × 2 chip-cols) and (2 group-rows × 2 chip-rows) */
+                const chipW = w / (3 * 2);   // was /3/4 for old 4-col-per-group layout
+                const chipH = h / (2 * 2);   // was /2   for old 1-group-row layout
+                const micro   = chipW < 38 || chipH < 14;
+                const compact = micro || chipW < 46 || chipH < 16;
                 root.classList.toggle('midi-cc-compact', compact);
-                root.classList.toggle('midi-cc-micro', micro);
+                root.classList.toggle('midi-cc-micro',   micro);
                 const gap = micro ? 1 : compact ? 2 : 3;
-                root.style.setProperty('--midi-cc-gap', gap + 'px');
+                root.style.setProperty('--midi-cc-gap',      gap + 'px');
                 root.style.setProperty('--midi-cc-label-fs', (micro ? 5 : compact ? 6 : 7) + 'px');
-                root.style.setProperty('--midi-cc-input-h', (micro ? 11 : compact ? 12 : 13) + 'px');
-                root.style.setProperty('--midi-cc-cc-w', (micro ? 18 : compact ? 20 : 22) + 'px');
-                root.style.setProperty('--midi-cc-val-w', (micro ? 18 : compact ? 20 : 22) + 'px');
-                root.style.setProperty('--midi-cc-knob', (micro ? 11 : compact ? 13 : 15) + 'px');
-                const minW = micro ? 40 : compact ? 48 : 56;
+                root.style.setProperty('--midi-cc-input-h',  (micro ? 11 : compact ? 12 : 13) + 'px');
+                root.style.setProperty('--midi-cc-cc-w',     (micro ? 18 : compact ? 20 : 22) + 'px');
+                root.style.setProperty('--midi-cc-val-w',    (micro ? 18 : compact ? 20 : 22) + 'px');
+                root.style.setProperty('--midi-cc-knob',     (micro ? 11 : compact ? 13 : 15) + 'px');
+                /* Minimum chip size (below this we scale the whole container down) */
+                const minW = micro ? 28 : compact ? 34 : 40;
                 const minH = micro ? 11 : compact ? 13 : 15;
                 const scale = Math.min(1, chipW / minW, chipH / minH);
                 if (scale < 0.98) {
-                    const s = Math.max(0.62, scale);
+                    const s = Math.max(0.55, scale);
                     groupsEl.style.transform = `scale(${s.toFixed(3)})`;
-                    groupsEl.style.width = `${(100 / s).toFixed(2)}%`;
+                    groupsEl.style.width  = `${(100 / s).toFixed(2)}%`;
                     groupsEl.style.height = `${(100 / s).toFixed(2)}%`;
                 }
             },
