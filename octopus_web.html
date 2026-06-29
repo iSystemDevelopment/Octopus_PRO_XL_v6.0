@@ -699,6 +699,11 @@
                    class="top-nav-social shrink-0" title="DIODAC on Facebook" aria-label="Facebook">
                     <i class="fa-brands fa-facebook-f text-[11px]"></i>
                 </a>
+                <a href="https://octopus.isystem.app/?install=1" target="_blank" rel="noopener noreferrer"
+                   class="top-nav-cta border border-[#22c55e]/60 text-[#22c55e] hover:bg-[#22c55e] hover:text-black transition-colors shrink-0"
+                   title="Install OctopusApp as a desktop web app (Chrome / Edge)">
+                    <i class="fa-solid fa-download"></i> Install
+                </a>
                 <a href="https://octopus.isystem.app" target="_blank" rel="noopener noreferrer"
                    class="top-nav-cta bg-[#22c55e] text-black hover:bg-white transition-colors shrink-0">
                     Launch App
@@ -747,6 +752,11 @@
             <a href="https://octopus.isystem.app" target="_blank" rel="noopener noreferrer"
                class="bg-[#22c55e] text-black font-bold py-3 px-8 rounded hover:bg-white transition-colors brand tracking-widest shadow-[0_0_20px_rgba(34,197,94,0.45)]">
                 <i class="fa-solid fa-plug"></i> LAUNCH OCTOPUSAPP
+            </a>
+            <a href="https://octopus.isystem.app/?install=1" target="_blank" rel="noopener noreferrer"
+               class="border border-[#22c55e] text-[#22c55e] font-bold py-3 px-8 rounded hover:bg-[#22c55e] hover:text-black transition-colors brand tracking-widest text-sm shadow-[0_0_16px_rgba(34,197,94,0.2)]"
+               title="Add OctopusApp to your desktop — works offline after first visit">
+                <i class="fa-solid fa-desktop"></i> INSTALL DESKTOP APP
             </a>
             <a href="https://github.com/iSystemDevelopment/Octopus_PRO_XL_v6.0/blob/main/README.md" target="_blank" rel="noopener noreferrer"
                class="border border-[#333] text-gray-300 font-bold py-3 px-8 rounded hover:border-[#06b6d4] hover:text-white transition-colors brand tracking-widest text-sm">
@@ -1120,7 +1130,7 @@
     <section id="app" class="py-24 px-6 bg-[#0a0a0e] border-t border-[#111]">
         <div class="max-w-7xl mx-auto text-center mb-16">
             <h2 class="text-3xl md:text-4xl text-white mb-4"><span class="text-[#22c55e]">06.</span> OctopusApp — Web MIDI Console</h2>
-            <p class="max-w-2xl mx-auto mb-4">No installs, no drivers. Open <strong class="text-[#22c55e]"><a href="https://octopus.isystem.app" target="_blank" rel="noopener" class="hover:underline">octopus.isystem.app</a></strong> in Chrome or Edge, plug in USB — the App <strong class="text-gray-300">auto-connects</strong>, imports the full device state, and becomes the master editor for all parameters. Transport (play/stop/record-arm/BPM) stays on the hardware (SCALE · OC short · encoder).</p>
+            <p class="max-w-2xl mx-auto mb-4">No drivers, no DAW plugin. Open <strong class="text-[#22c55e]"><a href="https://octopus.isystem.app" target="_blank" rel="noopener" class="hover:underline">octopus.isystem.app</a></strong> in Chrome or Edge — or <strong class="text-gray-300"><a href="https://octopus.isystem.app/?install=1" target="_blank" rel="noopener" class="text-[#22c55e] hover:underline">install the desktop app</a></strong> for an offline-capable window in your taskbar. Plug in USB and the App <strong class="text-gray-300">auto-connects</strong>, imports full device state, and becomes the master editor. Transport (play/stop/record-arm/BPM) stays on the hardware (SCALE · OC short · encoder).</p>
             <p class="text-sm text-gray-500 max-w-xl mx-auto">MIDI runs locally in your browser (never through this website). Requires HTTPS, one open tab on Windows for full duplex echo.</p>
         </div>
 
@@ -1150,12 +1160,16 @@
             </div>
         </div>
 
-        <div class="text-center">
+        <div class="text-center flex flex-wrap gap-4 justify-center items-center">
             <a href="https://octopus.isystem.app" target="_blank" rel="noopener noreferrer"
                class="inline-flex items-center gap-3 bg-[#22c55e] text-black font-bold py-4 px-10 rounded-lg hover:bg-white transition-colors brand tracking-widest text-sm shadow-[0_0_24px_rgba(34,197,94,0.35)]">
                 <i class="fa-solid fa-plug"></i> OPEN octopus.isystem.app
             </a>
-            <p class="text-xs text-gray-600 mono mt-4">Chrome or Edge · USB connected · Web MIDI + SysEx · Playhead on SEQUENCER tab</p>
+            <a href="https://octopus.isystem.app/?install=1" target="_blank" rel="noopener noreferrer"
+               class="inline-flex items-center gap-3 border border-[#22c55e] text-[#22c55e] font-bold py-4 px-10 rounded-lg hover:bg-[#22c55e] hover:text-black transition-colors brand tracking-widest text-sm">
+                <i class="fa-solid fa-desktop"></i> INSTALL DESKTOP APP
+            </a>
+            <p class="w-full text-xs text-gray-600 mono mt-2">Chrome or Edge · USB connected · Web MIDI + SysEx · Playhead on SEQUENCER tab</p>
             <p class="text-xs text-gray-600 mono mt-2"><a href="https://isystem.app/legal/privacy" class="text-gray-500 hover:text-[#06b6d4] hover:underline" target="_blank" rel="noopener noreferrer">Privacy policy</a></p>
         </div>
     </section>
@@ -1283,12 +1297,16 @@
             </div>
         </div>
 
-        <div class="text-center">
+        <div class="text-center flex flex-wrap gap-4 justify-center items-center">
             <a href="https://octopus.isystem.app" target="_blank" rel="noopener noreferrer"
                class="inline-flex items-center gap-3 border border-[#06b6d4] text-[#06b6d4] font-bold py-3 px-8 rounded-lg hover:bg-[#06b6d4] hover:text-black transition-colors brand tracking-widest text-sm">
                 <i class="fa-solid fa-laptop-code"></i> OPEN OCTOPUSAPP
             </a>
-            <p class="text-xs text-gray-600 mono mt-4">
+            <a href="https://octopus.isystem.app/?install=1" target="_blank" rel="noopener noreferrer"
+               class="inline-flex items-center gap-3 border border-[#22c55e]/70 text-[#22c55e] font-bold py-3 px-8 rounded-lg hover:bg-[#22c55e] hover:text-black transition-colors brand tracking-widest text-sm">
+                <i class="fa-solid fa-download"></i> INSTALL DESKTOP
+            </a>
+            <p class="w-full text-xs text-gray-600 mono mt-2">
                 <a href="https://github.com/iSystemDevelopment/Octopus_PRO_XL_v6.0/blob/main/user_manual.md#94-universal-midi-controller-mode-octopusapp-v6200--shipped" class="text-gray-500 hover:text-[#06b6d4]">User manual §9.4</a>
                 · In-app Help → <strong class="text-gray-500">MIDI CONTROLLER</strong> tab
             </p>
@@ -1312,7 +1330,7 @@
                class="feature-card resource-tile block hover:border-[#22c55e] text-left no-underline">
                 <div class="text-2xl mb-2 text-[#22c55e]"><i class="fa-solid fa-plug"></i></div>
                 <h3 class="text-white font-bold mb-1">OctopusApp</h3>
-                <p class="text-sm text-gray-400">Live Web MIDI console v6.6.01 — Octopus DSP sync or standalone MIDI Controller (no hardware required).</p>
+                <p class="text-sm text-gray-400">Live Web MIDI console v6.6.01 — Octopus DSP sync or standalone MIDI Controller. <a href="https://octopus.isystem.app/?install=1" class="text-[#22c55e] hover:underline" target="_blank" rel="noopener">Install desktop app</a> (Chrome / Edge PWA).</p>
             </a>
             <a href="user_manual.md" class="feature-card resource-tile block hover:border-[#a855f7] text-left no-underline">
                 <div class="text-2xl mb-2 text-[#a855f7]"><i class="fa-solid fa-book"></i></div>

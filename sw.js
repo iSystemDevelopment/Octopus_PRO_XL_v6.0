@@ -1,0 +1,69 @@
+/* OctopusApp service worker — offline shell + install eligibility. Bump CACHE on each release. */
+const CACHE = 'octopus-app-v6.6.01';
+
+const PRECACHE = ['/', '/index.html', '/manifest.webmanifest'];
+
+const CDN_HOSTS = [
+  'cdn.tailwindcss.com',
+  'cdnjs.cloudflare.com',
+  'fonts.googleapis.com',
+  'fonts.gstatic.com'
+];
+
+self.addEventListener('install', (event) => {
+  event.waitUntil(
+    caches.open(CACHE)
+      .then((cache) => cache.addAll(PRECACHE))
+      .then(() => self.skipWaiting())
+  );
+});
+
+self.addEventListener('activate', (event) => {
+  event.waitUntil(
+    caches.keys()
+      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
+      .then(() => self.clients.claim())
+  );
+});
+
+function isCdn(url) {
+  return CDN_HOSTS.some((h) => url.hostname === h || url.hostname.endsWith('.' + h));
+}
+
+self.addEventListener('fetch', (event) => {
+  if (event.request.method !== 'GET') return;
+
+  const url = new URL(event.request.url);
+
+  if (url.origin === self.location.origin) {
+    event.respondWith(
+      fetch(event.request)
+        .then((res) => {
+          if (res.ok) {
+            const copy = res.clone();
+            caches.open(CACHE).then((c) => c.put(event.request, copy));
+          }
+          return res;
+        })
+        .catch(() =>
+          caches.match(event.request).then((m) => m || caches.match('/index.html'))
+        )
+    );
+    return;
+  }
+
+  if (isCdn(url)) {
+    event.respondWith(
+      caches.match(event.request).then((cached) => {
+        if (cached) return cached;
+        return fetch(event.request).then((res) => {
+          if (res.ok) {
+            const copy = res.clone();
+            caches.open(CACHE).then((c) => c.put(event.request, copy));
+          }
+          return res;
+        });
+      })
+    );
+  }
+});

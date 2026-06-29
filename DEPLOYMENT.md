@@ -43,6 +43,7 @@ sudo apt update && sudo apt install -y nginx certbot python3-certbot-nginx
 # App site
 sudo mkdir -p /var/www/octopus.isystem.app
 sudo cp OctopusApp.html /var/www/octopus.isystem.app/index.html
+sudo cp manifest.webmanifest sw.js /var/www/octopus.isystem.app/
 
 # Product site
 sudo mkdir -p /var/www/octopus-info.isystem.app
@@ -84,6 +85,19 @@ Static HTML must not sit in Cloudflare edge cache after you upload v6.2, or user
 ### Verify HTTPS before MIDI test
 
 Open `https://octopus.isystem.app` — padlock valid, no mixed-content warnings. Then allow MIDI in Chrome.
+
+### Desktop install (PWA)
+
+OctopusApp is a **Progressive Web App**. Users install from the browser — no separate `.exe` or raw HTML handout.
+
+| File | Purpose |
+|------|---------|
+| `manifest.webmanifest` | App name, icons, `standalone` window |
+| `sw.js` | Offline shell cache (bump `CACHE` in `sw.js` each release) |
+
+Deploy all three to the app site root (`index.html`, `manifest.webmanifest`, `sw.js`). Users click **INSTALL** in the header (Chrome / Edge) or use the browser’s “Install app” menu. After one online visit, the UI loads offline; **Web MIDI still needs Chrome/Edge on desktop**.
+
+On release: update the `CACHE` string in `sw.js` so installed clients pick up the new App.
 
 ---
 

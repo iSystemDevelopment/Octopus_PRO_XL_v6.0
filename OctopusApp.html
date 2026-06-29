@@ -24,6 +24,8 @@
     <meta name="copyright" content="© 2026 DIODAC ELECTRONICS / iSystem. All Rights Reserved. Proprietary and confidential.">
     <meta name="author" content="DIODAC ELECTRONICS / iSystem">
     <meta name="theme-color" content="#020203">
+    <meta name="apple-mobile-web-app-title" content="OctopusApp">
+    <link rel="manifest" href="/manifest.webmanifest">
     <link rel="canonical" href="https://octopus.isystem.app/">
     <link rel="icon" href="https://octopus-info.isystem.app/logo.jpg" type="image/jpeg">
     <link rel="apple-touch-icon" href="https://octopus-info.isystem.app/logo.jpg">
@@ -3495,6 +3497,11 @@
         .app-donate-bar a:hover {
             color: #888
         }
+
+        /* PWA install tab — hidden when already installed or unsupported */
+        .view-tab-install.pwa-hidden {
+            display: none !important
+        }
     </style>
 </head>
 
@@ -3514,6 +3521,7 @@
                 <div class="view-tab" id="tab3" onclick="app.switchView(3)"><i class="fa-solid fa-bars-staggered" style="margin-right:4px"></i>SEQUENCER</div>
                 <a class="view-tab view-tab-tip" href="https://www.paypal.com/donate?hosted_button_id=KX7B76V37PED8" target="_blank" rel="noopener noreferrer" title="Optional tip — DIODAC ELECTRONICS"><i class="fa-brands fa-paypal" style="margin-right:4px"></i>TIP</a>
                 <div class="view-tab view-tab-help" id="tabHelp" onclick="app.openHelp()" title="Open help (popup)"><i class="fa-solid fa-circle-question" style="margin-right:4px"></i>HELP</div>
+                <div class="view-tab view-tab-install pwa-hidden" id="tabInstallPwa" onclick="app.installPwa()" title="Install as desktop app (Chrome / Edge)"><i class="fa-solid fa-download" style="margin-right:4px"></i>INSTALL</div>
             </nav>
         </div>
 
@@ -4187,6 +4195,7 @@
                 <b>MIXER tab</b> — AB 9-09 bus (global, aux, FX-A/B), STUDIO mixing console, aux/shared-room sends, USB wire rack, drum scope + traditional G/Y/R master VU, laser, D-BEAM route/target + live bargraph.<br>
                 <b>INSTRUMENTS tab</b> — AB 9-09 eight-voice canvas (wave dropdown + 4 knobs per voice — wave stays synced with hardware), harp patch dropdown, KIT + SAVE in drum header.<br>
                 <b>HELP tab</b> — opens this popup (no view switch).<br>
+                <b>INSTALL tab</b> — add OctopusApp to your desktop (Chrome / Edge PWA). After the first online visit, the shell loads offline; Web MIDI still needs a browser that supports USB MIDI.<br>
                 <b>EXP / IMP</b> — export/import <code>octopus_session_N.json</code> (import targets slots 2–16 only).</p>
 
                 <p style="margin-top:10px"><b style="color:var(--green)">BANKS · CHAIN · GRID TOOLS</b><br>
@@ -4496,6 +4505,20 @@
                 Pick a port in the header <b style="color:#888">MIDI OUT</b> — ★ Octopus for DSP Engine, or any interface for MIDI Controller mode.
             </p>
             <button class="btn active-green" style="min-width:120px;justify-content:center;margin:0 auto" onclick="app.closeConnectModal()">OK</button>
+        </div>
+    </div>
+
+    <!-- ── Desktop / home-screen install (PWA) ─────────────────────────── -->
+    <div class="modal" id="installModal">
+        <div class="modal-content" style="width:440px;padding:20px 18px">
+            <h3 style="margin:0 0 10px;font-size:11px;color:var(--green);font-family:'Orbitron',sans-serif;letter-spacing:1px">
+                <i class="fa-solid fa-desktop" style="margin-right:6px"></i>INSTALL OCTOPUSAPP
+            </h3>
+            <div id="installModalBody" style="font-size:10px;line-height:1.6;color:#bbb"></div>
+            <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
+                <button class="btn" onclick="app.closeInstallModal()">CLOSE</button>
+                <button class="btn active-green" id="installModalGo" style="display:none" onclick="app.installPwa(true)">INSTALL NOW</button>
+            </div>
         </div>
     </div>
 
@@ -8070,7 +8093,93 @@
                     this.allNotesOff();
                 });
                 document.addEventListener('keydown', (e) => this._onGlobalKeydown(e));
+                this.initPwa();
                 this.log('OctopusApp v' + APP_VERSION + ' · ' + location.origin);
+            },
+
+            /** Progressive Web App — service worker + desktop install (Chrome / Edge). */
+            _pwaDeferredPrompt: null,
+            _pwaIsStandalone() {
+                return window.matchMedia('(display-mode: standalone)').matches
+                    || window.matchMedia('(display-mode: window-controls-overlay)').matches
+                    || window.navigator.standalone === true;
+            },
+            _pwaIsIos() {
+                return /iphone|ipad|ipod/i.test(navigator.userAgent)
+                    || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+            },
+            _pwaRefreshInstallTab() {
+                const tab = document.getElementById('tabInstallPwa');
+                if (!tab) return;
+                const hide = this._pwaIsStandalone() || location.protocol === 'file:';
+                tab.classList.toggle('pwa-hidden', hide);
+            },
+            initPwa() {
+                if (!('serviceWorker' in navigator) || location.protocol === 'file:') {
+                    this._pwaRefreshInstallTab();
+                    return;
+                }
+                window.addEventListener('beforeinstallprompt', (e) => {
+                    e.preventDefault();
+                    this._pwaDeferredPrompt = e;
+                    this._pwaRefreshInstallTab();
+                });
+                window.addEventListener('appinstalled', () => {
+                    this._pwaDeferredPrompt = null;
+                    this._pwaRefreshInstallTab();
+                    this.log('OctopusApp installed on this device.');
+                });
+                navigator.serviceWorker.register('/sw.js', { scope: '/' })
+                    .then(() => this._pwaRefreshInstallTab())
+                    .catch(() => this._pwaRefreshInstallTab());
+                this._pwaRefreshInstallTab();
+                if (new URLSearchParams(location.search).get('install') === '1') {
+                    setTimeout(() => this.installPwa(), 800);
+                }
+            },
+            openInstallModal() {
+                const body = document.getElementById('installModalBody');
+                const go = document.getElementById('installModalGo');
+                if (!body) return;
+                if (this._pwaIsStandalone()) {
+                    body.innerHTML = '<p>You are already running the installed OctopusApp.</p>';
+                    if (go) go.style.display = 'none';
+                } else if (this._pwaDeferredPrompt) {
+                    body.innerHTML = '<p>Install OctopusApp as a desktop app. It opens in its own window, stays in your taskbar, and caches the UI for offline use after one online visit.</p><p style="color:#666;margin-top:8px">Web MIDI (USB) still requires Chrome or Edge on desktop.</p>';
+                    if (go) go.style.display = '';
+                } else if (this._pwaIsIos()) {
+                    body.innerHTML = '<p>On iPhone / iPad: tap <b>Share</b> in Safari, then <b>Add to Home Screen</b>.</p><p style="color:#666;margin-top:8px">iOS does not expose USB Web MIDI in the browser — use a desktop for MIDI Controller mode.</p>';
+                    if (go) go.style.display = 'none';
+                } else {
+                    body.innerHTML = '<p>Use <b>Chrome</b> or <b>Edge</b> on desktop, then either click <b>INSTALL</b> in the header or use the browser menu: <b>Install OctopusApp</b> / <b>Apps → Install this site as an app</b>.</p><p style="color:#666;margin-top:8px">Install appears after the site is served over HTTPS with a valid app manifest.</p>';
+                    if (go) go.style.display = 'none';
+                }
+                document.getElementById('installModal').style.display = 'flex';
+            },
+            closeInstallModal() {
+                const m = document.getElementById('installModal');
+                if (m) m.style.display = 'none';
+            },
+            async installPwa(fromModal) {
+                if (this._pwaIsStandalone()) {
+                    this.log('OctopusApp is already installed.');
+                    return;
+                }
+                if (!this._pwaDeferredPrompt) {
+                    this.openInstallModal();
+                    return;
+                }
+                try {
+                    this._pwaDeferredPrompt.prompt();
+                    const { outcome } = await this._pwaDeferredPrompt.userChoice;
+                    this._pwaDeferredPrompt = null;
+                    this._pwaRefreshInstallTab();
+                    this.closeInstallModal();
+                    if (outcome === 'accepted') this.log('Installing OctopusApp…');
+                    else if (!fromModal) this.openInstallModal();
+                } catch (e) {
+                    this.openInstallModal();
+                }
             },
 
             /** Ignore shortcuts while typing in form fields. */
@@ -8081,7 +8190,7 @@
                 return !!el.isContentEditable;
             },
             _modalBlocksShortcuts() {
-                return ['helpModal', 'monitorModal', 'saveModal', 'resetModal', 'connectModal', 'doneModal', 'songModal', 'bankModal']
+                return ['helpModal', 'monitorModal', 'saveModal', 'resetModal', 'connectModal', 'doneModal', 'songModal', 'bankModal', 'installModal']
                     .some(id => {
                         const m = document.getElementById(id);
                         return m && m.style.display === 'flex';
