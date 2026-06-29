@@ -51,6 +51,7 @@
 #include "audio.h"
 #include "display.h"
 #include "interface.h"
+#include "link.h"
 /* wires.h removed [A] — WebApp authority logic in patches.h */
 
 USBMIDI MIDI;
@@ -71,6 +72,9 @@ void setup() {
   Serial.printf("\n╔════════════════════════════════════════╗\n");
   Serial.printf("║  OCTOPUS PRO XL v%s — BOOT KERNEL  ║\n", SYSTEM_FW_VERSION);
   Serial.printf("╚════════════════════════════════════════╝\n\n");
+
+  linkInitBootId();
+  Serial.printf("[LINK] boot_id=%u phase=SYNC_BURST\n", (unsigned)linkBootId());
 
   /* ── REBOOT DIAGNOSTIC ───────────────────────────────────────────────────────
    * Decode WHY the chip last reset.  This is the single most useful clue for the

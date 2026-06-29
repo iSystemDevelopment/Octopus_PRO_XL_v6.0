@@ -16,6 +16,7 @@
  * patches.h; display via displayDirty + renderUIState (display.cpp).
  * ═════════════════════════════════════════════════════════════════════════════ */
 #include "interface.h"
+#include "link.h"
 #include <cmath>
 #include "groovebox.h"       /* seq transport, grid UI, factory patterns */
 #include "display.h"
@@ -220,7 +221,7 @@ static inline void mutateSeq(int pIdx, int16_t delta) {
  * (1:1 detent steps from EncoderPoll.getDelta).
  * ═══════════════════════════════════════════════════════════════════════════ */
 void updateHardwareParameter(uint8_t l1, uint8_t l2, int16_t delta) {
-  if (l1 >= (uint8_t)kL1Count || (int)l2 >= l2CountFor((int)l1)) return;
+  if (l1 >= (uint8_t)kL1CatCount || (int)l2 >= l2CountFor((int)l1)) return;
 
   const int scale = harpScaleIndex.load(std::memory_order_relaxed) & (NUM_SCALES - 1);
 
@@ -386,7 +387,6 @@ void updateHardwareParameter(uint8_t l1, uint8_t l2, int16_t delta) {
                                         NUM_NAMED_PRESETS - 1);
                const int nx  = wrapIndex(cur, (int)delta, NUM_NAMED_PRESETS);
                recallHarpPatch(nx, ParamSource::UI);
-               txSysex(CMD_H_PATCH, (uint16_t)nx);
                break; }
     /* 19 Save Slot — turn picks slot (commit on ENC); 20 Load Slot recalls on turn. */
     case 19: { uint8_t c = (uint8_t)wrapIndex((int)userSlotCursor[0].load(std::memory_order_relaxed),
@@ -661,6 +661,7 @@ void updateHardwareParameter(uint8_t l1, uint8_t l2, int16_t delta) {
     break;
 
   case 11: break;  /* TELEMETRY — view-only; encoder handled in updateHardwareInterface */
+  case 14: break;  /* PERF name — stub Phase G */
   default: break;
   }
 }
@@ -682,7 +683,6 @@ static void confirmDispatch(ConfirmAction a, uint8_t arg) {
     case ConfirmAction::SEQ_CLEAR:  seqClearActiveAndResetSounds();              break;
     case ConfirmAction::SAVE:       handleScopedSave ((ResetScope)(arg & 3u));   break;
     case ConfirmAction::RESET:      handleScopedReset((ResetScope)(arg & 3u));   break;
-    case ConfirmAction::LOAD:       handleScopedLoad ((ResetScope)(arg & 3u));   break;
     case ConfirmAction::USR_SOUND_SAVE:
       if (saveLiveToUserSlot((uint8_t)((arg >> 6) & 1u), (uint8_t)(arg & 63u)) && isAppConnected())
         txSysex(CMD_USR_SOUND_SAVE, (uint16_t)(arg & 0x3FFFu));
@@ -694,11 +694,13 @@ static void confirmDispatch(ConfirmAction a, uint8_t arg) {
   }
 }
 
-/* Open scoped SAVE menu (L1=14). ENC long-press routes here (not direct persist). */
-static inline void openSaveMenu() {
+/* Open PERF SLOT menu (L1=14). ENC long-press routes here. */
+static inline void openPerfSlotMenu() {
   currentScopeView.store(TelemetryView::OFF, std::memory_order_relaxed);
   edgeEditOpen.store(false, std::memory_order_relaxed);
-  currentMenuL1.store(14, std::memory_order_relaxed);   /* SAVE category (raw id) */
+  menuSystemMidiSub.store(false, std::memory_order_relaxed);
+  menuResetFromSystem.store(false, std::memory_order_relaxed);
+  currentMenuL1.store(14, std::memory_order_relaxed);
   currentMenuL2.store(0,  std::memory_order_relaxed);
   menuState.store(MenuState::MENU_L2, std::memory_order_relaxed);
   displayDirty.store(true, std::memory_order_relaxed);
@@ -765,28 +767,6 @@ void updateHardwareInterface() {
     return;
   }
 
-  /* App-connected: transport-only (SCALE play/stop, OC record, ENC BPM). */
-  if (isAppConnected()) {
-    bool dirty = false;
-    /* ENC long intentionally ignored — App owns SAVE/LOAD/RESET while connected. */
-    if (delta != 0) {                           /* ENC turn  → BPM */
-      setSequencerBpm((int32_t)constrain(seqBpm.load() + delta, 40, 240));
-      dirty = true;
-    }
-    if (evScale == BtnEvent::SINGLE) {          /* SCALE     → play/stop */
-      seq_toggle();                             /* echoes CMD_TRANSPORT itself */
-      dirty = true;
-    }
-    if (evOC == BtnEvent::SINGLE) {             /* OC short  → record-arm (same as SEQ dashboard) */
-      const bool rec = !seqRecording.load(std::memory_order_relaxed);
-      seqRecording.store(rec, std::memory_order_relaxed);
-      txSysex(CMD_TRANSPORT, rec ? 3u : 4u);
-      dirty = true;
-    }
-    if (dirty) displayDirty.store(true, std::memory_order_relaxed);
-    return;
-  }
-
   /* Edge-comp full-screen editor (HARP SETUP → Edge Comp). */
   if (edgeEditOpen.load(std::memory_order_relaxed)) {
     int  sel       = edgeEditSel.load(std::memory_order_relaxed) & 7;
@@ -802,9 +782,9 @@ void updateHardwareInterface() {
       displayDirty.store(true, std::memory_order_relaxed);
       return;
     }
-    if (ev == BtnEvent::LONG) {                    /* exit editor → SAVE menu (protected) */
+    if (ev == BtnEvent::LONG) {                    /* exit editor → PERF SLOT menu */
       edgeEditOpen.store(false, std::memory_order_relaxed);
-      openSaveMenu();
+      openPerfSlotMenu();
       return;
     }
     if (evScale == BtnEvent::SINGLE) {             /* next string, wrap */
@@ -851,8 +831,8 @@ void updateHardwareInterface() {
   /* ── SEQ MATRIX grid editor (l1=6, already inside L2) ──────────────────
    * Before the generic ENC-long handler — matrix has its own post-save flow. */
   if (l1 == 6 && mstate != MenuState::MENU_L1) {
-    if (ev == BtnEvent::LONG) {                    /* exit matrix → SAVE menu (protected) */
-      openSaveMenu();
+    if (ev == BtnEvent::LONG) {                    /* exit matrix → PERF SLOT menu */
+      openPerfSlotMenu();
       return;
     }
     /* Encoder = horizontal (L/R + wrap); OC/SCALE = vertical (U/D + wrap). */
@@ -867,11 +847,10 @@ void updateHardwareInterface() {
     return;
   }
 
-  /* ── ENC long: open the protected SAVE menu (never a blind save) ────────────
-   * Long-press always lands in the scoped SAVE menu (L1=14); the user selects a
-   * scope and the YES/NO confirm guards the actual NVS write + reboot.          */
+  /* ── ENC long: open PERF SLOT menu (never a blind save) ───────────────────
+   * Long-press lands in PERF SLOT (L1=14); Load/Save wired in Phase G.        */
   if (ev == BtnEvent::LONG) {
-    openSaveMenu();
+    openPerfSlotMenu();
     return;
   }
 
@@ -969,6 +948,8 @@ void updateHardwareInterface() {
                                     NUM_NAMED_PRESETS - 1);
           const int next = wrapIndex(cur, (int)delta, NUM_NAMED_PRESETS);
           harpPatchIndex.store(next, std::memory_order_relaxed);
+          if (isAppConnected())
+            txSysex(CMD_H_PATCH, (uint16_t)next);
           uiSyncPending .store(true, std::memory_order_relaxed);
           displayDirty  .store(true, std::memory_order_relaxed);
         }
@@ -976,10 +957,10 @@ void updateHardwareInterface() {
       case MenuState::MENU_L1: {
         /* L1 menu uses regrouped display order (kL1Order / kCatToSlot). */
         const int slot = l1SlotForCat(currentMenuL1.load());
-        currentMenuL1.store(l1CatForSlot(wrapIndex(slot, (int)delta, kL1Count)));
+        currentMenuL1.store(l1CatForSlot(wrapIndex(slot, (int)delta, kL1MenuCount)));
         break; }
       case MenuState::MENU_L2: {
-        const int span = l2CountFor(currentMenuL1.load());
+        const int span = l2CountForCat(currentMenuL1.load());
         if (span > 0)
           currentMenuL2.store(wrapIndex(currentMenuL2.load(), (int)delta, span));
         break; }
@@ -1013,27 +994,36 @@ void updateHardwareInterface() {
         /* Inline toggle items that need no L3 value entry */
         const int cl1 = currentMenuL1.load(), cl2 = currentMenuL2.load();
         if (cl1 == 12) {
-          /* RESET is destructive (RAM wipe + reboot) → YES/NO gate, scope as arg. */
           openConfirm(ConfirmAction::RESET, (uint8_t)cl2);
         } else if (cl1 == 14) {
-          /* SAVE menu — same scopes as RESET, persist + reboot → YES/NO gate. */
-          openConfirm(ConfirmAction::SAVE, (uint8_t)cl2);
-        } else if (cl1 == 15) {
-          /* LOAD menu — same scopes, RAM-only reload (no reboot) → YES/NO gate. */
-          openConfirm(ConfirmAction::LOAD, (uint8_t)cl2);
-        } else if (cl1 == 4 && cl2 == 1) {
+          if (cl2 == 2) {
+            menuState.store(MenuState::MENU_L3);
+          } else {
+            Serial.println(cl2 == 0 ? F("[PERF] Load — Phase G") : F("[PERF] Save — Phase G"));
+          }
+        } else if (cl1 == 4 && !menuSystemMidiSub.load(std::memory_order_relaxed)) {
+          if (cl2 == 0) {
+            menuSystemMidiSub.store(true, std::memory_order_relaxed);
+            currentMenuL2.store(0, std::memory_order_relaxed);
+          } else if (cl2 == 1) {
+            currentScopeView.store(TelemetryView::RAW_AC);
+            menuState.store(MenuState::IDLE);
+          } else if (cl2 == 2) {
+            menuResetFromSystem.store(true, std::memory_order_relaxed);
+            currentMenuL1.store(12, std::memory_order_relaxed);
+            currentMenuL2.store(0, std::memory_order_relaxed);
+          }
+        } else if (cl1 == 4 && menuSystemMidiSub.load(std::memory_order_relaxed) && cl2 == 1) {
           const bool en = !pbMapping.enabled.load(std::memory_order_relaxed);
           pbMapping.enabled.store(en, std::memory_order_relaxed);
           if (isAppConnected()) txSysex(CMD_PB_ENABLE, en ? 16383u : 0u);
         } else if (cl1 == 2 && cl2 >= 18 && cl2 <= 20) {
-          /* Mute toggle from menu confirm */
           switch (cl2) {
             case 18: applyMute(CMD_H_MUTE, !mixHarpMute .load()); break;
             case 19: applyMute(CMD_S_MUTE, !mixSeqMute  .load()); break;
             case 20: applyMute(CMD_D_MUTE, !mixDrumsMute.load()); break;
           }
         } else if (cl1 == 0 && cl2 == 9) {
-          /* Edge Comp → full-screen 8-bar editor. */
           edgeEditSel.store(0, std::memory_order_relaxed);
           edgeEditScale.store(harpScaleIndex.load(std::memory_order_relaxed) & (NUM_SCALES - 1),
                               std::memory_order_relaxed);
@@ -1077,8 +1067,19 @@ void updateHardwareInterface() {
       case MenuState::IDLE:
         currentMenuL1.store(activeDashboard.load() == DashboardMode::SEQUENCER ? 5 : 0);
         menuState.store(MenuState::MENU_L1); break;
-      case MenuState::MENU_L2:
-        menuState.store(MenuState::MENU_L1); break;
+      case MenuState::MENU_L2: {
+        const int cl1 = currentMenuL1.load(std::memory_order_relaxed);
+        if (cl1 == 12 && menuResetFromSystem.load(std::memory_order_relaxed)) {
+          menuResetFromSystem.store(false, std::memory_order_relaxed);
+          currentMenuL1.store(4, std::memory_order_relaxed);
+          currentMenuL2.store(2, std::memory_order_relaxed);
+        } else if (cl1 == 4 && menuSystemMidiSub.load(std::memory_order_relaxed)) {
+          menuSystemMidiSub.store(false, std::memory_order_relaxed);
+          currentMenuL2.store(0, std::memory_order_relaxed);
+        } else {
+          menuState.store(MenuState::MENU_L1);
+        }
+        break; }
       case MenuState::MENU_L3:
         menuState.store(MenuState::MENU_L2); break;
       /* Double-click backs out: L3→L2→L1→IDLE. */
@@ -1173,10 +1174,21 @@ void handleScopedReset(ResetScope scope) {
     if (!settings_arm_pending_reset(scope)) {
       g_saveFailFlashMs.store(millis() + 1500u, std::memory_order_relaxed);
       displayDirty.store(true, std::memory_order_relaxed);
-      if (isAppConnected()) txSysex(CMD_SCOPED_RESET, 0u);
+      if (isAppConnected()) {
+        txSysexForce(CMD_SESSION_SLOT_ACK,
+                     linkEncodePersistAck(PersistAckPhase::FAIL,
+                                          g_persistTxnId.load(std::memory_order_relaxed)));
+        txSysexForce(CMD_SCOPED_RESET, 0u);
+      }
+      linkSetPhase(LinkPhase::LIVE);
       return;
     }
-    if (isAppConnected()) txSysex(CMD_SCOPED_RESET, 16383u);
+    if (isAppConnected()) {
+      txSysexForce(CMD_SESSION_SLOT_ACK,
+                   linkEncodePersistAck(PersistAckPhase::REBOOTING,
+                                        g_persistTxnId.load(std::memory_order_relaxed)));
+      txSysexForce(CMD_SCOPED_RESET, 16383u);
+    }
     delay(150);
     esp_restart();
     return;
@@ -1187,45 +1199,19 @@ void handleScopedReset(ResetScope scope) {
   oledStatusLines(line1, "PLEASE WAIT...");
   applyResetScope(scope);
   settings_commit_reset_scoped(scope);
-  if (isAppConnected()) txSysex(CMD_SCOPED_RESET, 16383u);
+  if (isAppConnected()) {
+    txSysexForce(CMD_SESSION_SLOT_ACK,
+                 linkEncodePersistAck(PersistAckPhase::REBOOTING,
+                                      g_persistTxnId.load(std::memory_order_relaxed)));
+    txSysexForce(CMD_SCOPED_RESET, 16383u);
+  }
   delay(300);
   esp_restart();
 }
 
-/* handleScopedSave — menu / App scoped save (persist + reboot). */
+/* handleScopedSave — menu SAVE: persist + reboot (~700 ms). */
 void handleScopedSave(ResetScope scope) {
   requestScopedSave((uint8_t)scope);
-}
-
-/* handleScopedLoad — menu / App scoped reload from NVS.  RAM-only (no flash
- * write) so there is NO reboot: the loaded state goes live immediately.  Only
- * reachable from the hardware menu while the App is disconnected (App drives its
- * own LOAD popup), so no SysEx state-echo is needed here.                       */
-void handleScopedLoad(ResetScope scope) {
-  const char* line1 = "LOAD";
-  switch (scope) {
-    case ResetScope::FULL:           line1 = "FULL LOAD";     break;
-    case ResetScope::BANKS_PATTERNS: line1 = "BANKS+PATTERNS"; break;
-    case ResetScope::MOTION:         line1 = "MOTION LOAD";   break;
-    case ResetScope::SETTINGS:       line1 = "SETTINGS LOAD"; break;
-  }
-  oledStatusLines(line1, "PLEASE WAIT...");
-
-  const bool ok = settings_load_scoped(scope);
-
-  /* Re-apply the bits hardware can't pick up from atomics on its own. */
-  for (int i = 0; i < MAX_STRINGS; ++i) computeHardwareDACThreshold(i, 0.f);
-
-  if (ok && isAppConnected()) {
-    sendFullStateSync();
-    echoSongState();
-    txSysex(CMD_SESSION_LOAD, 16383u);
-  }
-
-  oledStatusLines(ok ? "LOAD OK" : "NOTHING SAVED", nullptr);
-  delay(900);
-  menuState.store(MenuState::IDLE, std::memory_order_relaxed);
-  displayDirty.store(true, std::memory_order_relaxed);
 }
 
 /* handleFactoryReset — boot-time OC+SCALE combo entry point.  FULL scope. */

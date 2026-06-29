@@ -1,7 +1,15 @@
 <!--
+  ═════════════════════════════════════════════════════════════════════════════
   Octopus PRO XL v6.1.01 — Product information page
   © 2026 DIODAC ELECTRONICS / iSystem. All Rights Reserved.
-  PROPRIETARY AND CONFIDENTIAL. Unauthorized use prohibited.
+  *
+  * PROPRIETARY AND CONFIDENTIAL. Unauthorized copying, distribution, modification,
+  * or use of this software or site content, in whole or in part, is strictly
+  * prohibited without prior written permission from DIODAC ELECTRONICS.
+  *
+  * Official distribution: https://octopus-info.isystem.app
+  * License: ../LICENSE (repository root)
+  ═════════════════════════════════════════════════════════════════════════════
 -->
 <!DOCTYPE html>
 <html lang="en" class="scroll-smooth">
@@ -10,7 +18,25 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Octopus PRO XL v6.1.01 | Laser-Harp Groovebox Workstation</title>
     <meta name="description" content="Octopus PRO XL v6.1.01 — 8-beam laser harp, 24-voice groovebox, 64-step sequencer, studio FX, and zero-install OctopusApp Web MIDI console at octopus.isystem.app.">
+    <meta name="copyright" content="© 2026 DIODAC ELECTRONICS / iSystem. All Rights Reserved. Proprietary and confidential.">
+    <meta name="author" content="DIODAC ELECTRONICS / iSystem">
     <link rel="canonical" href="https://octopus-info.isystem.app/">
+    <meta name="robots" content="index, follow, max-image-preview:large">
+    <meta name="keywords" content="Octopus PRO XL, laser harp, groovebox, sequencer, ESP32, DIODAC, OctopusApp, Web MIDI, TR-909, laser show">
+    <link rel="preconnect" href="https://www.googletagmanager.com" crossorigin>
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Octopus PRO XL">
+    <meta property="og:url" content="https://octopus-info.isystem.app/">
+    <meta property="og:title" content="Octopus PRO XL — Laser-Harp Groovebox Workstation">
+    <meta property="og:description" content="8-beam laser harp, 24-voice groovebox, 64-step sequencer, studio FX, and zero-install OctopusApp at octopus.isystem.app.">
+    <meta property="og:image" content="https://octopus-info.isystem.app/octopus-app-hero.jpg">
+    <meta property="og:image:alt" content="Octopus PRO XL laser harp groovebox with OctopusApp">
+    <meta property="og:locale" content="en_GB">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Octopus PRO XL — Laser-Harp Groovebox">
+    <meta name="twitter:description" content="Performance laser harp + groovebox. Free OctopusApp Web MIDI console.">
+    <meta name="twitter:image" content="https://octopus-info.isystem.app/octopus-app-hero.jpg">
+    <!-- Google Search Console: add <meta name="google-site-verification" content="…"> or pass googleSiteVerification in OctopusSiteKit.init -->
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
@@ -664,6 +690,7 @@
                 <a href="#resources" class="nav-link text-gray-400">Docs</a>
                 <a href="#specs" class="nav-link text-gray-400">Specs</a>
                 <a href="#contact" class="nav-link text-gray-400">Contact</a>
+                <a href="https://isystem.app/legal/privacy" class="nav-link text-gray-400" target="_blank" rel="noopener noreferrer">Privacy</a>
                 <span class="w-px h-4 bg-[#2a2a35] shrink-0" aria-hidden="true"></span>
                 <a href="https://github.com/iSystemDevelopment/Octopus_PRO_XL_v6.0/blob/main/README.md"
                    target="_blank" rel="noopener noreferrer"
@@ -714,7 +741,7 @@
             <span class="pill"><i class="fa-solid fa-bolt text-[#22c55e]"></i> 8 RGB Laser Beams</span>
             <span class="pill"><i class="fa-solid fa-drum text-[#f97316]"></i> 4 Drum Kits</span>
             <span class="pill"><i class="fa-solid fa-repeat text-[#ec4899]"></i> Seq + Harp ARP</span>
-            <span class="pill"><i class="fa-solid fa-laptop-code text-[#ec4899]"></i> OctopusApp v6.2.07</span>
+            <span class="pill"><i class="fa-solid fa-laptop-code text-[#ec4899]"></i> OctopusApp v6.6.01</span>
         </div>
         <div class="flex flex-wrap gap-4 justify-center mb-6">
             <a href="https://octopus.isystem.app" target="_blank" rel="noopener noreferrer"
@@ -1100,15 +1127,15 @@
         <div class="max-w-6xl mx-auto grid md:grid-cols-3 gap-8 mb-12">
             <div class="box-glow-green rounded-xl p-6 bg-[#050508]">
                 <h4 class="text-[#22c55e] font-bold mb-2"><i class="fa-solid fa-wave-square"></i> Instruments View</h4>
-                <p class="text-sm text-gray-400">Editors for both synth engines and laser show: ADSR, filter, OSC/detune, LFO matrix, wave, scale, patch, dual insert FX, harp ARP (POLY/SOLO), and the D-BEAM panel (route, curve, offset/range — local DSP only).</p>
+                <p class="text-sm text-gray-400">Harp + seq synth engines with reusable OCT/TRN steppers, sound-image presets, and an eight-voice AB 9-09 drum grid (24 kits). D-BEAM enable lives on the harp row; full calibration is in MIXER.</p>
             </div>
             <div class="box-glow-green rounded-xl p-6 bg-[#050508]">
                 <h4 class="text-[#22c55e] font-bold mb-2"><i class="fa-solid fa-drum"></i> Mixer View</h4>
-                <p class="text-sm text-gray-400">8&times;4 drum grid, kit selector, per-voice body waves, D.PITCH, insert sends, master H/S delay+reverb sends, AUX bus, tube/DJ/EQ, stereo VU, and live CPU-load readout from the device.</p>
+                <p class="text-sm text-gray-400">Inline AB 9-09 bus controls, studio console (MIX/tube/DJ/EQ + USB/MIDI→STUDIO rack), beat-reactive scope and VU (dark when stopped), laser show, and D-BEAM ADC calibration.</p>
             </div>
             <div class="box-glow-green rounded-xl p-6 bg-[#050508]">
                 <h4 class="text-[#22c55e] font-bold mb-2"><i class="fa-solid fa-table-cells"></i> Sequencer View</h4>
-                <p class="text-sm text-gray-400">16&times;16 pad matrix (8 synth + 8 drum rows), up to 64 steps (P1–P4), seq ARP, song-chain editor, pattern loaders, and a playhead locked to hardware STEP_SYNC.</p>
+                <p class="text-sm text-gray-400">Matrix-width toolbar, 3/4 grid + 1/4 synth/drum sidebar, song-chain editor, PATIMAGE slots, and a playhead locked to hardware STEP_SYNC (see <code class="text-gray-500">docs/mirror_architecture.md</code>).</p>
             </div>
         </div>
 
@@ -1129,20 +1156,18 @@
                 <i class="fa-solid fa-plug"></i> OPEN octopus.isystem.app
             </a>
             <p class="text-xs text-gray-600 mono mt-4">Chrome or Edge · USB connected · Web MIDI + SysEx · Playhead on SEQUENCER tab</p>
+            <p class="text-xs text-gray-600 mono mt-2"><a href="https://isystem.app/legal/privacy" class="text-gray-500 hover:text-[#06b6d4] hover:underline" target="_blank" rel="noopener noreferrer">Privacy policy</a></p>
         </div>
     </section>
 
     <!-- ════════════════════════ UNIVERSAL MIDI CONTROLLER MODE ════════════════════════ -->
     <section id="midi-mode" class="py-24 px-6 border-t border-[#111]">
         <div class="max-w-7xl mx-auto text-center mb-12">
-            <p class="text-xs uppercase tracking-[0.25em] text-[#06b6d4] mb-3 mono">OctopusApp v6.2.07</p>
+            <p class="text-xs uppercase tracking-[0.25em] text-[#06b6d4] mb-3 mono">OctopusApp v6.6.01 — DSP Engine + MIDI Controller</p>
             <h2 class="text-3xl md:text-4xl text-white mb-4"><span class="text-[#06b6d4]">07.</span> Universal MIDI Controller Mode</h2>
             <p class="max-w-3xl mx-auto text-gray-400 leading-relaxed">
-                OctopusApp is not only a mirror for Octopus PRO XL hardware. When <strong class="text-gray-300">no Octopus is connected</strong>,
-                the same browser App becomes a <strong class="text-[#06b6d4]">standalone MIDI controller</strong> — pick any USB MIDI interface from the port list
-                and drive external synths, drum machines, or a DAW with a <strong>64-step sequencer</strong>, <strong>song chains</strong>, <strong>factory patterns</strong>,
-                <strong>Control Change</strong>, and <strong>Program Change</strong>.
-                <span class="block mt-3 text-sm text-gray-500">Browser-only feature — no firmware update required. Octopus linked mode stays identical to v6.1.</span>
+                <strong class="text-gray-300">One browser App, two shells.</strong> With ★ Octopus USB connected you get the full <strong class="text-[#22c55e]">DSP Engine</strong> mirror (INSTRUMENTS · MIXER · SEQUENCER). With no ★ port, switch to <strong class="text-[#06b6d4]">MIDI Controller</strong> mode — 64-step sequencer, song chains, 24×CC macro panel, motion lanes, and standard MIDI out to synths and DAWs.
+                <span class="block mt-3 text-sm text-gray-500">Open <a href="https://octopus.isystem.app" class="text-[#06b6d4] hover:underline" target="_blank" rel="noopener">octopus.isystem.app</a> → HELP → <strong>MIDI CONTROLLER</strong> for Mac / Windows / DAW setup.</span>
             </p>
         </div>
 
@@ -1154,38 +1179,53 @@
                     <li>Sequence a hardware synth or groovebox over USB MIDI.</li>
                     <li>Sketch drum + melody ideas before moving them to Octopus hardware.</li>
                     <li>Teach or demo step sequencing with any class-compliant MIDI interface.</li>
+                    <li>Route into a DAW via IAC (macOS) or loopMIDI (Windows) — no plugin install.</li>
                 </ul>
             </div>
             <div class="feature-card border-[#06b6d4]/30">
-                <h4 class="text-[#06b6d4] font-bold mb-3"><i class="fa-solid fa-shuffle"></i> Two modes, zero overlap</h4>
+                <h4 class="text-[#06b6d4] font-bold mb-3"><i class="fa-solid fa-shuffle"></i> Two shells, one URL</h4>
                 <div class="text-sm text-gray-400 space-y-2 mono text-xs">
-                    <p><span class="text-[#22c55e]">OCTOPUS ON</span> — SysEx sync, 3 tabs, hardware transport, NVS SAVE/LOAD</p>
-                    <p><span class="text-[#06b6d4]">MIDI OUT</span> — standard MIDI only, 2 tabs, App transport, browser storage</p>
+                    <p><span class="text-[#22c55e]">★ OCTOPUS ON</span> — SysEx mirror · INSTRUMENTS · MIXER · SEQUENCER · hardware transport</p>
+                    <p><span class="text-[#06b6d4]">MIDI OUT</span> — pulpit layout · 24×CC macros · motion lanes · App-owned clock</p>
                 </div>
-                <p class="text-sm text-gray-500 mt-4">Laser, D-BEAM, studio mixer, user slots, and device reset are <strong class="text-gray-400">unavailable</strong> in MIDI mode so they cannot touch Octopus settings.</p>
-                <p class="text-sm text-gray-500 mt-2"><strong class="text-gray-400">Octopus has hard priority:</strong> while a ★ Octopus port is connected the App locks to Octopus mode — MIDI Controller mode is available only when no Octopus is plugged in.</p>
+                <p class="text-sm text-gray-500 mt-4">Unplug ★ Octopus (or pick a non-★ port) → badge switches to <strong class="text-gray-400">MIDI OUT</strong>. While ★ is connected the App locks to DSP Engine mode.</p>
             </div>
         </div>
 
-        <div class="max-w-5xl mx-auto grid md:grid-cols-2 gap-8 mb-12">
+        <!-- MIDI Controller pulpit — actual v6.6.01 UI -->
+        <div class="max-w-6xl mx-auto mb-14">
+            <div class="rounded-xl border border-[#1c2230] bg-[#0a0a0e] p-2 md:p-3 shadow-[0_0_50px_rgba(6,182,212,0.12)]">
+                <img src="octopus-midi-mode.png" alt="OctopusApp MIDI Controller mode — SEQ SYNTH 24×CC, drum note map, 16×16 step grid, song chains"
+                     class="w-full rounded-lg border border-[#111]" loading="lazy" width="1920" height="1080">
+            </div>
+            <p class="text-xs text-gray-600 mono mt-3 text-center">OctopusApp v6.6.01 · <strong class="text-gray-500">MIDI OUT</strong> pulpit — instruments left (~67%) + 16×16 matrix right (~33%)</p>
+        </div>
+
+        <div class="max-w-5xl mx-auto grid md:grid-cols-2 lg:grid-cols-3 gap-6 mb-12">
             <div class="box-glow-green rounded-xl p-6 bg-[#050508]" style="--glow: #06b6d4">
-                <h4 class="text-[#06b6d4] font-bold mb-2"><i class="fa-solid fa-table-cells"></i> Sequencer tab</h4>
-                <p class="text-sm text-gray-400">Same 16&times;16 pad matrix, banks <strong>A–D</strong>, and <strong>P1–P4</strong> step pages (up to 64 steps). Local BPM clock, stable GPU playhead, <strong>SONG</strong> chain editor (bank + repeats per step), <strong>🔗</strong> song-mode playback, and factory <strong>MELODY / DRUM</strong> pattern dropdowns. Outbound note on/off per step — scale-aware melody rows and GM-style drum mapping.</p>
+                <h4 class="text-[#06b6d4] font-bold mb-2"><i class="fa-solid fa-table-cells"></i> Sequencer pulpit</h4>
+                <p class="text-sm text-gray-400">Single <strong>SEQUENCER</strong> view: banks <strong>A–D</strong>, <strong>P1–P4</strong> pages (64 steps), <strong>SONG 01–16</strong> chains, scale-aware melody rows, GM drum map, factory pattern dropdowns, <strong>CPY/PST/CLR/RND</strong> (active P page), isolated GPU playhead.</p>
             </div>
             <div class="box-glow-green rounded-xl p-6 bg-[#050508]" style="--glow: #06b6d4">
-                <h4 class="text-[#06b6d4] font-bold mb-2"><i class="fa-solid fa-sliders"></i> Instruments tab (MIDI)</h4>
-                <p class="text-sm text-gray-400">Compact dual-panel layout: <strong>Seq synth</strong> (MIDI channel, program change, 8 CC knobs in a 2&times;4 grid, SEQ activity scope) and <strong>drum machine</strong> (per-voice note map, DRUM activity scope). No studio mixer, laser show, or D-BEAM — those stay Octopus-hardware only.</p>
+                <h4 class="text-[#06b6d4] font-bold mb-2"><i class="fa-solid fa-sliders"></i> SEQ SYNTH 24×CC</h4>
+                <p class="text-sm text-gray-400">Six macro-groups (Dynamics, Mod, Perform, Filter, Envelope, FX) — 24 assignable CC knobs with live MIDI out. <strong>REC</strong> + play captures up to <strong>4 motion lanes</strong> per bank (purple dots on the grid).</p>
+            </div>
+            <div class="box-glow-green rounded-xl p-6 bg-[#050508] md:col-span-2 lg:col-span-1" style="--glow: #06b6d4">
+                <h4 class="text-[#06b6d4] font-bold mb-2"><i class="fa-solid fa-drum"></i> Drum bus + routing</h4>
+                <p class="text-sm text-gray-400">Per-voice note map (kick/snare/hats…), global pitch, dual activity scopes. Header: LEN/TRN/OCT, ARP, JSON/MID/IMP export, optional MIDI clock, melody + drum channels + program change.</p>
             </div>
         </div>
 
         <div class="max-w-3xl mx-auto feature-card mb-10 border-[#06b6d4]/20">
-            <h4 class="text-white mb-2"><i class="fa-solid fa-wand-magic-sparkles text-[#06b6d4]"></i> Also in v6.2.x</h4>
+            <h4 class="text-white mb-2"><i class="fa-solid fa-wand-magic-sparkles text-[#06b6d4]"></i> Shipped in v6.6.01</h4>
             <ul class="text-sm text-gray-400 space-y-2 list-disc pl-4 text-left">
-                <li><strong class="text-gray-300">Faster Settings / Motion reset</strong> (firmware 6.1.01+) — applied live with no device reboot; the App just reloads and re-pulls the fresh image. SAVE and Full / Banks+Pats reset still reboot.</li>
-                <li><strong class="text-gray-300">Octopus hard priority</strong> — a connected ★ Octopus always takes over; MIDI Controller mode is reachable only with no Octopus plugged in.</li>
-                <li><strong class="text-gray-300">Auto-reload on MIDI port connect</strong> — clean boot when you pick Octopus or a MIDI interface.</li>
-                <li><strong class="text-gray-300">Session EXP/IMP</strong> — backup patterns, chains, routing, and CC maps as JSON in the browser.</li>
-                <li><strong class="text-gray-300">Optional PayPal tip</strong> — <a href="https://www.paypal.com/donate?hosted_button_id=KX7B76V37PED8" class="text-[#06b6d4] hover:underline" target="_blank" rel="noopener noreferrer">hosted donate page</a> (TIP / DONATE chips in the App).</li>
+                <li><strong class="text-gray-300">Pulpit layout</strong> — one screen: macro CC panel + drum map left, matrix right (no tab switching).</li>
+                <li><strong class="text-gray-300">Motion REC</strong> — arm record, twist CC knobs while playing; <strong>CLR</strong> wipes motion on the active P page.</li>
+                <li><strong class="text-gray-300">Connect guide</strong> — ▶ Play without a MIDI port opens a short setup prompt.</li>
+                <li><strong class="text-gray-300">Keyboard</strong> — <strong>Space</strong> play/stop · <strong>R</strong> record (auto-starts transport when arming).</li>
+                <li><strong class="text-gray-300">Session JSON</strong> — auto-save in browser; export/import patterns, chains, CC map, ARP, motion.</li>
+                <li><strong class="text-gray-300">Standard MIDI File</strong> — export active bank pattern as <code class="text-[#06b6d4]">.mid</code>.</li>
+                <li><strong class="text-gray-300">HELP tab</strong> — in-app beginner guide for Mac / Windows / DAW routing.</li>
             </ul>
         </div>
 
@@ -1272,7 +1312,7 @@
                class="feature-card resource-tile block hover:border-[#22c55e] text-left no-underline">
                 <div class="text-2xl mb-2 text-[#22c55e]"><i class="fa-solid fa-plug"></i></div>
                 <h3 class="text-white font-bold mb-1">OctopusApp</h3>
-                <p class="text-sm text-gray-400">Live Web MIDI console v6.2.07 — Octopus sync or standalone MIDI Controller (no hardware required).</p>
+                <p class="text-sm text-gray-400">Live Web MIDI console v6.6.01 — Octopus DSP sync or standalone MIDI Controller (no hardware required).</p>
             </a>
             <a href="user_manual.md" class="feature-card resource-tile block hover:border-[#a855f7] text-left no-underline">
                 <div class="text-2xl mb-2 text-[#a855f7]"><i class="fa-solid fa-book"></i></div>
@@ -1481,6 +1521,7 @@
             <span>Octopus <span class="text-[#06b6d4]">PRO XL</span></span>
         </div>
         <p class="text-xs text-gray-600 mono mb-2">&copy; 2026 DIODAC ELECTRONICS / iSystem. All Rights Reserved.</p>
+        <p class="text-xs text-gray-700 mono mb-2">Proprietary and confidential. Unauthorized copying or redistribution prohibited.</p>
         <p class="text-xs text-gray-500 mono mb-4">
             <a href="https://octopus-info.isystem.app" class="text-[#06b6d4] hover:underline">Product info</a>
             &nbsp;&middot;&nbsp;
@@ -1495,6 +1536,12 @@
             <a href="CHANGELOG.md" class="text-[#f97316] hover:underline">Changelog</a>
             &nbsp;&middot;&nbsp;
             <a href="#contact" class="text-[#06b6d4] hover:underline">Contact</a>
+            &nbsp;&middot;&nbsp;
+            <a href="https://isystem.app/legal/privacy" class="text-gray-400 hover:underline" target="_blank" rel="noopener noreferrer">Privacy</a>
+            &nbsp;&middot;&nbsp;
+            <a href="https://isystem.app/legal/cookies" class="text-gray-400 hover:underline" target="_blank" rel="noopener noreferrer">Cookie Policy</a>
+            &nbsp;&middot;&nbsp;
+            <button type="button" onclick="OctopusSiteKit.openCookiePreferences()" class="text-gray-400 hover:text-[#06b6d4] hover:underline bg-transparent border-0 cursor-pointer text-xs mono p-0">Manage Cookies</button>
             &nbsp;&middot;&nbsp;
             <a href="https://www.paypal.com/donate?hosted_button_id=KX7B76V37PED8" class="text-[#7eb8e8] hover:underline" target="_blank" rel="noopener noreferrer" title="Optional PayPal donation"><i class="fa-brands fa-paypal"></i> Donate</a>
         </p>
@@ -1625,6 +1672,55 @@
             });
         }
     })();
+    </script>
+    <script src="octopus-consent-seo.js"></script>
+    <script>
+    OctopusSiteKit.init({
+        accent: '#f97316',
+        ga4MeasurementId: 'G-3YP5F9GY3C', // e.g. 'G-XXXXXXXXXX' — Google Analytics 4 (loads only after analytics consent)
+        gtmId: '', // optional GTM-XXXX
+        jsonLd: {
+            '@context': 'https://schema.org',
+            '@graph': [
+                {
+                    '@type': 'Organization',
+                    '@id': 'https://octopus-info.isystem.app/#organization',
+                    name: 'DIODAC ELECTRONICS / iSystem',
+                    url: 'https://isystem.app',
+                    logo: 'https://octopus-info.isystem.app/logo.jpg',
+                    sameAs: [
+                        'https://www.facebook.com/diodac.co.uk/',
+                        'https://github.com/iSystemDevelopment/Octopus_PRO_XL_v6.0'
+                    ]
+                },
+                {
+                    '@type': 'Product',
+                    '@id': 'https://octopus-info.isystem.app/#product',
+                    name: 'Octopus PRO XL',
+                    description: 'Laser harp groovebox workstation — 8-beam laser harp, 64-step sequencer, TR-style drums, studio FX, D-BEAM expression, and OctopusApp Web MIDI console.',
+                    brand: { '@type': 'Brand', name: 'DIODAC ELECTRONICS' },
+                    manufacturer: { '@id': 'https://octopus-info.isystem.app/#organization' },
+                    image: 'https://octopus-info.isystem.app/octopus-app-hero.jpg',
+                    url: 'https://octopus-info.isystem.app/',
+                    category: 'Musical Instrument',
+                    offers: {
+                        '@type': 'Offer',
+                        url: 'https://octopus-info.isystem.app/#contact',
+                        priceCurrency: 'GBP',
+                        availability: 'https://schema.org/InStock'
+                    }
+                },
+                {
+                    '@type': 'WebSite',
+                    '@id': 'https://octopus-info.isystem.app/#website',
+                    url: 'https://octopus-info.isystem.app/',
+                    name: 'Octopus PRO XL — Product Info',
+                    publisher: { '@id': 'https://octopus-info.isystem.app/#organization' },
+                    inLanguage: 'en-GB'
+                }
+            ]
+        }
+    });
     </script>
 </body>
 </html>

@@ -8,6 +8,9 @@
  * ═════════════════════════════════════════════════════════════════════════════
  * audio.cpp — v6.1.01  I2S DSP LOOP + FREERTOS TASK SPAWN
  *
+ * SOUND POLICY (FROZEN): docs/dsp_sound_frozen.md — no engine optimization here;
+ * only task spawn (docs/task_schedule.md) and I2S block orchestration may change.
+ *
  * Owns the real-time audio path and all Core-0 service tasks:
  *   • init_audio_system()  — heap alloc, fx_init, I2S enable, xTaskCreatePinnedToCore
  *                            (AUTHORITATIVE task table — see code_info.h §1)
@@ -15,12 +18,14 @@
  *                            fill → fx_process_multi_buf_safe; adaptive load shedding
  *   • control_surface_task — 200 Hz (5 ms): updateHardwareInterface + stack stats
  *   • display_refresh_task — ~30 Hz (33 ms): renderUIState under i2cMutex
- *   • settings_save_task   — NvsWorker on Core 1: muted save handshake + reboot
+ *   • settings_save_task   — NvsWorker on Core 0 @ prio 16: muted save handshake + reboot
+ *                            (FROZEN — see docs/task_schedule.md; do not move to Core 1)
  *
  * Laser sweep (laser.cpp) and USB MIDI RX (midi.cpp) are spawned here but run
  * on Core 1; sequencer_background_task (groovebox.cpp) drains the out-ring there.
  * ═════════════════════════════════════════════════════════════════════════════ */
 #include "audio.h"
+#include "link.h"
 #include "esp_log.h"
 
 
@@ -219,7 +224,7 @@ void IRAM_ATTR display_refresh_task(void* pvParameters) {
     vTaskDelay(pdMS_TO_TICKS(1));
 
   TickType_t   lastWake = xTaskGetTickCount();
-  const TickType_t kPer = pdMS_TO_TICKS(33);   
+  const TickType_t kPer = pdMS_TO_TICKS(LINK_FRAME_MS);
   uint16_t lastDbeam    = 0u;
   uint32_t lastDbeamDrawMs = 0u;
   bool     prevConnected = false;
@@ -281,10 +286,7 @@ void IRAM_ATTR display_refresh_task(void* pvParameters) {
 
     if (draw && xSemaphoreTake(i2cMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
       display.clearDisplay();
-      if (appConn)
-        drawAppConnectedPage();   
-      else
-        renderUIState();          
+      renderUIState();
       drawSaveToastIfActive();   
       
       displayFlushDiff();
@@ -347,10 +349,14 @@ void settings_save_task(void* pvParameters) {
     if (!ok) {
       g_saveFailFlashMs.store(millis() + 1500u, std::memory_order_relaxed);
       displayDirty.store(true, std::memory_order_relaxed);
-      if (isAppConnected() && !isReset) {
+      linkSetPhase(LinkPhase::LIVE);
+      if (!isReset) {
         const uint8_t ack = g_persistAckCmd.load(std::memory_order_relaxed);
+        txSysexForce(CMD_SESSION_SLOT_ACK,
+                     linkEncodePersistAck(PersistAckPhase::FAIL,
+                                          g_persistTxnId.load(std::memory_order_relaxed)));
         if (ack == CMD_SESSION_SAVE)
-          txSysex(ack, 0u);
+          txSysexForce(ack, 0u);
       }
     } else if (!isReset) {
       g_saveFailFlashMs.store(0u, std::memory_order_relaxed);
@@ -360,8 +366,8 @@ void settings_save_task(void* pvParameters) {
 
     std::atomic_thread_fence(std::memory_order_release);
     g_loopParked.store(false, std::memory_order_release);
-    g_saveArmed .store(false, std::memory_order_release);
-    
+    g_saveArmed.store(false, std::memory_order_release);
+
     g_beamRecover.store(true, std::memory_order_release);
     std::atomic_thread_fence(std::memory_order_release);
 
@@ -374,8 +380,10 @@ void settings_save_task(void* pvParameters) {
     if (isReset) {
       g_resetInProgress.store(false, std::memory_order_release);
       g_beamRecover.store(true, std::memory_order_release);
-      if (isAppConnected())
-        txSysex(CMD_SCOPED_RESET, ok ? 16383u : 0u);
+      txSysexForce(CMD_SCOPED_RESET, ok ? 16383u : 0u);
+      txSysexForce(CMD_SESSION_SLOT_ACK,
+                   linkEncodePersistAck(ok ? PersistAckPhase::REBOOTING : PersistAckPhase::FAIL,
+                                        g_persistTxnId.load(std::memory_order_relaxed)));
       /* All scoped RESET paths reboot (runtime uses deferred pend_rst; this is
        * the pre-scheduler safety net). */
       delay(400);
@@ -383,9 +391,16 @@ void settings_save_task(void* pvParameters) {
       continue;
     }
 
-    if (ok && isAppConnected()) {
+    if (ok) {
       const uint8_t ack = g_persistAckCmd.load(std::memory_order_relaxed);
-      txSysex(ack ? ack : CMD_SESSION_SAVE, 16383u);
+      const bool willReboot = g_restartAfterSave.load(std::memory_order_acquire);
+      txSysexForce(CMD_SESSION_SLOT_ACK,
+                   linkEncodePersistAck(willReboot ? PersistAckPhase::REBOOTING
+                                                   : PersistAckPhase::COMMITTED,
+                                        g_persistTxnId.load(std::memory_order_relaxed)));
+      txSysexForce(ack ? ack : CMD_SESSION_SAVE, 16383u);
+      if (!willReboot)
+        linkSetPhase(LinkPhase::LIVE);
     }
 
     if (g_restartAfterSave.exchange(false, std::memory_order_acq_rel)) {
@@ -423,16 +438,19 @@ bool init_audio_system() {
   /* ── I2S hardware ──────────────────────────────────────────────────────── */
   if (init_i2s_hardware() != ESP_OK) { return false;}
 
-  /* Task table — authoritative; code_info.h §1 mirrors this exactly. */
+  /* ── Task table — AUTHORITATIVE & FROZEN (docs/task_schedule.md) ───────────
+   * Validated: cleaner sound, ~10% lower CPU on heavy patches, fast App SysEx.
+   * Do NOT revert NvsWorker to Core 1 prio 4 or MidiUsbRx to prio 6.          */
   xTaskCreatePinnedToCore(audio_synthesis_task,    "AudioSynth",  16384,  NULL,    24, &hAudioTask,   0);
   xTaskCreatePinnedToCore(adc_dma_processing_task, "dbeam_adc",   6144,   NULL,    19, &hDBeamTask,   0);
   xTaskCreatePinnedToCore(display_refresh_task,    "OledRender",  16384,  NULL,    18, &hDisplayTask, 0);
-  xTaskCreatePinnedToCore(control_surface_task,    "ControlPoll", 8192,   NULL,    17, &hControlTask, 0); 
+  xTaskCreatePinnedToCore(control_surface_task,    "ControlPoll", 8192,   NULL,    17, &hControlTask, 0);
+  xTaskCreatePinnedToCore(settings_save_task,      "NvsWorker",   16384,  NULL,    16, &hNvsTask,     0);
 
   xTaskCreatePinnedToCore(laser_sweep_task,          "LaserSweep",  8192,  NULL, 24, &hLaserTask,  1);
-  xTaskCreatePinnedToCore(sequencer_background_task, "SeqSysexOut", 4096,  NULL, 12, &hSeqBgTask,  1);
-  xTaskCreatePinnedToCore(midi_usb_event_task,       "MidiUsbRx",   8192,  NULL, 6, &hMidiTask,    1);
-  xTaskCreatePinnedToCore(settings_save_task,        "NvsWorker",   16384, NULL, 4, &hNvsTask,     1);
+  xTaskCreatePinnedToCore(sequencer_background_task, "SeqSysexOut", 4096,  NULL, 23, &hSeqBgTask,  1);
+  xTaskCreatePinnedToCore(midi_usb_event_task,       "MidiUsbRx",   8192,  NULL, 22, &hMidiTask,    1);
+  
   Serial.printf("[Audio] DSP online — %u Hz / %u frames / %u Hz PWM\n",
     SAMPLE_RATE, (unsigned)DMA_BUFFER_FRAMES, LASER_PWM_FREQ_HZ);
   return true;

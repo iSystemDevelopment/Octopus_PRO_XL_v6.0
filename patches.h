@@ -14,10 +14,11 @@
  * livePatch.  Direction B (performance edit): apply*Param / applyMasterParam →
  * atomics (+ userBank where applicable) → txSysex echo when wire permits.
  *
- * App link: lastWebSysexMs + APP_HEARTBEAT_TIMEOUT_MS (4.5 s) → appSyncActive;
- * isAppConnected() delegates to pollSyncHeartbeat() + appSyncActive.
- * checkWireAuthority() blocks local encoder *echo* while connected (params
- * still apply on-device).  Transport is always hardware-owned (v6.0+).
+ * App link: device→App BPM+PING+CPU beacon @ LINK_FRAME_MS (33 ms); App→device PING
+ * ~800 ms. Session latched on APP_SYNC_REQ (g_appSessionLatched); mirror lane uses
+ * txSysex→txSysexForce while latched. isAppConnected() for wire authority on param
+ * echoes. Transport = shared state (HW SCALE + App CMD_TRANSPORT). Playhead =
+ * STEP_SYNC only. FROZEN: docs/mirror_architecture.md — timing polish only.
  *
  * Canonical apply* entry points for SEQ grid, master/mix/FX, drums, D-BEAM,
  * song mode, and sendFullStateSync / echo* helpers live in this file.
@@ -31,6 +32,7 @@
 #include <cstring>
 #include <algorithm>
 #include "globals.h"
+#include "link.h"
 #include "midi.h"   
 #include "assets.h" 
 #include "effect.h" 
@@ -644,6 +646,7 @@ static inline void recallHarpPatch(int idx, ParamSource src) {
    * follow this recall — from ANY source (hardware menu, MIDI PC, or App).
    * Internally a no-op when no App is connected. */
   txPatchBlob(0u);
+  txSysex(CMD_H_PATCH, (uint16_t)idx);
 }
 
 /* Fan seqLivePatch[] into seq atomics so NVS save captures live sound.
@@ -701,11 +704,11 @@ static inline void recallSeqPatch(int idx, ParamSource /*src*/) {
 
 /* ═══════════════════════════════════════════════════════════════════════════
  * SECTION 7 — WEBAPP WIRE ARBITRATION
- * Heartbeat watchdog + encoder echo lock.  OctopusApp PINGs ~800 ms; link drops
- * after APP_HEARTBEAT_TIMEOUT_MS with no SysEx from the App.
+ * Heartbeat watchdog + encoder echo lock.  Device pushes CMD_BPM every LINK_FRAME_MS
+ * as the App link heartbeat (play/stop).  App session on OLED latched on APP_SYNC_REQ.
  * ═══════════════════════════════════════════════════════════════════════════ */
 
-static constexpr uint32_t APP_HEARTBEAT_TIMEOUT_MS = 4500u;
+static constexpr uint32_t APP_HEARTBEAT_TIMEOUT_MS = APP_SESSION_IDLE_MS;
 
 /* Thread-safe flag: WebApp has been heard from within APP_HEARTBEAT_TIMEOUT_MS */
 inline std::atomic<bool> appSyncActive{ false };
@@ -715,8 +718,11 @@ static inline void pollSyncHeartbeat() {
   const uint32_t now = millis();
   const uint32_t last = lastWebSysexMs.load(std::memory_order_relaxed);
   const bool wasConnected = appSyncActive.load(std::memory_order_relaxed);
-  /* last==0 → no app sysex ever received; never report connected at boot. */
-  const bool nowConnected = (last != 0UL) && (now - last < APP_HEARTBEAT_TIMEOUT_MS);
+  const bool recentRx = (last != 0UL) && (now - last < APP_SESSION_IDLE_MS);
+  /* Wire authority + OLED "APP CONNECTED" need recent inbound App SysEx.
+   * Do NOT linkReleaseAppSession() on idle — USB mirror uses g_appSessionLatched
+   * until boot/reconnect (see docs/transport_mirror.md).                      */
+  const bool nowConnected = g_appSessionLatched.load(std::memory_order_relaxed) && recentRx;
   appSyncActive.store(nowConnected, std::memory_order_release);
   /* [v6.0] Connection state changed → repaint (splash ⇄ dashboard).  Transport
    * ownership no longer toggles here: the hardware always owns it.            */
@@ -1529,6 +1535,7 @@ static inline void echoDbeamExprState() {
   txSysex(CMD_DB_RANGE, (uint16_t)dbeamHWCfg.rangeAdc);
   txSysex(CMD_DB_ROUTE, (uint16_t)currentDbeamRoute.load(std::memory_order_relaxed));
   txSysex(CMD_DB_TARGET, (uint16_t)currentDbeamTarget.load(std::memory_order_relaxed));
+  txDbeamAmpBlob(dbeamAmplitude.load(std::memory_order_relaxed));
 }
 
 

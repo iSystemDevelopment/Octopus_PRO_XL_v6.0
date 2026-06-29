@@ -1,0 +1,78 @@
+{
+  "_readme": "Sound-image blobs (SessionBundle v1). Preview PNG cards are generated in-browser on seed. Recall from harp-image / melody-image / drum-image / mix-image dropdowns.",
+  "harp": {
+    "meta": { "schema": 1, "kind": "sound_harp", "label": "EXAMPLE · Acid Laser Harp" },
+    "refs": {
+      "harpWave": "0",
+      "harpPatch": "18",
+      "harpScale": "0",
+      "harpFxA": "2",
+      "harpFxB": "1",
+      "_patchName": "Acid 303"
+    },
+    "knobs": {
+      "_comment": "CMD id → value (0–16383)",
+      "0": 0,
+      "1": 50,
+      "2": 4500,
+      "5": 6200,
+      "6": 11500,
+      "166": 8192
+    }
+  },
+  "seq": {
+    "meta": { "schema": 1, "kind": "sound_seq", "label": "EXAMPLE · Magellanic Lead" },
+    "refs": {
+      "seqWave": "21",
+      "seqPatch": "21",
+      "seqScale": "3",
+      "seqFxA": "4",
+      "seqFxB": "0",
+      "_patchName": "Glass Pad"
+    },
+    "knobs": {
+      "16": 21,
+      "17": 3500,
+      "18": 8000,
+      "19": 12000,
+      "20": 6500,
+      "22": 4000
+    }
+  },
+  "drum": {
+    "meta": { "schema": 1, "kind": "sound_drum", "label": "EXAMPLE · Quantum House Kit" },
+    "refs": {
+      "drumKit": "0",
+      "drumFxA": "3",
+      "drumFxB": "2",
+      "dwaves": ["8", "8", "8", "8", "8", "8", "8", "8"],
+      "_kitDisplay": "AB 9-09"
+    },
+    "knobs": {
+      "32": 8192,
+      "33": 8500,
+      "36": 8192,
+      "37": 6000
+    }
+  },
+  "mix": {
+    "meta": { "schema": 1, "kind": "sound_mix", "label": "EXAMPLE · Club Master Mix" },
+    "refs": { "masterFx": "2" },
+    "mix": {
+      "masterVol": 12000,
+      "harpVol": 10000,
+      "seqVol": 9500,
+      "drumVol": 11000,
+      "harpMute": false,
+      "seqMute": false,
+      "drumMute": false,
+      "masterFxIdx": 2
+    },
+    "knobs": {
+      "64": 12000,
+      "65": 10000,
+      "66": 9500,
+      "67": 11000
+    }
+  }
+}

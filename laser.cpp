@@ -441,7 +441,7 @@ void IRAM_ATTR laser_sweep_task(void* pvParameters) {
      * "swing" it was fighting, so it's gone.                                    */
 
 
-    /* ── NVS save handshake — yield Core 1 to NvsWorker ────────────────── */
+    /* ── NVS save handshake — park beam; NvsWorker runs on Core 0 @ prio 16 ── */
     if (g_saveArmed.load(std::memory_order_acquire)) {
       laserOffAndSync();
       g_loopParked.store(true, std::memory_order_release);
@@ -834,7 +834,7 @@ void IRAM_ATTR laser_sweep_task(void* pvParameters) {
       const uint32_t elapsed = (uint32_t)esp_timer_get_time() - stateStartUs;
       if (phaseUs > elapsed) esp_rom_delay_us(phaseUs - elapsed);
 
-      /* Breathe: hand Core 1 to IDLE1 / MidiUsbRx / SeqSysexOut / NvsWorker for
+      /* Breathe: hand Core 1 to IDLE1 / MidiUsbRx / SeqSysexOut for
        * one tick every LASER_BREATHE_MS, but ONLY at the start of a dark MOVING
        * phase so a lit beam is never chopped.  This is what feeds the idle-task
        * watchdog on Core 1 and lets the data tasks run; without it the busy-wait

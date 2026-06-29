@@ -1,0 +1,85 @@
+{
+  "meta": {
+    "schema": 1,
+    "kind": "patimage",
+    "app": "6.6.00",
+    "label": "EXAMPLE · PATIMAGE Master Class",
+    "savedAt": "2026-06-26T12:00:00.000Z"
+  },
+  "_readme": "Full 4×16×64 gridData is seeded into PATIMAGE slot 16 on first App visit. This file shows the non-grid fields to study. Recall in App: SEQUENCER → PATIMAGE 16 ▼",
+  "transport": {
+    "bpm": 124,
+    "seqLen": 64,
+    "transpose": 0,
+    "seqOct": 0,
+    "bankIdx": 0,
+    "gridPageIdx": 0,
+    "isSongMode": true,
+    "songSlotIdx": 0
+  },
+  "bankMeta": [
+    {
+      "transpose": 0,
+      "octave": 0,
+      "scale": 0,
+      "originMel": 0,
+      "originDrum": 0,
+      "soundHarp": 18,
+      "soundSeq": 0,
+      "soundDrum": 0,
+      "_bank": "A — Acid 303 Singularity + Quantum House drums (all 64 steps)"
+    },
+    {
+      "transpose": 2,
+      "octave": 1,
+      "scale": 3,
+      "originMel": 1,
+      "originDrum": 1,
+      "soundHarp": 21,
+      "soundSeq": 21,
+      "soundDrum": 1,
+      "_bank": "B — Magellanic Swell Arp + Magnetar Sat Groove"
+    },
+    {
+      "transpose": -3,
+      "octave": 0,
+      "scale": 7,
+      "originMel": 18,
+      "originDrum": 2,
+      "soundHarp": 18,
+      "soundSeq": 18,
+      "soundDrum": 2,
+      "_bank": "C — Techno Hypnosis + Industrial Pulsar"
+    },
+    {
+      "transpose": 5,
+      "octave": -1,
+      "scale": 14,
+      "originMel": 4,
+      "originDrum": 3,
+      "soundHarp": 14,
+      "soundSeq": 14,
+      "soundDrum": 3,
+      "_bank": "D — Nebula Ambient + Liquid Hang (sparse)"
+    }
+  ],
+  "songData_slot0": {
+    "numSteps": 4,
+    "steps": [
+      { "bank": 0, "chain": 0, "repeats": 2, "_label": "Play bank A twice" },
+      { "bank": 1, "chain": 0, "repeats": 1, "_label": "Then bank B" },
+      { "bank": 2, "chain": 0, "repeats": 2, "_label": "Bank C twice" },
+      { "bank": 3, "chain": 0, "repeats": 1, "_label": "Finish on bank D" }
+    ]
+  },
+  "refs": {
+    "harpWave": "0",
+    "seqWave": "21",
+    "harpPatch": "18",
+    "seqPatch": "21",
+    "drumKit": "0",
+    "drumFxA": "3",
+    "drumFxB": "2",
+    "masterFx": "2"
+  }
+}

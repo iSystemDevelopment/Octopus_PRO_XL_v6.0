@@ -1,30 +1,116 @@
-Copyright (c) 2026 DIODAC ELECTRONICS / iSystem. All Rights Reserved.
+Copyright (c) 2026 DIODAC ELECTRONICS / iSystem
+All Rights Reserved.
 
-PROPRIETARY SOFTWARE LICENSE
+================================================================================
+OCTOPUS PRO XL — PROPRIETARY SOFTWARE LICENSE
+================================================================================
 
-This repository contains proprietary and confidential software and documentation
-for the Octopus PRO XL product, including but not limited to firmware source code,
-OctopusApp.html, octopus_web.html, and associated assets.
+IMPORTANT — READ CAREFULLY
 
-Unless you have a separate written agreement with DIODAC ELECTRONICS / iSystem,
-you may NOT:
+This license applies to the Octopus PRO XL product materials in this
+repository unless a separate written agreement with DIODAC ELECTRONICS / iSystem
+says otherwise.
 
-  • copy, modify, merge, publish, distribute, sublicense, or sell copies of
-    this software or documentation;
-  • use this software or documentation to create derivative works;
+By accessing, cloning, building, or using these materials you agree to these
+terms. If you do not agree, do not use or copy them.
+
+--------------------------------------------------------------------------------
+1. DEFINITIONS
+--------------------------------------------------------------------------------
+
+"Software" means, collectively:
+
+  • firmware source and headers (*.ino, *.cpp, *.h) for Octopus PRO XL;
+  • OctopusApp.html and octopus_web.html;
+  • binaries or images built from the above;
+  • proprietary assets shipped with the product (patches, ROM data, etc.).
+
+"Documentation" means user-facing materials such as README.md, user_manual.md,
+CHANGELOG.md, and docs/*.md. Documentation is provided for owners and
+authorized users of the product. It does not grant a separate license to
+reproduce or sell the Software.
+
+"Official hosts" means:
+
+  • https://octopus.isystem.app        (OctopusApp)
+  • https://octopus-info.isystem.app   (product site)
+
+--------------------------------------------------------------------------------
+2. OWNERSHIP
+--------------------------------------------------------------------------------
+
+DIODAC ELECTRONICS / iSystem retains all right, title, and interest in the
+Software and associated intellectual property. No ownership is transferred by
+this license.
+
+--------------------------------------------------------------------------------
+3. RESTRICTIONS
+--------------------------------------------------------------------------------
+
+Unless you have prior written permission from DIODAC ELECTRONICS, you may NOT:
+
+  • copy, modify, merge, publish, distribute, sublicense, or sell the Software;
+  • use the Software to create derivative works for redistribution;
+  • host OctopusApp or octopus_web.html on unofficial domains;
+  • remove or alter copyright or proprietary notices;
   • reverse engineer, decompile, or disassemble the firmware except where
-    expressly permitted by applicable law.
+    applicable law expressly permits and cannot be waived.
 
-Limited permissions:
+--------------------------------------------------------------------------------
+4. LIMITED PERMISSIONS
+--------------------------------------------------------------------------------
 
-  • You may view this repository if access is granted by the copyright holder.
-  • You may build and flash firmware onto hardware you own for personal use
-    of that hardware, subject to a valid product license from DIODAC ELECTRONICS.
-  • You may use OctopusApp from the official hosted URL (https://octopus.isystem.app)
-    with genuine Octopus PRO XL hardware.
+The following are permitted without a separate agreement:
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+  (a) Personal use on hardware you own — build and flash firmware onto a
+      genuine Octopus PRO XL you possess, for your own non-commercial use of
+      that unit.
 
-For licensing inquiries: contact DIODAC ELECTRONICS / iSystem.
+  (b) Official App — use OctopusApp from an Official host with genuine
+      Octopus PRO XL hardware over USB MIDI.
+
+  (c) Repository access — view source in a repository to which the copyright
+      holder has granted you access (e.g. GitHub), subject to sections 3–4.
+
+  (d) Documentation — read Documentation included with the product or
+      repository for support and operation of hardware you own. Quoting brief
+      excerpts for review or support is acceptable; republishing full manuals
+      or docs as a competing product is not.
+
+--------------------------------------------------------------------------------
+5. THIRD-PARTY COMPONENTS
+--------------------------------------------------------------------------------
+
+The Software may incorporate or link to third-party libraries and CDN assets
+(Arduino/ESP-IDF, Adafruit, Font Awesome, etc.). Those components remain under
+their own licenses. See NOTICE.md.
+
+--------------------------------------------------------------------------------
+6. DISCLAIMER OF WARRANTY
+--------------------------------------------------------------------------------
+
+THE SOFTWARE AND DOCUMENTATION ARE PROVIDED "AS IS", WITHOUT WARRANTY OF ANY
+KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT.
+
+--------------------------------------------------------------------------------
+7. LIMITATION OF LIABILITY
+--------------------------------------------------------------------------------
+
+TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, DIODAC ELECTRONICS / iSystem
+SHALL NOT BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, OR
+PUNITIVE DAMAGES, OR ANY LOSS OF DATA, PROFITS, OR GOODWILL, ARISING FROM USE
+OF THE SOFTWARE OR DOCUMENTATION.
+
+--------------------------------------------------------------------------------
+8. CONTACT
+--------------------------------------------------------------------------------
+
+Licensing and permission requests:
+
+  DIODAC ELECTRONICS / iSystem
+  Email: diodac.electronics@gmail.com
+  Web:   https://isystem.app
+         https://octopus-info.isystem.app
+
+================================================================================

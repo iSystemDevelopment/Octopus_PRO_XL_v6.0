@@ -78,7 +78,7 @@ static constexpr uint16_t SHOW_DAC_POS[8] = {
 /* ── Opening animation ───────────────────────────────────────────────────── */
 static constexpr uint32_t ANIM_STEP_INTERVAL_US = 120000u; /* 120 ms per fan step */
 
-/* Core-1 yield during galvo MOVING phase — keeps MidiUsbRx / NvsWorker fed. */
+/* Core-1 yield during galvo MOVING phase — keeps MidiUsbRx / SeqSysexOut fed. */
 static constexpr uint32_t LASER_BREATHE_MS = 8u;
 
 /* ═══════════════════════════════════════════════════════════════════════════

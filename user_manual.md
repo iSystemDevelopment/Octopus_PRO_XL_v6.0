@@ -6,7 +6,7 @@
 |-------|-------|
 | Document type | End-user & integrator reference |
 | Firmware | `6.1.01` · NVS namespace `octopus` · `SETTINGS_VERSION 0x0616` (struct layout) |
-| Companion app | [octopus.isystem.app](https://octopus.isystem.app) (Web MIDI / SysEx · **v6.2.07** — Octopus linked + MIDI Controller mode) |
+| Companion app | [octopus.isystem.app](https://octopus.isystem.app) (Web MIDI / SysEx · **v6.6.01** — dual-shell studio + MIDI Controller) |
 | Hardware UI | SH1106 OLED · rotary encoder · SCALE · OC |
 
 This manual describes the Octopus PRO XL from initial setup through complete operation of the hardware menu system, companion application, signal routing, and musical tools (sequencer topology, arpeggiator layouts, D-BEAM response curves, and effects character). Menu labels and category order match the on-device OLED display exactly (`display.h`).
@@ -775,23 +775,40 @@ Same four scopes. **SAVE** writes current RAM to NVS via NvsWorker (+ reboot). *
 
 Open **[octopus.isystem.app](https://octopus.isystem.app)** in Chrome or Edge over **HTTPS**. The App auto-connects over USB MIDI SysEx (`0x7D` host→device, `0x7C` device→host). After SAVE, LOAD, or RESET the page reloads and re-imports the full device state.
 
-### 9.1 View structure
+### 9.1 View structure (v6.6 shell)
 
 | Tab | Content |
 |-----|---------|
-| **INSTRUMENTS** | Laser show, D-BEAM, harp synth, seq synth |
-| **MIXER** | Levels, pans, mutes, master processing, insert wet controls; **drum beat-reactive scope** (fits panel, no scroll) |
-| **SEQUENCER** | 64-step grid (P1–P4), banks, song editor, pattern loaders, arp |
+| **INSTRUMENTS** | Harp (D-BEAM enable, OCT stepper, sound-image save) · seq synth (OCT/TRN steppers, melody-image save) · AB 9-09 eight-voice grid (24 kits, drum-image save) |
+| **MIXER** | AB 9-09 bus knobs (inline) · studio console (MIX/TUBE/DJ/EQ + USB/MIDI→STUDIO rack) · scope/VU (dark when stopped) · laser show · D-BEAM calibration |
+| **SEQUENCER** | Matrix-width toolbar · 3/4 grid + 1/4 sidebar (seq synth knobs + drum setup) · bank manager (EDIT) · PATIMAGE |
+
+Master bar: **logo → product info** · global **BPM** glow readout · connector beside **MON** (standard gap).
 
 ### 9.2 Transport & authority
 
-Header **PLAY / STOP / REC** and **BPM** field are **read-only reflectors**. Hardware **SCALE**, **OC**, and encoder own transport. The App supervisor re-asserts device state to prevent UI drift.
+Transport is **shared state** between hardware and App (see `docs/mirror_architecture.md`):
+
+- **Hardware** (while linked): **SCALE** = play/stop, **OC** short = record arm, encoder = BPM. Menu editing is suppressed.
+- **App**: **PLAY / STOP** send `CMD_TRANSPORT` to the device (same as SCALE). **REC** toggles record via transport SysEx and **auto-starts playback** when arming from stop (motion / P-lock capture needs a running transport).
+- **Keyboard (DSP):** **1** INSTRUMENTS · **2** MIXER · **3** SEQUENCER · **Space** play/stop · **R** record arm (same auto-play rule).
+- **Keyboard (MIDI Controller):** **Space** play/stop · **R** record arm (auto-starts transport when arming motion lanes).
+- **BPM** field reflects hardware; edits from the App are blocked in linked mode — use the encoder.
+- Firmware echoes every change; a **600 ms sync supervisor** re-asserts play/record if a message is dropped.
+
+Playhead is driven **only** by `STEP_SYNC` from the device — discrete column per 16th, compositor layer in the App (no drift from BPM interpolation).
+
+### 9.2.1 Link badge
+
+| Badge | Meaning |
+|-------|---------|
+| **Octopus SYNC** (orange) | Initial import after connect — wait before SAVE |
+| **Octopus ON** (green) | Linked and ready |
+| **Octopus Off** (grey) | No device session |
 
 ### 9.3 Utility bar
 
-SAVE · LOAD · RESET · SLOTS · CPY/PST · RND-H/RND-D · CLR · mutes · DBEAM · MIDI routing · MON · HELP
-
-App version is shown in the **browser tab title**, the startup log line, and **HELP** — not in the header bar (keeps the compact transport/tool row visible on smaller screens).
+SESSION · SAVE · EXP · IMP · BPM (global) · CPU · MON · connector · HELP (popup). Pattern tools live on the **SEQUENCER** toolbar only (not duplicated in the master bar).
 
 ### 9.3.1 Pattern pages (P1–P4) & grid tools
 
@@ -801,26 +818,41 @@ Each **bank A–D** holds up to **64 steps**. The App shows **16 steps at a time
 |---------|--------|
 | **A–D** | Four independent patterns (banks) |
 | **P1–P4** | 16-step windows within the active bank (steps 1–16 … 49–64) |
-| **LEN** | Pattern length 16 / 32 / 48 / 64 — steps beyond LEN are dimmed but pages stay clickable |
+| **LEN** | Pattern length 16 / 32 / 48 / 64 — stepper on sequencer toolbar |
 
-**Grid tools** (header + pattern dropdowns) operate on the **active P page only** — the 16 columns currently shown — not the whole bank:
+**Grid tools** operate on the **active P page only**:
 
 | Tool | Behaviour |
 |------|-----------|
-| **CPY / PST** | Copy / paste the active P page (16×16 cells) within or across pages |
-| **CLR** | Clear active P page only — other pages, bank data, and sounds unchanged |
-| **RND-H / RND-D** | Randomize melody (rows 1–8) or drum (rows 9–16) on the active P page |
+| **CPY / PST** | Copy / paste the active P page (16×16 cells) |
+| **CLR** | Clear active P page grid; also clears P-lock motion on hardware (DSP) or motion lanes (MIDI) |
+| **RND-S / RND-D** | Randomize melody (rows 1–8) or drum (rows 9–16) on the active P page |
 | **MELODY / DRUM PATTERNS** | Factory ROM loads into the active P page (16 steps) |
 
 Click **P1–P4** to lock the grid view (**user lock**): while playing, the cyan playhead still tracks hardware (Octopus) or the local clock (MIDI), but the grid won't auto-switch pages until you pick another P page.
 
 **Playhead:** rendered on a dedicated GPU layer (`#seq-playhead-layer`) — smooth during mouse hover, grid repaints, and page changes. See [docs/app_god_rules.md](./docs/app_god_rules.md) for the full audit checklist.
 
-**Octopus linked — CLR note:** App **CLR** is page-local. Hardware **SEQ SETUP → Clear** (full wipe + sound reset) is separate and is **not** triggered by the header CLR button.
+**Octopus linked — CLR note:** App **CLR** clears the active P-page grid and sends `CMD_CLR_PLOCKS` so hardware motion lanes wipe with it. Hardware **SEQ SETUP → Clear** (full pattern wipe + sound reset to preset 0) is separate and is **not** triggered by the header CLR button.
 
-### 9.4 Universal MIDI Controller mode *(OctopusApp v6.2.07 — shipped)*
+### 9.3.2 Browser sessions (OctopusApp v6.6 — Octopus mode only)
 
-When **no Octopus PRO XL** is connected (★ port absent from the MIDI list), OctopusApp operates as a **universal MIDI controller** in the browser — **no firmware update** required for MIDI mode itself. Open **[octopus.isystem.app](https://octopus.isystem.app)** in **Google Chrome** (or Microsoft Edge) over **HTTPS**.
+When the ★ Octopus port is connected, the header exposes **SESSION**, **SAVE**, **EXP**, and **IMP**:
+
+| Control | Behaviour |
+|---------|-----------|
+| **SESSION 1** | Auto-saves the workspace in this browser (`localStorage`). Restored on next visit. |
+| **SESSION 2–16** | User-named slots — recall from dropdown (● = filled). Recall pushes state over USB when linked. |
+| **SAVE** | Writes current workspace to a chosen slot (2–16). Optional “mirror to device NVS” reboots the ESP. |
+| **PATIMAGE 1–16** | Bank Manager pattern library — grid + song chains. |
+| **SOUND / MIX SAVE** | Per-engine knob + ref snapshots; **sound-image** cards (harp/melody/drum) with visual preview popup |
+| **EXP / IMP** | Export/import `octopus_session_N.json` (schema v1). Import cannot overwrite SESSION 1. |
+
+MIDI Controller mode keeps its own `localStorage` key — no SESSION UI (see §9.4).
+
+### 9.4 Universal MIDI Controller mode *(OctopusApp v6.6.01 — shipped)*
+
+When **no Octopus PRO XL** is connected (★ port absent from the MIDI list), OctopusApp operates as a **universal MIDI controller** in the browser — **no firmware update** required for MIDI mode itself. Open **[octopus.isystem.app](https://octopus.isystem.app)** in **Google Chrome** (or Microsoft Edge) over **HTTPS**. Use **HELP → OCTOPUS MIDI CONTROLLER** for the beginner Mac / Windows / DAW guide.
 
 | | Octopus linked | MIDI Controller |
 |--|----------------|-----------------|
@@ -957,9 +989,9 @@ If OctopusApp or the hardware helps your music, you can leave an optional tip vi
 | Component | Version |
 |-----------|---------|
 | Firmware (hardware) | **6.1.01** |
-| OctopusApp (browser) | **6.2.07** (Octopus linked + MIDI Controller mode) |
+| OctopusApp (browser) | **6.6.01** (Octopus DSP Engine + MIDI Controller) |
 
-Octopus **linked** mode matches firmware **6.1.01** (including SETTINGS/MOTION reset with no reboot). MIDI Controller mode is browser-only and does not change flash on the device. While ★ Octopus is connected, the App locks to Octopus mode (v6.2.07 hard priority).
+Octopus **linked** mode matches firmware **6.1.01** (including SETTINGS/MOTION reset with no reboot, D-BEAM bargraph telemetry with reflash). MIDI Controller mode is browser-only and does not change flash on the device. While ★ Octopus is connected, the App locks to Octopus mode (hard priority).
 
 ---
 
@@ -1060,6 +1092,7 @@ Previously tracked in **`todo.md`**. Root causes and surgical fixes:
 | 1.3 | 2026-06-23 | §9.4 shipped — MIDI Controller beginner guides (Mac/Windows/DAW); OctopusApp v6.2.00 |
 | 1.4 | 2026-06-25 | v6.2.07 / fw 6.1.01 — Octopus hard priority, mode-separation hardening, SETTINGS/MOTION reset no reboot |
 | 1.5 | 2026-06-25 | v6.2.07 — P-page grid tools (CPY/PST/CLR/RND/patterns), GOD playhead layer, MIDI ARP/motion, scope layout |
+| 1.6 | 2026-06-29 | v6.6.01 — dual-shell studio, D-BEAM bargraph, CLR→P-locks, MIDI Controller shipped, HELP refresh, keyboard shortcuts |
 | 1.6 | 2026-06-25 | Hardware SEQ MATRIX step pages documented (fw `seqUI_stepPage`); §12.D known open issues |
 
 ---

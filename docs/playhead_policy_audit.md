@@ -1,6 +1,6 @@
 # Playhead policy — full verification audit (DSP + MIDI shells)
 
-**Version:** OctopusApp v6.6.00 · dual `SeqShell` architecture  
+**Version:** OctopusApp v6.6.01 · dual `SeqShell` architecture  
 **Authority:** This document is the **playhead-specific** audit companion to [`mirror_architecture.md`](mirror_architecture.md) (DSP mirror) and [`two_mode_separation.md`](two_mode_separation.md) (shell isolation).
 
 ---

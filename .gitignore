@@ -1,0 +1,35 @@
+# ── Machine-local workspace (see local/README.md) ───────────────────────────
+# Ignore all contents; keep the folder readme so clones know the convention.
+local/**
+!local/README.md
+
+# Agent + SEO deploy payloads — stay at repo root, upload to VPS manually
+.claude/
+/seo/
+
+# IDE (if recreated at root)
+.idea/
+*.iml
+
+# Node (if dev deps installed at root again)
+node_modules/
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+desktop.ini
+*.swp
+*~
+
+# Arduino / ESP-IDF build artefacts (if you build inside the repo tree)
+build/
+*.elf
+*.bin
+*.map
+
+# Logs & scratch at root (prefer local/scratch/)
+git_log.txt
+temp.js
+temp0.js
+temp1.js
+test.js

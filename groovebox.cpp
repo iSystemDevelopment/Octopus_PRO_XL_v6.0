@@ -8,11 +8,14 @@
  * ═════════════════════════════════════════════════════════════════════════════
  * groovebox.cpp — v6.1.01  GROOVEBOX ENGINE — IMPLEMENTATION
  *
+ * SOUND FROZEN — docs/dsp_sound_frozen.md (seq + drum synth; no optimization refactors).
+ *
  * Sequencer + drum machine in one TU (groovebox.h API):
  *   • Sample-locked step engine (sequencer_render_block) — audio task Core 0
  *   • Seq synth voices + TR-style drums + seq/drum arpeggiators
  *   • Transport, song chains, factory/user patterns, grid editor UI
- *   • sequencer_background_task — Core 1: STEP_SYNC drain + App sync supervisor
+ *   • sequencer_background_task — Core 1 @ prio 23 (FROZEN): STEP_SYNC drain +
+ *     sync supervisor + 33 ms link beacon (docs/task_schedule.md)
  *
  * Layout (this file):
  *   TU-PRIVATE (anonymous namespace)
@@ -918,7 +921,7 @@ void IRAM_ATTR sequencer_render_block(uint32_t frames) {
 
     if (step == 0u && !firstDownbeat) song_advance_rt();
 
-    seq_ext_push(CMD_STEP_SYNC, step);
+    seq_ext_push(CMD_STEP_SYNC, step);  /* FROZEN AXIS 3 — App playhead authority (mirror_architecture.md) */
 
     const uint8_t bank     = seqActiveBank.load(std::memory_order_relaxed) & 15u;
     const uint8_t chain    = seqActiveChain.load(std::memory_order_relaxed) & 3u;
@@ -1058,40 +1061,35 @@ void sequencer_background_task(void* pvParameters) {
       txSysex(e.cmd, e.v14);   /* [USB-ONLY] position echoes (STEP_SYNC / SONG_POS) */
     }
 
-    /* ── [v6.0 SYNC-SUPERVISOR] ──────────────────────────────────────────────
-     * The hardware owns transport; the App only reflects it.  Live echoes (from
-     * seq_start/stop, setSequencerBpm, the record toggle) are EVENTS — if one is
-     * dropped the App's read-only display + playhead would silently drift with no
-     * recovery.  This is the slow safety net: while the App is connected we
-     * re-assert the device-owned transport STATE (BPM + play + record).
-     * It is NOT the clock — the per-step STEP_SYNC stream (pushed above while
-     * playing) still drives the playhead; this only guarantees convergence.
-     *
-     * Period is 600 ms — deliberately ABOVE txSysex's 500 ms identical-value
-     * dedup window, otherwise an UNCHANGED re-assert (the exact case we need to
-     * heal a dropped echo) would itself be deduped and never reach the App.
-     * State CHANGES still propagate instantly via the live echoes (different
-     * value ⇒ not deduped).  Cheap (3 short frames), off the audio core, silent
-     * when no App is connected.                                                */
     const uint32_t now = millis();
-    if ((uint32_t)(now - lastSupervisorMs) >= 600u && isAppConnected()) {
-      lastSupervisorMs = now;
-      /* [BPM-RACE] Skip the unchanged BPM re-assert while the knob is actively
-       * moving (≤1.5 s since last change) so a stale supervisor value can't race
-       * the live echoes; live changes still propagate via setSequencerBpm. */
-      if ((uint32_t)(now - s_lastBpmChangeMs.load(std::memory_order_relaxed)) >= 1500u)
-        txSysex(CMD_BPM, (uint16_t)seqBpm.load(std::memory_order_relaxed));
-      txSysex(CMD_TRANSPORT, seqPlaying.load(std::memory_order_relaxed) ? 1u : 0u);
-      txSysex(CMD_TRANSPORT, seqRecording.load(std::memory_order_relaxed) ? 3u : 4u);
-      /* [v6.1] Live CPU-load telemetry for the App header.  14-bit-safe packing:
-       *   bits 0-6  : load %  (0–100)
-       *   bits 7-12 : out-ring drops, saturating 0–63
-       *   bit  13   : P-lock lanes-full flag (one-shot warning in the App)
-       * (bit 14 is NOT addressable in a 14-bit SysEx value — must stay ≤13.)     */
+
+    /* ── [v6.3 BPM-HEARTBEAT] Device→App link tick — always, play or stop ───────
+     * FROZEN AXIS 1 (docs/mirror_architecture.md): BPM + PING beacon + CPU_LOAD
+     * @ LINK_FRAME_MS. txSysexForce bypasses 500 ms dedup. Timing polish OK;
+     * do not merge with playhead or transport supervisor logic.                */
+    static uint32_t lastBpmBeatMs = 0u;
+    if ((uint32_t)(now - lastBpmBeatMs) >= LINK_FRAME_MS) {
+      lastBpmBeatMs = now;
+      const int32_t bpm = seqBpm.load(std::memory_order_relaxed);
+      txSysexForce(CMD_BPM, (uint16_t)constrain(bpm, 40, 240));
+      txSysexForce(CMD_PING, LINK_BEACON_HIGH);
+      /* CPU load on the BPM beacon path — not gated on isAppConnected() supervisor. */
       const uint16_t loadPct = (uint16_t)(g_audio_load_pct.load(std::memory_order_relaxed) & 0x7Fu);
       const uint16_t drops   = std::min<uint16_t>(63u, g_seqExtDrops.load(std::memory_order_relaxed));
       const uint16_t lanesFull = g_motionLanesFull.load(std::memory_order_relaxed) ? (uint16_t)(1u << 13) : 0u;
-      txSysex(CMD_CPU_LOAD, (uint16_t)(loadPct | (uint16_t)(drops << 7) | lanesFull));
+      txSysexForce(CMD_CPU_LOAD, (uint16_t)(loadPct | (uint16_t)(drops << 7) | lanesFull));
+      txDbeamAmpBlob(dbeamAmplitude.load(std::memory_order_relaxed));
+    }
+
+    /* ── [v6.0 SYNC-SUPERVISOR] FROZEN AXIS 2 (docs/mirror_architecture.md) ────
+     * Shared transport state heal: re-assert play + record while latched or
+     * connected. NOT the playhead clock — STEP_SYNC drives the bar.
+     * Period 600 ms MUST stay above txSysexForce 500 ms dedup window.         */
+    if ((uint32_t)(now - lastSupervisorMs) >= 600u &&
+        (g_appSessionLatched.load(std::memory_order_acquire) || isAppConnected())) {
+      lastSupervisorMs = now;
+      txSysex(CMD_TRANSPORT, seqPlaying.load(std::memory_order_relaxed) ? 1u : 0u);
+      txSysex(CMD_TRANSPORT, seqRecording.load(std::memory_order_relaxed) ? 3u : 4u);
     }
     vTaskDelay(pdMS_TO_TICKS(2));
   }

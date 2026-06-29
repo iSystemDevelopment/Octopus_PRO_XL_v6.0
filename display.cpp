@@ -34,6 +34,7 @@ Adafruit_SH1106G display = Adafruit_SH1106G(128, 64, &Wire);
 /* Forward decl — drawSeqDashboard (above) uses the transport glyph defined later. */
 static void drawTransportGlyph(int16_t x, int16_t y, bool playing,
                                bool recording, uint16_t color);
+static void drawLinkGlyph(int16_t x, int16_t y, bool connected, uint16_t color);
 
 static uint8_t s_oledShadow[SCREEN_W * (SCREEN_H / 8)];
 static bool    s_oledShadowValid = false;
@@ -460,10 +461,10 @@ static void drawSeqDashboard() {
     display.print((dk < (uint8_t)DrumKitId::COUNT) ? DRUM_KIT_NAMES[dk] : "?");
   }
   {
-    /* Graphic transport glyph only (● rec / ▶ play / ■ stop) — the bracket text
-     * tag was retired now that the icon carries the state. */
-    const bool rec  = seqRecording.load(std::memory_order_relaxed);
-    const bool play = seqPlaying  .load(std::memory_order_relaxed);
+    const bool linked = g_appSessionLatched.load(std::memory_order_relaxed);
+    const bool rec    = seqRecording.load(std::memory_order_relaxed);
+    const bool play   = seqPlaying  .load(std::memory_order_relaxed);
+    drawLinkGlyph(SCREEN_W - 18, HEADER_Y, linked, SH110X_WHITE);
     drawTransportGlyph(SCREEN_W - 8, HEADER_Y, play, rec, SH110X_WHITE);
   }
   display.drawFastHLine(0, DIVIDER_Y, SCREEN_W, SH110X_WHITE);
@@ -607,12 +608,12 @@ static void drawMenuL1() {
   /* L1 menu uses regrouped display order (kL1Order). */
   const int slot = l1SlotForCat(
                      (int)currentMenuL1.load(std::memory_order_relaxed));
-  drawScrollList("MAIN MENU", kL1NamesOrdered, kL1Count, slot);
+  drawScrollList("MAIN MENU", kL1NamesOrdered, kL1MenuCount, slot);
 }
 static void drawMenuL2() {
-  const int l1 = std::max(0, std::min(kL1Count - 1,
+  const int l1 = std::max(0, std::min(kL1CatCount - 1,
                  (int)currentMenuL1.load(std::memory_order_relaxed)));
-  drawScrollList(safeL1Name(l1), l2TableFor(l1), l2CountFor(l1),
+  drawScrollList(safeL1TitleForMenu(l1), l2TableForCat(l1), l2CountForCat(l1),
                  (int)currentMenuL2.load(std::memory_order_relaxed));
 }
 
@@ -623,7 +624,7 @@ static void formatParamValueString(int l1, int l2, char* out, size_t maxB) {
   if (!out || maxB == 0) return;
   out[0] = '\0';
   /* Guard: l2 must be within bounds for this l1 */
-  if (l1 < 0 || l1 >= kL1Count || l2 < 0 || l2 >= l2CountFor(l1)) return;
+  if (l1 < 0 || l1 >= kL1CatCount || l2 < 0 || l2 >= l2CountForCat(l1)) return;
   const int si = harpScaleIndex.load(std::memory_order_relaxed) & (NUM_SCALES - 1);
 
   switch (l1) {
@@ -869,6 +870,11 @@ static void formatParamValueString(int l1, int l2, char* out, size_t maxB) {
     snprintf(out, maxB, "Press ENC");
     return;
 
+  /* ── 14: PERF SLOT — name edit stub (Phase G) ─────────────────────────── */
+  case 14:
+    if (l2 == 2) { snprintf(out, maxB, "PERF 1"); return; }
+    break;
+
   default: break;
   }
 }
@@ -878,7 +884,7 @@ static void formatParamValueString(int l1, int l2, char* out, size_t maxB) {
  * Returns 0.5 for toggle/special params.
  * ═══════════════════════════════════════════════════════════════════════════ */
 static float getSliderPct(int l1, int l2) {
-  if (l1 < 0 || l1 >= kL1Count || l2 < 0 || l2 >= l2CountFor(l1)) return 0.5f;
+  if (l1 < 0 || l1 >= kL1CatCount || l2 < 0 || l2 >= l2CountForCat(l1)) return 0.5f;
   const int si = harpScaleIndex.load(std::memory_order_relaxed) & (NUM_SCALES - 1);
 
   switch (l1) {
@@ -1153,9 +1159,9 @@ static void drawDbeamCurvePreview(int curve) {
 
 static void drawMenuL3() {
   const uint32_t now = millis();
-  const int l1 = std::max(0, std::min(kL1Count - 1,
+  const int l1 = std::max(0, std::min(kL1CatCount - 1,
                  (int)currentMenuL1.load(std::memory_order_relaxed)));
-  const int l2 = std::max(0, std::min(l2CountFor(l1) - 1,
+  const int l2 = std::max(0, std::min(l2CountForCat(l1) - 1,
                  (int)currentMenuL2.load(std::memory_order_relaxed)));
 
   display.setTextSize(1);
@@ -1239,6 +1245,20 @@ static void drawMenuL3() {
 /* ═══════════════════════════════════════════════════════════════════════════
  * PUBLIC ENTRY POINT
  * ═══════════════════════════════════════════════════════════════════════════ */
+
+/* drawLinkGlyph — App USB session (6×7 px), left of transport in SEQ header.
+ *   latched → two linked rings   unlatched → hollow ring + break slash         */
+static void drawLinkGlyph(int16_t x, int16_t y, bool connected, uint16_t color) {
+  if (connected) {
+    display.drawCircle(x + 1, y + 3, 2, color);
+    display.drawCircle(x + 4, y + 3, 2, color);
+    display.drawFastHLine(x + 2, y + 3, 2, color);
+  } else {
+    display.drawCircle(x + 1, y + 3, 2, color);
+    display.drawCircle(x + 4, y + 3, 2, color);
+    display.drawLine(x + 1, y + 1, x + 5, y + 5, color);
+  }
+}
 
 /* drawTransportGlyph — tiny live transport icon (6×7 px).
  *   recording → ● filled disc   playing → ▶ triangle   stopped → ■ square
@@ -1410,11 +1430,6 @@ static void drawConfirmDialog() {
       line2 = "wipe + reboot?";
       line3 = "(cannot undo)";
       break;
-    case ConfirmAction::LOAD:
-      title = "LOAD";
-      line1 = kScope[arg];
-      line2 = "reload from NVS?";
-      break;
     case ConfirmAction::USR_SOUND_SAVE:
       title = "SAVE SOUND";
       userSlotName((uint8_t)((rawArg >> 6) & 1u), (uint8_t)(rawArg & 63u),
@@ -1502,12 +1517,6 @@ void renderUIState() {
     return;
   }
 
-  /* App connected: static page only — no menu tree */
-  if (isAppConnected()) {
-    drawAppConnectedPage();
-    return;
-  }
-
   switch (mst) {
   case MenuState::IDLE:
     (activeDashboard.load() == DashboardMode::SEQUENCER)
@@ -1526,7 +1535,6 @@ static bool viewHasStepBar() {
   if (confirmOpen.load(std::memory_order_relaxed)) return false; /* modal owns screen */
   if (currentScopeView.load(std::memory_order_relaxed) != TelemetryView::OFF)
     return false;                                   /* telemetry scope owns screen */
-  if (isAppConnected()) return true;                /* APP splash shows the bar    */
   const int       l1  = (int)currentMenuL1.load(std::memory_order_relaxed);
   const MenuState mst = menuState.load(std::memory_order_relaxed);
   if (l1 == 6  && mst != MenuState::MENU_L1) return false;  /* SEQ matrix page    */
@@ -1546,7 +1554,6 @@ static bool viewHasStepBar() {
 bool viewIsSeqMatrix() {
   if (!hasOLED) return false;
   if (currentScopeView.load(std::memory_order_relaxed) != TelemetryView::OFF) return false;
-  if (isAppConnected()) return false;                 /* app splash owns the screen */
   const int       l1  = (int)currentMenuL1.load(std::memory_order_relaxed);
   const MenuState mst = menuState.load(std::memory_order_relaxed);
   return (l1 == 6 && mst != MenuState::MENU_L1);

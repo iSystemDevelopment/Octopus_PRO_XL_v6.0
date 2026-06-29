@@ -1,0 +1,61 @@
+{
+  "v": 1,
+  "app": "6.6.00",
+  "label": "EXAMPLE · MIDI Demo Song",
+  "savedAt": "2026-06-26T12:00:00.000Z",
+  "_readme": "Universal MIDI Controller session (octopusapp_midi_session_v1 shape). Full gridData seeded in-app. Octopus mode: HELP → Load MIDI demo song applies same pattern via PATIMAGE logic.",
+  "bpm": 128,
+  "seqLen": 64,
+  "transpose": 0,
+  "midiScaleIdx": 3,
+  "seqOct": 0,
+  "bankIdx": 0,
+  "gridPageIdx": 0,
+  "melCh": 1,
+  "drumCh": 10,
+  "midiMap": {
+    "melPc": 81,
+    "drumPc": 0,
+    "drumNotes": [36, 38, 39, 42, 46, 50, 43, 56],
+    "cc": {
+      "1": 0,
+      "7": 100,
+      "10": 64,
+      "11": 127,
+      "71": 32,
+      "72": 64,
+      "73": 40,
+      "74": 96
+    },
+    "_melPcName": "Lead 1 (square)",
+    "_drumNotes": "GM kick/snare/clap/hats/toms"
+  },
+  "midiClockOut": true,
+  "midiArp": {
+    "en": true,
+    "pat": 2,
+    "rate": 3,
+    "gate": 4,
+    "_pat": "UpDown",
+    "_rate": "1/8",
+    "_gate": "50%"
+  },
+  "isSongMode": true,
+  "songSlotIdx": 0,
+  "songData": [
+    {
+      "numSteps": 3,
+      "steps": [
+        { "bank": 0, "chain": 0, "repeats": 2, "_grid": "Bank A: Magellanic Swell + Quantum House" },
+        { "bank": 1, "chain": 0, "repeats": 1, "_grid": "Bank B: Acid Snake + Magnetar Sat" },
+        { "bank": 0, "chain": 0, "repeats": 2, "_grid": "Return to bank A" }
+      ]
+    }
+  ],
+  "patterns_used": {
+    "bankA_melody": "Magellanic Swell Arp (SYNTH_PATTERNS[1])",
+    "bankA_drums": "Quantum House Core (DRUM_PATTERNS[0])",
+    "bankB_melody": "Acid Snake Bassline (SYNTH_PATTERNS[8])",
+    "bankB_drums": "Magnetar Sat Groove (DRUM_PATTERNS[1])"
+  }
+}

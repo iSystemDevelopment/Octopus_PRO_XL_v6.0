@@ -1,4 +1,4 @@
-# Deployment — Octopus PRO XL firmware v6.1.01 + OctopusApp v6.2.07
+# Deployment — Octopus PRO XL firmware v6.1.01 + OctopusApp v6.6.01
 
 Production hosting for the **browser App** and **product site**. Firmware is flashed via USB (not covered here).
 
@@ -7,7 +7,7 @@ Production hosting for the **browser App** and **product site**. Firmware is fla
 | **OctopusApp** | [octopus.isystem.app](https://octopus.isystem.app) | `OctopusApp.html` |
 | **Product site** | [octopus-info.isystem.app](https://octopus-info.isystem.app) | `octopus_web.html` → `index.html` |
 
-**Versions:** Firmware **6.1.01** · OctopusApp **6.2.07** (Universal MIDI Controller, Octopus hard priority, P-page grid tools, GOD playhead, no-reboot Settings/Motion reset).
+**Versions:** Firmware **6.1.01** · OctopusApp **6.6.01** (dual-shell: Octopus DSP Engine + MIDI Controller). UI flowcharts: [`docs/ui_flowcharts.md`](docs/ui_flowcharts.md).
 
 ---
 
@@ -151,14 +151,20 @@ From your **PC** (repo folder), copy the file over SSH — replace `USER` and `V
 ```powershell
 # Windows PowerShell
 scp OctopusApp.html USER@VPS_IP:/tmp/OctopusApp.html
+scp octopus-consent-seo.js USER@VPS_IP:/tmp/octopus-consent-seo.js
 ```
 
 ```bash
 # On the VPS (SSH in)
 sudo cp /tmp/OctopusApp.html /var/www/octopus.isystem.app/index.html
-sudo chown www-data:www-data /var/www/octopus.isystem.app/index.html
+sudo cp /tmp/octopus-consent-seo.js /var/www/octopus.isystem.app/octopus-consent-seo.js
+sudo cp seo/sitemap-octopus-app.xml /var/www/octopus.isystem.app/sitemap.xml
+sudo cp seo/robots-octopus-app.txt /var/www/octopus.isystem.app/robots.txt
+sudo chown www-data:www-data /var/www/octopus.isystem.app/index.html /var/www/octopus.isystem.app/octopus-consent-seo.js /var/www/octopus.isystem.app/sitemap.xml /var/www/octopus.isystem.app/robots.txt
 sudo nginx -t && sudo systemctl reload nginx
 ```
+
+**Cookie consent + SEO (v6.6+):** `octopus-consent-seo.js` must sit beside `index.html` (same pattern as `isystem.app`). Set your **Google Analytics 4** ID in `OctopusSiteKit.init({ ga4MeasurementId: 'G-…' })` inside `OctopusApp.html` before deploy. Analytics loads **only** after the user accepts analytics cookies (Consent Mode v2). Optional: `googleSiteVerification` in `init()` for Search Console.
 
 **Optional backup before overwrite:**
 
@@ -167,7 +173,7 @@ sudo cp /var/www/octopus.isystem.app/index.html \
   /var/www/octopus.isystem.app/index.html.bak.$(date +%Y%m%d)
 ```
 
-**Confirm live version:** open `https://octopus.isystem.app` → log line or title must show **OctopusApp v6.2.07**. Hard refresh once (`Ctrl+Shift+R`) if the tab was already open.
+**Confirm live version:** open `https://octopus.isystem.app` → log line or title must show **OctopusApp v6.6.01**. Hard refresh once (`Ctrl+Shift+R`) if the tab was already open.
 
 **Cloudflare:** if you use edge cache, purge `octopus.isystem.app` after upload (or keep cache bypass rule from §0).
 
@@ -200,7 +206,7 @@ Run in **Google Chrome** (or Edge) on **HTTPS**:
 
 | # | Test | Pass criteria |
 |---|------|----------------|
-| 1 | Page loads | Title shows **OctopusApp v6.2.07** |
+| 1 | Page loads | Title shows **OctopusApp v6.6.01** |
 | 2 | Octopus mode | With ★ port connected → badge **Octopus ON**; 3 tabs; transport read-only |
 | 3 | MIDI mode | Badge **MIDI OUT**; transport unlocked; **🔗** chain + pattern dropdowns |
 | 4 | Song mode | 🔗 ON → EDIT chain → Play cycles banks per chain row + repeats |
@@ -230,13 +236,17 @@ Run in **Google Chrome** (or Edge) on **HTTPS**:
 ### Upload
 
 1. `octopus_web.html` → `index.html` (or equivalent entry).
-2. Include static assets referenced by the page (`logo.jpg`, `octopus-app-hero.jpg`, etc.) — **required** for OctopusApp social share previews on `octopus.isystem.app`.
-3. HTTPS required.
+2. `octopus-consent-seo.js` → same web root (cookie banner + JSON-LD; shared with OctopusApp).
+3. `seo/sitemap-octopus-info.xml` → `sitemap.xml` · `seo/robots-octopus-info.txt` → `robots.txt`.
+4. Include static assets referenced by the page (`logo.jpg`, `octopus-app-hero.jpg`, `octopus-midi-mode.png`, etc.) — **required** for product page MIDI section and OctopusApp social share previews.
+5. HTTPS required. Set `ga4MeasurementId` in `OctopusSiteKit.init()` inside `octopus_web.html` when GA4 property is ready.
 
 ### Post-deploy check
 
-- Nav link **MIDI Mode** → `#midi-mode` section shows **New in OctopusApp v6.2.00** and beginner setup cards.
+- Cookie banner appears on first visit; **Manage Cookies** in footer reopens preferences.
+- Nav link **MIDI Mode** → `#midi-mode` section.
 - **OPEN OCTOPUSAPP** button → `https://octopus.isystem.app`.
+- [Google Rich Results Test](https://search.google.com/test/rich-results) on product URL (Product + Organization schema).
 
 ---
 
@@ -245,20 +255,20 @@ Run in **Google Chrome** (or Edge) on **HTTPS**:
 Tag release when production deploy is verified:
 
 ```bash
-git tag -a octopusapp-v6.2.07 -m "OctopusApp v6.2.07 — Octopus hard priority + no-reboot Settings/Motion reset"
-git push origin octopusapp-v6.2.07
+git tag -a octopusapp-v6.6.01 -m "OctopusApp v6.6.01 + firmware 6.1.01 companion — dual-shell studio, D-BEAM telemetry, CLR P-locks"
+git push origin octopusapp-v6.6.01
 # firmware patch (reflash needed):
 git tag -a fw-v6.1.01 -m "Firmware 6.1.01 — SETTINGS/MOTION scoped reset no longer reboots"
 git push origin fw-v6.1.01
 ```
 
-Keep `CHANGELOG.md` [6.2.07] / [6.1.01] entries aligned with the live App + firmware.
+Keep `CHANGELOG.md` [6.6.01] / [6.1.01] entries aligned with the live App + firmware.
 
 ---
 
 ## 4. What does *not* ship with App v6.2
 
-These remain **firmware / future** work (`code_info.h` §9, `todo.md`):
+These remain **firmware / future** work (`code_info.h` §9; see `local/operator/todo.md` on your machine):
 
 - OLED P-lock lane editor
 - External MIDI OUT via WiFi/BLE coprocessor

@@ -271,11 +271,11 @@ struct EncoderPoll {
  *  10 LASER SHOW    — show toggle, hue ADSR, anim
  *  11 TELEMETRY     — 7 live scope pages (L2 pick → ENC opens view; turn cycles)
  *  12 RESET         — full / banks+patterns / motion / settings → reboot
- *  13 SONG          — row-per-step song editor (special: no L2 scroll)
- *  14 SAVE          — scoped persist → reboot (beam-detect recovery)
- *  15 LOAD          — scoped reload from NVS (no reboot)
+ *  13 SONG          — row-per-step song editor (special: no L2 scroll) — hidden L1 v6.6
+ *  14 PERF SLOT     — SongPack PERF 1–8 load/save (was SAVE scoped persist)
  * ═══════════════════════════════════════════════════════════════════════════ */
-static constexpr int kL1Count = 16; /* +RESET (12); +SONG (13); +SAVE (14); +LOAD (15) */
+static constexpr int kL1CatCount = 16;  /* fixed category ids 0..15 (15=retired LOAD) */
+static constexpr int kL1MenuCount = 9;  /* visible MAIN MENU items (v6.6 performance order) */
 
 /* Per-category L2 item counts */
 static constexpr int kL2HarpSetupCount = 13; /* gate/white/touch/RGB/margin/stuck/edge/fog/screensaver */
@@ -284,7 +284,6 @@ static constexpr int kL2MasterCount = 24;   /* vol/FX/mutes + H/S/D pan */
 static constexpr int kL2SynthCount = 25;    /* synth params + FX + user slots + harp arp */
 static constexpr int kL2MidiCount = 5;
 static constexpr int kL2SeqSetupCount = 13; /* bank … arp gate (incl. clear + user pat) */
-static constexpr int kL2SeqMatrixCount = 1;
 static constexpr int kL2AuxFxCount = 16;
 static constexpr int kL2SeqSynthCount = 21; /* synth params + FX + user slots (no harp arp) */
 static constexpr int kL2DrumsCount = 42;    /* 5×8 + kit + drum pitch */
@@ -292,8 +291,9 @@ static constexpr int kL2LaserShowCount = 9;
 static constexpr int kL2TelemetryCount = 7; /* matches TelemetryView RAW_AC..FOG_REJECT */
 static constexpr int kL2ResetCount = 4;
 static constexpr int kL2SongCount = 1;
-static constexpr int kL2SaveCount = 4;
-static constexpr int kL2LoadCount = 4;
+static constexpr int kL2SystemCount = 3;   /* SYSTEM hub: MIDI / Telemetry / Reset */
+static constexpr int kL2PerfSlotCount = 3; /* PERF load / save / name */
+static constexpr int kL2SeqMatrixCount = 0; /* direct grid — no L2 picker */
 
 static inline int l2CountFor(int l1) {
   switch (l1) {
@@ -311,75 +311,61 @@ static inline int l2CountFor(int l1) {
     case 11: return kL2TelemetryCount;
     case 12: return kL2ResetCount;
     case 13: return kL2SongCount;
-    case 14: return kL2SaveCount;
-    case 15: return kL2LoadCount;
+    case 14: return kL2PerfSlotCount;
+    case 15: return 0; /* LOAD retired */
     default: return 0;
   }
 }
 
-/* L1 DISPLAY ORDER — category id stays fixed; only visible menu order is regrouped.
- *   slot:  0           1          2         3           4          5
- *          HARP SETUP  HARP SYNTH SEQ SETUP SEQ MATRIX  SEQ SYNTH  SONG
- *   slot:  6           7          8         9           10         11
- *          DRUM KIT    AUX FX     MASTER    D-BEAM      MIDI I/O   LASER SHOW
- *   slot:  12          13         14         15
- *          TELEMETRY   RESET      SAVE       LOAD */
-static constexpr int kL1Order[kL1Count] = {
-  0,  /* HARP SETUP */
-  3,  /* HARP SYNTH */
-  5,  /* SEQ SETUP  */
+/* L1 DISPLAY ORDER — v6.6 performance surface (§14.3 D, docs/oled_ui_wireframe_v6.6.md §4).
+ * Category ids stay fixed; only scroll order + labels change. */
+static constexpr int kL1Order[kL1MenuCount] = {
+  0,  /* HARP PLAY  — cat 0 HARP SETUP */
+  3,  /* HARP TONE  — cat 3 HARP SYNTH */
+  5,  /* SEQ PLAY   — cat 5 SEQ SETUP  */
   6,  /* SEQ MATRIX */
-  8,  /* SEQ SYNTH  */
-  13, /* SONG       */
-  9,  /* DRUM KIT   */
-  7,  /* AUX FX     */
-  2,  /* MASTER     */
+  9,  /* DRUM       — cat 9 DRUM KIT   */
+  2,  /* MIX LIVE   — cat 2 MASTER     */
   1,  /* D-BEAM     */
-  4,  /* MIDI I/O   */
-  10, /* LASER SHOW */
-  11, /* TELEMETRY  */
-  12, /* RESET      */
-  14, /* SAVE       */
-  15  /* LOAD       */
+  14, /* PERF SLOT  — cat 14 (was SAVE) */
+  4,  /* SYSTEM     — cat 4 MIDI hub   */
 };
 
-/* category id → display slot (inverse of kL1Order). */
-static constexpr int kCatToSlot[kL1Count] = {
-  0,   /* cat  0 HARP SETUP → slot  0 */
-  9,   /* cat  1 D-BEAM     → slot  9 */
-  8,   /* cat  2 MASTER     → slot  8 */
-  1,   /* cat  3 HARP SYNTH → slot  1 */
-  10,  /* cat  4 MIDI I/O   → slot 10 */
-  2,   /* cat  5 SEQ SETUP  → slot  2 */
-  3,   /* cat  6 SEQ MATRIX → slot  3 */
-  7,   /* cat  7 AUX FX     → slot  7 */
-  4,   /* cat  8 SEQ SYNTH  → slot  4 */
-  6,   /* cat  9 DRUM KIT   → slot  6 */
-  11,  /* cat 10 LASER SHOW → slot 11 */
-  12,  /* cat 11 TELEMETRY  → slot 12 */
-  13,  /* cat 12 RESET      → slot 13 */
-  5,   /* cat 13 SONG       → slot  5 */
-  14,  /* cat 14 SAVE       → slot 14 */
-  15   /* cat 15 LOAD       → slot 15 */
+/* category id → display slot. Hidden cats (7,8,10–13) use slot 0 (not in L1 scroll). */
+static constexpr int kCatToSlot[kL1CatCount] = {
+  0,  /* cat  0 HARP PLAY  → slot 0 */
+  6,  /* cat  1 D-BEAM     → slot 6 */
+  5,  /* cat  2 MIX LIVE   → slot 5 */
+  1,  /* cat  3 HARP TONE  → slot 1 */
+  8,  /* cat  4 SYSTEM     → slot 8 */
+  2,  /* cat  5 SEQ PLAY   → slot 2 */
+  3,  /* cat  6 SEQ MATRIX  → slot 3 */
+  0,  /* cat  7 AUX FX     — hidden (App / MIX LIVE) */
+  0,  /* cat  8 SEQ SYNTH  — hidden (App) */
+  4,  /* cat  9 DRUM       → slot 4 */
+  0,  /* cat 10 LASER SHOW — hidden (service) */
+  0,  /* cat 11 TELEMETRY  — via SYSTEM */
+  0,  /* cat 12 RESET      — via SYSTEM */
+  0,  /* cat 13 SONG       — hidden (App Bank Manager) */
+  7,  /* cat 14 PERF SLOT  → slot 7 */
+  0   /* cat 15 LOAD       — retired */
 };
-static_assert(
-  kL1Order[kCatToSlot[0]]  == 0  && kL1Order[kCatToSlot[1]]  == 1  &&
-  kL1Order[kCatToSlot[2]]  == 2  && kL1Order[kCatToSlot[3]]  == 3  &&
-  kL1Order[kCatToSlot[4]]  == 4  && kL1Order[kCatToSlot[5]]  == 5  &&
-  kL1Order[kCatToSlot[6]]  == 6  && kL1Order[kCatToSlot[7]]  == 7  &&
-  kL1Order[kCatToSlot[8]]  == 8  && kL1Order[kCatToSlot[9]]  == 9  &&
-  kL1Order[kCatToSlot[10]] == 10 && kL1Order[kCatToSlot[11]] == 11 &&
-  kL1Order[kCatToSlot[12]] == 12 && kL1Order[kCatToSlot[13]] == 13 &&
-  kL1Order[kCatToSlot[14]] == 14 && kL1Order[kCatToSlot[15]] == 15,
-  "kCatToSlot must be the exact inverse of kL1Order");
+static_assert(kL1Order[0] == 0 && kL1Order[1] == 3 && kL1Order[2] == 5 &&
+              kL1Order[3] == 6 && kL1Order[4] == 9 && kL1Order[5] == 2 &&
+              kL1Order[6] == 1 && kL1Order[7] == 14 && kL1Order[8] == 4,
+              "kL1Order v6.6 performance slots");
+static_assert(kCatToSlot[0] == 0 && kCatToSlot[1] == 6 && kCatToSlot[2] == 5 &&
+              kCatToSlot[3] == 1 && kCatToSlot[4] == 8 && kCatToSlot[5] == 2 &&
+              kCatToSlot[6] == 3 && kCatToSlot[9] == 4 && kCatToSlot[14] == 7,
+              "kCatToSlot inverse for visible L1 categories");
 
 static inline int l1SlotForCat(int cat) {
-  if (cat >= 0 && cat < kL1Count) return kCatToSlot[cat];
+  if (cat >= 0 && cat < kL1CatCount) return kCatToSlot[cat];
   return 0;
 }
 /* display slot → category id (wraps the slot first) */
 static inline int l1CatForSlot(int slot) {
-  slot = ((slot % kL1Count) + kL1Count) % kL1Count;
+  slot = ((slot % kL1MenuCount) + kL1MenuCount) % kL1MenuCount;
   return kL1Order[slot];
 }
 
@@ -443,7 +429,6 @@ void updateHardwareParameter(uint8_t l1, uint8_t l2, int16_t delta);
 void handleFactoryReset();
 void handleScopedReset(ResetScope scope);
 void handleScopedSave(ResetScope scope);  /* persist + reboot */
-void handleScopedLoad(ResetScope scope);  /* RAM reload, no reboot */
 void updateTaskStackStats();  /* sample uxTaskGetStackHighWaterMark → g_stackStats */
 void printInterfaceStats();   /* recurring Serial telemetry (stack + heap)       */
 

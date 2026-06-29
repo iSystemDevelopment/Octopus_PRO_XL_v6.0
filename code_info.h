@@ -16,11 +16,12 @@
  * VERSION IDENTIFIERS
  * ─────────────────────────────────────────────────────────────────────────────
  * SYSTEM_FW_VERSION "6.1.01"
- * SYSTEM_BUILD_DATE "2026-06-25"
+ * SYSTEM_BUILD_DATE "2026-06-25"   (firmware semver; companion App v6.6.01 shipped 2026-06-29)
  * SYSTEM_ARCH_TAG   "ESP32-S3-DUALCORE-IDF5-FREERTOS"
  * SETTINGS_VERSION  0x0616   (AllSettings wire-layout ID — not firmware semver)
  * NVS_NAMESPACE     "octopus" (legacy "octopus_v5" auto-migrated on first boot)
- * CMD_COUNT         196       (sysex indices 0-195; 194=AUX_SCENE 195=LINK_AUX)
+ * OCTOPUSAPP_VERSION "6.6.01" (browser companion — deploy OctopusApp.html)
+ * CMD_COUNT         201       (sysex indices 0-200; 196=DBEAM_AMP 199=SESSION_SLOT_ACK)
  *
  * Release history: CHANGELOG.md.  Architecture below describes v6.1.01 as-shipped.
  *
@@ -52,6 +53,13 @@
  *     clap = per-kit bandpass triple-burst with a noise layer; hats = per-kit
  *     6-osc metal amplitude.  Per-kit character tables live in globals.h
  *     (KIT_SNARE_*, KIT_CLAP_*, KIT_HAT_*); see §8.I.  No NVS layout change.
+ *   • [6.6.01 companion] D-BEAM amplitude telemetry — txDbeamAmpBlob() on 33 ms link
+ *     beacon + echoDbeamExprState(); device→App SX_SUB_DBEAM_AMP (0x06) blob and
+ *     CMD_DBEAM_AMP (196) fallback; App MIXER bargraph (sub 0x06 parser accepts 6-byte frames).
+ *   • [6.6.01 companion] recallHarpPatch() echoes CMD_H_PATCH; dashboard encoder browse
+ *     sends H_PATCH while turning; App harp patch dropdown stays in sync.
+ *   • [6.6.01 companion] App CLR sends CMD_CLR_PLOCKS after grid-row wipe so hardware
+ *     P-lock motion lanes clear with the active P-page grid edit.
  * ═════════════════════════════════════════════════════════════════════════════
  */
 #pragma once
@@ -63,44 +71,43 @@
 #define SYSTEM_ARCH_TAG   "ESP32-S3-DUALCORE-IDF5-FREERTOS"
 
 /* ═══════════════════════════════════════════════════════════════════════════
- * 1. CORE ASSIGNMENT
+ * 1. CORE ASSIGNMENT  [FROZEN — docs/task_schedule.md]
  *
- *   Authoritative spawn table: init_audio_system() in audio.cpp (do not duplicate
- *   priorities/stacks elsewhere — globals.h mirrors handles only).
+ *   Authoritative spawn table: init_audio_system() in audio.cpp only.
+ *   globals.h mirrors handles; do not edit priorities there alone.
  *
- *   Core 0 — DSP island (no galvo ISR, no laser SPI):
+ *   Core 0 — DSP island + UI + NVS save (no galvo ISR, no laser SPI):
  *     Priority  Task              Stack    Role
  *     ────────  ────────────────  ──────   ─────────────────────────────────
  *        24     AudioSynth        16384    I2S DMA + sequencer_render_block +
  *                                          harp/seq/drum synth + FX mix
  *        19     dbeam_adc          6144    ADC DMA + Kalman + expression env
  *        18     OledRender        16384    OLED @ ~30 Hz (33 ms), renderUIState
- *        17     ControlPoll        8192    encoder + buttons @ 200 Hz (5 ms) +
- *                                          stack telemetry + TX drain
+ *        17     ControlPoll        8192    encoder + buttons @ 200 Hz (5 ms)
+ *        16     NvsWorker         16384    NVS save handshake (muted window)
+ *                                          DO NOT move to Core 1 prio 4
  *
- *   Core 1 — Laser + USB I/O + NVS (galvo timing must not share Core 0):
+ *   Core 1 — Laser + high-priority USB I/O (no audio DSP):
  *     Priority  Task              Stack    Role
  *     ────────  ────────────────  ──────   ─────────────────────────────────
  *        24     LaserSweep         8192    galvo sweep, trigger detect, vibrato
- *        12     SeqSysexOut        4096    drains seq out-ring → STEP_SYNC /
- *                                          SONG_POS + sync supervisor (~600 ms)
- *         6     MidiUsbRx          8192    USB MIDI parser (App SysEx + play-in)
- *         3     NvsWorker         16384    NVS save on demand (16 KB — four blobs)
+ *        23     SeqSysexOut        4096    STEP_SYNC drain + sync supervisor +
+ *                                          33 ms BPM/PING/CPU beacon
+ *        22     MidiUsbRx          8192    USB MIDI parser (App SysEx + play-in)
+ *                                          DO NOT drop to prio 6 (zipper lag)
  *         1     loop()             —       Arduino fallback (safety only)
  *
  *   Priorities are per-core (AudioSynth 24 on Core 0 does not preempt LaserSweep
- *   24 on Core 1).  Encoder PCNT ISR is pinned to Core 1 (interface.cpp) to keep
- *   IRQ traffic off the audio island.
+ *   24 on Core 1).  Encoder PCNT ISR is pinned to Core 1 (interface.cpp).
  *
- *   Stack high-water marks are sampled every 5 s and printed to Serial (and the
- *   OLED STACK_STATS telemetry page) by control_surface_task — verify > 512 B
- *   free per task before shipping a build.
+ *   Validated v6.3: faster App knob/preset updates, ~10% lower CPU on heavy
+ *   patches, deeper sound, no note clicks.  Method locked — timing polish only
+ *   inside task bodies; schedule changes require full §5 checklist in doc.
  *
- *   WHY audio on Core 0: Sharing Core 1 with the laser timing machine would let
- *   FreeRTOS preemption jitter the galvo sweep → visible beam wobble.  Core 0 has
- *   no timing-critical galvo work; I2S DMA is paced by the IDF driver independently
- *   of the scheduler.  USB MIDI + NVS live on Core 1 beside the laser because they
- *   are latency-tolerant and breathe via vTaskDelay during laser dark phases.
+ *   WHY audio on Core 0: galvo timing on Core 1 must not share the I2S core.
+ *   WHY NvsWorker on Core 0 @ 16: flash writes off Core 1 USB path; still below
+ *   audio (24).  WHY MidiUsbRx/SeqSysexOut @ 22/23: App param echoes must not
+ *   queue behind laser dark-phase scheduling at low priority.
  *
  * ═══════════════════════════════════════════════════════════════════════════
  * 2. THREE-LEVEL PARAMETER MODEL (SSOT)
@@ -258,7 +265,7 @@
  *   102 LOAD_PAT_S   load factory synth pattern index into current bank/chain
  *   103 LOAD_PAT_D   load factory drum pattern index into current bank/chain
  *   104 TRIG_MODE    play/stop (>0=play, 0=stop)  [backward compat; use 153]
- *   105 STEP_SYNC    echo: current step index (0-based)
+ *   105 STEP_SYNC    FROZEN playhead authority: current step 0-based; latched mirror path
  *   106 H_PATCH      harpPatchIndex  recall userBank[] (clampRecallPatchIndex 0..191)
  *   107 S_PATCH      seqPatchIndex   recall seqBank[]  (same; 192..255 unused padding)
  *   108 H_SCALE      harpScaleIndex  0–15
@@ -326,8 +333,6 @@
  *   141 D_MUTE       mixDrumsMute     bool
  *   142 AUX_DLY_FB   masterAuxDlyFb   0–16383 (→ 0.0–0.95)
  *   143 AUX_REV_DMP  masterAuxRevDamp 0–16383 (→ 0.0–1.0)
- *   194 AUX_SCENE_IDX loadAuxScene(0–15) + echoAuxParams
- *   195 LINK_AUX_PRESET linkAuxToInsertPreset 0=OFF 16383=ON (default OFF)
  *   144 DRUM_WAVE    drumWaveIdx[ch]  v14: [ch:3][widx:5] (ch<<5 | widx&31)
  *   145 DB_ROUTE     currentDbeamRoute 0=OFF 1=Mod 2=Vol 3=Cut
  *       (D-BEAM Route lives in the D-BEAM menu; Target = Harp/Melody synth is a
@@ -340,10 +345,10 @@
  *   150 SONG_STEP    applySongStep(): [step:4][bank:4][chain:2][rpt:4]
  *   151 SONG_STEPS_N hwSongData[slot].numSteps  1–16
  *   152 SONG_POS     echo only: [(step<<8)|repeat] >> 1  (fits v14)
- *   153 TRANSPORT    RX (App→ESP, legacy/external): 0=stop 1=play 2=pause
- *                    3=rec_toggle.  ECHO (ESP→App): 0=stop 1=play 2=pause,
- *                    3=record ON, 4=record OFF (play + record are decoupled).
- *                    [v6.0] The App is a read-only reflector; it no longer sends.
+ *   153 TRANSPORT    Shared play/stop/rec state (FROZEN §5A). RX: App→ESP 0=stop 1=play
+ *                    2=pause 3=rec_toggle. ECHO: 0=stop 1=play 2=pause 3=rec ON 4=rec OFF.
+ *                    Hardware SCALE + App ▶/■ both valid; firmware authoritative; echoes
+ *                    converge both UIs. 600 ms supervisor heals dropped echoes.
  *   154 TRANSPORT_AVAIL  [v6.0 RETIRED] accepted-and-ignored (transport is always
  *                    hardware-owned).  Kept only for old App-build compatibility.
  *   155 APP_SYNC_REQ App requests full state echo (sendFullStateSync + echoSongState)
@@ -392,6 +397,20 @@
  *   193 SEQ_RESTART  App→device: seq_restart_rt() zeroes the step counter without
  *                    stopping playback (sent after App RND-H / RND-D so the new
  *                    random pattern is heard from beat 1; no-op when stopped).
+ *   194 AUX_SCENE_IDX loadAuxScene(0–15) + echoAuxParams
+ *   195 LINK_AUX_PRESET linkAuxToInsertPreset 0=OFF 16383=ON (default OFF)
+ *   196 DBEAM_AMP    device→App ONLY.  Live D-BEAM expression 0–16383 (post-curve).
+ *                    Pushed on 33 ms beacon (txDbeamAmpBlob) + D-BEAM state echo.
+ *                    Preferred wire: SX_SUB_DBEAM_AMP (0x06) 6-byte blob; CMD 196
+ *                    is numeric fallback.  txSysex dedup exempt.  Never RX.
+ *   199 SESSION_SLOT_ACK persist txn ACK (docs/link_contract.md)
+ *
+ *   ── SysEx sub-byte blobs (manufacturer 0x7C device→App, 0x7D App→device) ─
+ *   0x02 PATCH_BLOB     full preset transfer (harp/seq)
+ *   0x03 USR_SOUND_NAME user slot label (15 chars)
+ *   0x04 USR_PAT_NAME   user pattern label (15 chars)
+ *   0x05 GRID_ROW       lossless bank/row/page grid half-row (replaces 162/163)
+ *   0x06 DBEAM_AMP      { F0, 7C, 06, ampHi, ampLo, F7 } — live expression meter
  *
  * ═══════════════════════════════════════════════════════════════════════════
  * 4. ADDING A NEW GLOBAL PARAMETER (step-by-step)
@@ -417,51 +436,97 @@
  *     on the next boot before tasks start (laser beam recovery without UI hang).
  *   • [v6.2.09] All scoped RESET reboot — pend_rst at runtime, wipe at boot
  *     (MOTION/SETTINGS no longer use the NvsWorker path that could hang OLED).
- *   • Transport (play/stop/record/BPM) is always hardware-owned; the App only reflects it.
+ *   • Mirror architecture FROZEN (§5A): LINK / TRANSPORT / PLAYHEAD are independent;
+ *     method locked — docs/mirror_architecture.md; timing polish only.
+ *   • Task schedule FROZEN (§1): init_audio_system() in audio.cpp — docs/task_schedule.md;
+ *     NvsWorker Core 0 @ 16; MidiUsbRx Core 1 @ 22; SeqSysexOut Core 1 @ 23.
+ *   • DSP / sound engines FROZEN (§8): audio, effect, harp, seq, drum — docs/dsp_sound_frozen.md;
+ *     no optimization refactors; only recalculated touches with A/B on reference patch.
  *
  * ═══════════════════════════════════════════════════════════════════════════
  * 5. OCTOPUSAPP ↔ FIRMWARE SYNC PROTOCOL
  *
- *   CONNECTION SEQUENCE [v6.1]:
+ *   CANONICAL MIRROR SPEC (FROZEN — method locked, timing polish only):
+ *   docs/mirror_architecture.md  ·  docs/app_god_rules.md
+ *   Three independent axes — never merge or cross-gate:
+ *     (1) LINK      — session, badge, dual heartbeat (App PING + device BPM beacon)
+ *     (2) TRANSPORT — shared play/stop/rec; HW SCALE + App ▶/■ → CMD_TRANSPORT
+ *     (3) PLAYHEAD  — discrete STEP_SYNC → App compositor transform only
+ *
+ *   CONNECTION SEQUENCE [v6.3]:
  *   1. App opens Web MIDI; auto-selects Octopus USB port when detected.
- *   2. App pins Bank A / chain 0, then sends CMD_APP_SYNC_REQ=155.
+ *   2. App sends CMD_PING, pins Bank A / chain 0, then CMD_APP_SYNC_REQ=155.
  *   3. ESP calls sendFullStateSync() + echoSongState() → echoes every parameter,
  *      song program, the full 64-step grid, AND the transport snapshot (BPM, play,
  *      record 3/4, current step if playing) so the App mirror is complete at once.
- *   4. App becomes MASTER for all PARAMETER editing; the App is a read-only
- *      reflector for TRANSPORT (see below).
-   * 5. App PINGs every ~800 ms to hold the link "connected".
- *   6. Badge: Octopus ON / Octopus Off (two-state; no manual Connect/Disconnect).
- *   7. After SAVE / LOAD / RESET (hardware or App), the App reloads and re-imports
- *      via APP_SYNC_REQ on reconnect.  Reboot policy [v6.1.01]:
- *        • SAVE — waits for NvsWorker, then reboots (~700 ms).
- *        • FULL / BANKS+PATS RESET — reboots in ~150 ms (boot-time wipe).
- *        • All scoped RESET — reboot; wipe on next boot; App reloads after reconnect.
+ *   4. App becomes MASTER for all PARAMETER editing.
+ *   5. App PINGs every ~800 ms (startHeartbeat) to refresh lastWebSysexMs.
+ *   6. Device pushes CMD_BPM + CMD_PING beacon + CMD_CPU_LOAD every 33 ms
+ *      (LINK_FRAME_MS) on sequencer_background_task — play or stop.
+ *   7. Badge: orange "Octopus SYNC" during _syncBurstExpected import only;
+ *      green "Octopus ON" when _connOnline; grey Off otherwise.
+ *   8. After SAVE / RESET (hardware or App), reload policy unchanged [v6.1.01].
  *
  *   DISCONNECTION (heartbeat timeout):
- *   1. pollSyncHeartbeat() / isAppConnected() — no App SysEx for
- *      APP_HEARTBEAT_TIMEOUT_MS (4.5 s) → appSyncActive=false.
- *   2. ESP OLED returns to the full dashboard/menu; the hardware surface goes
- *      back to its normal (menu-navigating) role.  Transport ownership does NOT
- *      change — it was hardware-owned all along.
+ *   1. App: no device echo within stale window → _connOnline=false, badge Off.
+ *      Stale tolerance: 4.5 s LIVE; 60 s during import burst; extended during persist.
+ *   2. pollSyncHeartbeat() / isAppConnected() — no App SysEx for
+ *      APP_HEARTBEAT_TIMEOUT_MS (4.5 s) → appSyncActive=false for wire authority.
+ *   3. g_appSessionLatched is NOT cleared on inbound idle — mirror lane stays forced
+ *      via txSysex→txSysexForce while latched (passive hardware-only performance).
  *
- *   TRANSPORT OWNERSHIP  [v6.0 — hardware is the single owner]:
- *   • play/stop/record/BPM are ALWAYS driven by the physical surface.  While the
- *     App is connected (isAppConnected() ≡ appSyncActive after pollSyncHeartbeat),
- *     the buttons+encoder are locked to a fixed transport role in
- *     updateHardwareInterface():  SCALE single = play/stop, OC short = record-arm
- *     toggle, ENC turn = BPM.  ENC long is ignored (App owns SAVE/LOAD/RESET).
- *     Menu/param editing is suppressed.
- *   • The ESP echoes transport state on every change (seq_start/stop/pause →
- *     CMD_TRANSPORT 0/1/2; record → CMD_TRANSPORT 3=on/4=off; BPM → CMD_BPM) and
- *     a SYNC SUPERVISOR (sequencer_background_task, every 600 ms while connected —
- *     just above the txSysex 500 ms dedup window so an unchanged re-assert isn't
- *     swallowed) re-asserts BPM + play + record so a dropped echo self-heals.  The per-step
- *     STEP_SYNC stream (emitted while playing) drives the App playhead.  The same
- *     supervisor tick also pushes CMD_CPU_LOAD (164) — live audio-core load % for
- *     the App header readout.
- *   • The App's transport buttons are read-only reflectors — they send nothing.
- *   • CMD_TRANSPORT_AVAIL=154 is retired (accepted-and-ignored for old App builds).
+ * ═══════════════════════════════════════════════════════════════════════════
+ * 5A. MIRROR ARCHITECTURE — LINK · TRANSPORT · PLAYHEAD  [FROZEN v6.3]
+ *
+ *   POLICY: This is the ONLY valid implementation. Method refactoring is forbidden.
+ *   Allowed changes: timing constants only (intervals, timeouts, dedup, queue budget).
+ *   Full spec: docs/mirror_architecture.md
+ *
+ *   ── AXIS 1 — LINK ────────────────────────────────────────────────────────
+ *   • App→device: CMD_PING ~800 ms (startHeartbeat) — never stop during reboot wait
+ *     except when midiOut is physically gone.
+ *   • Device→App: CMD_BPM + CMD_PING (LINK_BEACON_HIGH) + CMD_CPU_LOAD @ 33 ms.
+ *   • Badge orange = import (_syncBurstExpected); green = _connOnline; not BPM-only.
+ *   • Rejected: _hwMirrorLive, link watch loops that repaint playhead, zombie green ON.
+ *
+ *   ── AXIS 2 — TRANSPORT (shared state, two switches one light) ───────────
+ *   • Hardware SCALE → seq_start/stop → CMD_TRANSPORT echo → App _setTransport().
+ *   • App ▶/■ → CMD_TRANSPORT 1/0 → firmware → echo → App _setTransport().
+ *   • Sync supervisor (600 ms, groovebox.cpp): re-assert play + record while
+ *     g_appSessionLatched || isAppConnected(). Period MUST stay > 500 ms dedup window.
+ *   • While App connected, hardware surface locked: SCALE=play/stop, OC short=record,
+ *     ENC turn=BPM (interface.cpp). App owns SAVE/LOAD/RESET via SysEx.
+ *   • Rejected: App transport hint-only; CMD_TRANSPORT_AVAIL; 33 ms supervisor.
+ *
+ *   ── AXIS 3 — PLAYHEAD (discrete compositor) ─────────────────────────────
+ *   • Authority: CMD_STEP_SYNC (105) per sequencer step — NOT BPM interpolation.
+ *   • Firmware: seq_ext_push(STEP_SYNC) → sequencer_background_task → txSysex;
+ *     latched session → txSysexForce (mirror class same as BPM).
+ *   • App priority RX: STEP_SYNC never enters _rxQueue; never gated on _syncBurstActive.
+ *   • App paint: _phLayout cache + _phApplyStep → translate3d only while playing.
+ *     Measure stage clientWidth/Height when stopped; invalidate on stop/rebuild/resize.
+ *     #seq-playhead-layer dedicated compositor layer.
+ *   • Rejected: per-cell classList playhead, getBoundingClientRect hot path, PLL glide,
+ *     blocking paint on import queue, _phGeom force remeasure on every step.
+ *
+ *   ── Firmware mirror lane (midi.cpp) ─────────────────────────────────────
+ *   • txSysex(): if g_appSessionLatched → txSysexForce (no isAppConnected gate).
+ *   • txSysexForce dedup exempt: STEP_SYNC, SONG_POS, BPM, PING, TRANSPORT,
+ *     TRIG_MODE, CPU_LOAD, persist ACKs.
+ *
+ *   ── App RX priority (_rxIsPriority) ─────────────────────────────────────
+ *   STEP_SYNC, TRANSPORT, TRIG_MODE, BPM, PING, CPU_LOAD, SONG_POS,
+ *   SESSION_SAVE, SESSION_SLOT_ACK, SCOPED_RESET → immediate applyIncoming().
+ *
+ * ═══════════════════════════════════════════════════════════════════════════
+ * 5B. LEGACY NOTES (still true, subordinate to §5A)
+ *
+ *   TRANSPORT SURFACE while App connected:
+ *   • Physical buttons+encoder locked to transport role in updateHardwareInterface().
+ *   • CMD_TRANSPORT 0/1/2 play/stop/pause; 3/4 record on/off; BPM → CMD_BPM.
+ *   • STEP_SYNC stream drives App playhead while playing.
+ *   • CMD_CPU_LOAD on 33 ms beacon path for App header telemetry.
+ *   • CMD_TRANSPORT_AVAIL=154 retired (accepted-and-ignored).
  *
  *   PATTERN LOAD RULES:
  *   • CMD_LOAD_PAT_S / CMD_LOAD_PAT_D load ONLY into current seqActiveBank/Chain.
@@ -483,6 +548,15 @@
  *   • App sends CMD_SESSION_SAVE=156 → firmware triggers NVS save handshake.
  *   • App sends CMD_SESSION_LOAD=157 → firmware loads NVS, syncs atomics,
  *     echoes full state back to App.  App resync is automatic.
+ *
+ *   OCTOPUSAPP v6.6.01 — DUAL-SHELL STUDIO + MIDI CONTROLLER (browser-only, shipped):
+ *   • DSP ENGINE: three-tab studio (INSTRUMENTS · MIXER · SEQUENCER) when ★ Octopus
+ *     USB + SysEx echo; auto-connect, APP_SYNC_REQ reconnect burst, connect-on-Play
+ *     modal, STUDIO mixing console, D-BEAM bargraph, WAVE 3-way sync, CLR→CLR_PLOCKS.
+ *   • MIDI CONTROLLER: pulpit layout when no ★ Octopus; badge MIDI OUT; HELP tab
+ *     documents Mac/Windows/DAW routing.  Octopus hard priority while ★ connected.
+ *   • Persistence: SESSION 1–16, PATIMAGE, sound-image cards (Octopus mode);
+ *     octopusapp_midi_session_v1 (MIDI mode).  User docs: user_manual.md §9.3–9.4.
  *
  *   OCTOPUSAPP v6.2.00 — UNIVERSAL MIDI CONTROLLER MODE (browser-only, shipped):
  *   • When no ★ Octopus USB port + SysEx echo: App enters MIDI OUT mode (badge).
@@ -550,6 +624,13 @@
  *
  * ═══════════════════════════════════════════════════════════════════════════
  * 8. REAL-TIME AUDIO ROBUSTNESS  (live-performance guarantees)
+ *
+ *   DSP / SOUND POLICY [FROZEN — docs/dsp_sound_frozen.md]:
+ *   The harp, seq, drum, and FX engines are NOT optimization targets.  Sound quality
+ *   is validated on hardware (full matrix, LFO-pitch, glass/accordion patches).
+ *   Allowed: surgical recalculated touches (one coefficient/LUT/send) with A/B listen.
+ *   Forbidden: hot-path refactors, algorithm swaps, SIMD/loop “optimizations”, FX
+ *   topology changes.  Performance work belongs in task schedule / I/O only (§1).
  *
  *   Target scenario: laser-harp + sequencer melody + drum patterns + inserts +
  *   aux reverb/delay + master FX, all running at once, BPM rock-steady, no

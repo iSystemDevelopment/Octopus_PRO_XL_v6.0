@@ -627,10 +627,10 @@ inline TaskHandle_t hAudioTask = nullptr;   /* Core 0, prio 24, stack 16384 */
 inline TaskHandle_t hDBeamTask = nullptr;   /* Core 0, prio 19, stack  6144 */
 inline TaskHandle_t hDisplayTask = nullptr; /* Core 0, prio 18, stack 16384 */
 inline TaskHandle_t hControlTask = nullptr; /* Core 0, prio 17, stack  8192 */
+inline TaskHandle_t hNvsTask = nullptr;     /* Core 0, prio 16, stack 16384 — FROZEN */
 inline TaskHandle_t hLaserTask = nullptr;   /* Core 1, prio 24, stack  8192 */
-inline TaskHandle_t hSeqBgTask = nullptr;   /* Core 1, prio 12, stack  4096 */
-inline TaskHandle_t hMidiTask = nullptr;    /* Core 1, prio  6, stack  8192 */
-inline TaskHandle_t hNvsTask = nullptr;     /* Core 1, prio  3, stack 16384 */
+inline TaskHandle_t hSeqBgTask = nullptr;   /* Core 1, prio 23, stack  4096 — FROZEN */
+inline TaskHandle_t hMidiTask = nullptr;    /* Core 1, prio 22, stack  8192 — FROZEN */
 
 /* ═══════════════════════════════════════════════════════════════════════════
  * SECTION 7 — CORE RUNTIME MODE & UI STATE
@@ -1002,6 +1002,10 @@ inline std::atomic<bool>          confirmOpen{ false };
 inline std::atomic<uint8_t>       confirmSel{ 0 };          /* 0 = NO, 1 = YES   */
 inline std::atomic<ConfirmAction> confirmActionId{ ConfirmAction::NONE };
 inline std::atomic<uint8_t>       confirmArg{ 0 };          /* per-action payload (e.g. scope) */
+/* v6.6 SYSTEM hub: drill into MIDI I/O sub-list from L1 SYSTEM (cat 4). */
+inline std::atomic<bool> menuSystemMidiSub{ false };
+/* v6.6 SYSTEM hub: RESET L2 entered from SYSTEM → back returns to hub. */
+inline std::atomic<bool> menuResetFromSystem{ false };
 
 /* Raise the confirm dialog for a given action + payload (defaults cursor to NO). */
 inline void openConfirm(ConfirmAction a, uint8_t arg = 0) {
@@ -1107,16 +1111,16 @@ static inline void recoverWedgedPersistFlags() {
   }
 }
 
-/** Arm a scoped NVS save. scope: 0=FULL 1=BANKS_PATTERNS 2=MOTION 3=SETTINGS. */
-static inline bool requestScopedSave(uint8_t scope) {
+/** Arm a scoped NVS save. scope: 0=FULL 1=BANKS_PATTERNS 2=MOTION 3=SETTINGS.
+ *  rebootAfter: true for hardware SAVE menu (cold boot beam recovery); App passes false. */
+static inline bool requestScopedSave(uint8_t scope, bool rebootAfter = true) {
   recoverWedgedPersistFlags();
   if (g_saveRequest.load(std::memory_order_acquire) ||
       g_saveArmed.load(std::memory_order_acquire))
     return false;
   g_persistAckCmd.store(156, std::memory_order_relaxed);
   g_persistScope.store(scope & 3u, std::memory_order_release);
-  /* Reboot after successful save — beam-detect hardware recovers cleanly on cold boot. */
-  g_restartAfterSave.store(true, std::memory_order_release);
+  g_restartAfterSave.store(rebootAfter, std::memory_order_release);
   g_saveRequest.store(true, std::memory_order_release);
   displayDirty.store(true, std::memory_order_relaxed);
   return true;

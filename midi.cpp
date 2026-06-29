@@ -8,7 +8,7 @@
  * ═════════════════════════════════════════════════════════════════════════════
  * midi.cpp — v6.1.01  USB MIDI RX/TX + OCTOPUS SYSEX DISPATCH
  *
- * midi_usb_event_task (Core 1, prio 6): parses USB MIDI stream, routes App SysEx
+ * midi_usb_event_task (Core 1, prio 22 — FROZEN): parses USB MIDI stream, routes App SysEx
  * (0x7D) to handleSysexCommand() and channel voice to internal engines.
  * txSysex() / sendFullStateSync() echo device state on 0x7C (dedup + rate limit).
  * Transport play-in note/CC paths call groovebox.h / harp.h directly.
@@ -19,6 +19,7 @@
 #include "dbeam.h"
 #include "groovebox.h"
 #include "patches.h"
+#include "link.h"
 #include "settings.h"     /* applyHarpParam, recallHarpPatch, …    */
 
 static uint32_t s_last_rx_ms[256]  = {};
@@ -26,8 +27,11 @@ static uint16_t s_last_rx_val[256] = {};
 static uint32_t s_last_tx_ms[256]  = {};
 static uint16_t s_last_tx_val[256] = {};
 
-/** App encodes persist scope as v14 = ResetScope + 1 (1..4); 0 / 16383 are special. */
+/** App encodes persist: low nibble = ResetScope+1 (1..4); bits 4..15 = txn_id. */
 static ResetScope decodePersistScopeV14(uint16_t v14) {
+  const uint8_t lo = (uint8_t)(v14 & 0xFu);
+  if (lo >= 1u && lo <= 4u)
+    return (ResetScope)(lo - 1u);
   if (v14 >= 1u && v14 <= 4u)
     return (ResetScope)(v14 - 1u);
   return (ResetScope)(v14 & 3u);
@@ -52,19 +56,37 @@ static void IRAM_ATTR midiEmitRaw(const uint8_t* msg, uint8_t n) {
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
- * TX helpers
+ * TX helpers — mirror lane (FROZEN: docs/mirror_architecture.md §1.4, §3.2)
+ *
+ * g_appSessionLatched: STEP_SYNC / TRANSPORT / SONG_POS use txSysexForce path
+ * even when isAppConnected() would be false (passive hardware-only performance).
+ * Method locked — timing/dedup polish only.
  * ─────────────────────────────────────────────────────────────────────────────*/
 void txSysex(uint8_t cmd, uint16_t v14bit) {
+  /* Latched session: mirror playhead/transport like BPM — not gated on recent
+   * inbound App SysEx (passive hardware-only performance must still see echoes). */
+  if (g_appSessionLatched.load(std::memory_order_acquire)) {
+    txSysexForce(cmd, v14bit);
+    return;
+  }
   if (!isAppConnected()) return;
+  txSysexForce(cmd, v14bit);
+}
+
+void txSysexForce(uint8_t cmd, uint16_t v14bit) {
 
   if (v14bit > 16383u) v14bit = 16383u;
 
   const uint32_t now = millis();
-  if (cmd != CMD_STEP_SYNC && cmd != CMD_SONG_POS) {
+  if (cmd != CMD_STEP_SYNC && cmd != CMD_SONG_POS && cmd != CMD_BPM && cmd != CMD_PING
+      && cmd != CMD_TRANSPORT && cmd != CMD_TRIG_MODE && cmd != CMD_CPU_LOAD
+      && cmd != CMD_DBEAM_AMP
+      && cmd != CMD_SESSION_SLOT_ACK && cmd != CMD_SESSION_SAVE) {
     if (s_last_tx_val[cmd] == v14bit && (now - s_last_tx_ms[cmd] < 500u)) return;
   }
-  /* Rate limiting for fast-changing parameter groups */
-  if (cmd < 90u || (cmd >= 112u && cmd <= 120u)) {
+  /* Rate limiting for fast-changing parameter groups (never throttle link heartbeat). */
+  if (cmd != CMD_BPM && cmd != CMD_PING && cmd != CMD_DBEAM_AMP
+      && (cmd < 90u || (cmd >= 112u && cmd <= 120u))) {
     if (now - s_last_tx_ms[cmd] < 10u) return;
   }
   
@@ -123,6 +145,17 @@ void txGridRowBlob(uint8_t bank, uint8_t row, uint8_t page, uint8_t lo, uint8_t 
     (uint8_t)(hi & 0x0Fu), (uint8_t)((hi >> 4) & 0x0Fu),
     0xF7u
   };
+  midiEmitRaw(f, sizeof(f));
+  midiUnlock();
+}
+
+/* Device→App: live D-BEAM bargraph — lossless sub 0x06 (OctopusApp _parseDeviceSysex). */
+void txDbeamAmpBlob(uint16_t amp) {
+  if (amp > 16383u) amp = 16383u;
+  if (!midiLock()) return;
+  const uint8_t hi = (uint8_t)((amp >> 7) & 0x7Fu);
+  const uint8_t lo = (uint8_t)(amp & 0x7Fu);
+  const uint8_t f[6] = { 0xF0u, 0x7Cu, SX_SUB_DBEAM_AMP, hi, lo, 0xF7u };
   midiEmitRaw(f, sizeof(f));
   midiUnlock();
 }
@@ -564,7 +597,10 @@ void handleSysexCommand(uint8_t cmd, uint16_t v14) {
     /* ── System ──────────────────────────────────────────────────────────── */
     case CMD_FETCH:     sendFullStateSync(); break;
     case CMD_HARD_SAVE: requestSessionSave(); break;
-    case CMD_PING:      txSysex(CMD_PING, 1u); break;
+    case CMD_PING:
+      linkNoteAppPing(v14);
+      txSysex(CMD_PING, linkEncodePong());
+      break;
 
     case CMD_LSR_SHOW:  laserShowMode .store(v14 > 0u); break;
     case CMD_MIDI_HUE:  midiHueControl.store(v14 > 0u); break;
@@ -632,19 +668,31 @@ void handleSysexCommand(uint8_t cmd, uint16_t v14) {
       break;
     case CMD_APP_SYNC_REQ:
       sendFullStateSync(); echoSongState();
+      linkOnAppSyncComplete();
       txSysex(CMD_APP_SYNC_REQ, 16383u); break;
     case CMD_SESSION_SAVE:
       if (v14 == 16383u) break;
       recoverWedgedPersistFlags();
-      requestScopedSave((uint8_t)decodePersistScopeV14(v14));
-      settings_mark_dirty(); break;
+      {
+        const uint16_t txn = decodePersistTxnV14(v14);
+        const ResetScope scope = decodePersistScopeV14(v14);
+        /* App save: no reboot — keep USB link alive (hardware menu still reboots). */
+        if (!requestScopedSave((uint8_t)scope, false)) {
+          txSysexForce(CMD_SESSION_SLOT_ACK,
+                       linkEncodePersistAck(PersistAckPhase::FAIL, txn));
+          txSysexForce(CMD_SESSION_SAVE, 0u);
+          break;
+        }
+        linkBeginPersist(txn);
+        settings_mark_dirty();
+      }
+      break;
     case CMD_SESSION_LOAD:
-      if (v14 == 16383u) break;
-      settings_load_scoped(decodePersistScopeV14(v14));
-      sendFullStateSync(); echoSongState();
-      txSysex(CMD_SESSION_LOAD, 16383u); break;
+      /* Retired — NVS restores at boot; scoped LOAD removed from App + hardware menu. */
+      break;
     case CMD_SCOPED_RESET:
       if (v14 == 16383u) break;
+      linkBeginPersist(decodePersistTxnV14(v14));
       handleScopedReset(decodePersistScopeV14(v14)); break;
     case CMD_SEQ_CLEAR:
       if (v14 == 16383u) break;

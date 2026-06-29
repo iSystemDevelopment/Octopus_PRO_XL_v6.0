@@ -1,6 +1,6 @@
 # OctopusApp — Universal MIDI Controller Mode
 
-**Status:** **Shipped** · **OctopusApp v6.2.07** (browser-only; pairs with firmware **6.1.01**)
+**Status:** **Shipped** · **OctopusApp v6.6.01** (browser-only; pairs with firmware **6.1.01**)
 
 Authoritative build plan for the dual-mode App: **Octopus linked** (current v6.1 behaviour) vs **MIDI controller** (standalone sequencer + CC/PC to any USB MIDI interface).
 
@@ -16,7 +16,7 @@ Authoritative build plan for the dual-mode App: **Octopus linked** (current v6.1
 | **INSTRUMENTS (MIDI)** | Seq synth panel + drum machine canvas (not studio mixer / laser / D-BEAM) |
 | **Transport** | App-owned play/stop/BPM + local step clock; optional MIDI Start/Stop/Clock |
 | **Persistence** | Pattern + MIDI map in `localStorage` only — never Octopus NVS |
-| **Graphics** | Reuse `#seq-playhead` GPU layer; drum scope compositor unchanged |
+| Graphics | `#midi-seq-playhead` GPU layer (isolated from DSP); drum scope compositor unchanged |
 
 ---
 
@@ -80,10 +80,9 @@ Octopus is the flagship: **while any live ★ Octopus port exists, the App is lo
 
 | Tab | View ID | Content |
 |-----|---------|---------|
-| INSTRUMENTS | `#view-midi-inst` | Seq synth MIDI panel + seq activity canvas · drum machine + drum scope canvas |
-| SEQUENCER | `#view-seq` (shared) | Same grid; local clock drives playhead |
+| SEQUENCER (pulpit) | `#view-midi-seq` | 33% grid + playhead · 67% instruments (24×CC + drum map) |
 
-**CSS:** `<body data-app-mode="octopus|midi">` — hide `.octopus-only` / `.midi-only` panels.
+**CSS:** `<body data-app-mode="dsp|midi|disconnected">` — `.dsp-only` / `.midi-only` panels.
 
 **Header (MIDI):** port dropdown, badge **MIDI OUT**, active transport, editable BPM, CPY/PST/RND/CLR, HELP.  
 **Hidden:** SAVE, LOAD, RESET, SLOTS, DBEAM, CPU, master FX, Octopus persist modals.
@@ -94,8 +93,8 @@ Octopus is the flagship: **while any live ★ Octopus port exists, the App is lo
 
 | Source | Outbound |
 |--------|----------|
-| Grid rows 0–7 | Note on/off on **Melody channel** (scale + octave + transpose) |
-| Grid rows 8–15 | Note on/off on **Drum channel** (GM map: 36 kick, 38 snare, …) |
+| Grid rows 0–7 | Note on/off on **Melody channel** (1–16, default 1) |
+| Grid rows 8–15 | Note on/off on **Drum channel** (1–16, default 10 GM) |
 | INSTRUMENTS PC | `0xC0` + program per engine |
 | INSTRUMENTS CC knobs | `0xB0` + CC + value (defaults: 7 vol, 74 cutoff, 71 res, 1 mod…) |
 | Play | Local clock + optional `0xFA` Start |
@@ -329,7 +328,7 @@ Shared by **Octopus linked** and **MIDI Controller** modes unless noted.
 
 | Topic | Detail |
 |-------|--------|
-| **Playhead** | `#seq-playhead-layer` — compositor-only cyan bar; no hover stutter; Octopus = STEP_SYNC, MIDI = local clock |
+| **Playhead** | `#midi-seq-playhead-layer` — same compositor policy as DSP; MIDI = local `_midiClockTick` (see [playhead_policy_audit.md](playhead_policy_audit.md)) |
 | **P1–P4** | 16-step edit windows within active bank; always clickable; beyond-LEN steps dimmed |
 | **User lock** | Manual P click locks grid view; playhead still tracks — auto page-follow disabled until you change P |
 | **CPY / PST** | Active P page only (16 columns) |
@@ -372,4 +371,4 @@ Reset/save reboot behaviour by scope:
 
 ---
 
-*© DIODAC ELECTRONICS / iSystem — OctopusApp v6.2.07 · firmware v6.1.01 — MIDI Controller mode (shipped)*
+*© DIODAC ELECTRONICS / iSystem — OctopusApp v6.6.01 · firmware v6.1.01 — MIDI Controller mode (shipped)*

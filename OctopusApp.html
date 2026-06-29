@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <!--
   ═════════════════════════════════════════════════════════════════════════════
-  OctopusApp v6.6.00 — Octopus PRO XL Web MIDI Console
+  OctopusApp v6.6.01 — Octopus PRO XL Web MIDI Console
   © 2026 DIODAC ELECTRONICS / iSystem. All Rights Reserved.
   *
   * PROPRIETARY AND CONFIDENTIAL. Unauthorized copying, distribution, modification,
@@ -16,10 +16,10 @@
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <title>OctopusApp v6.6.00 — OCTOPUS PRO XL</title>
+    <title>OctopusApp v6.6.01 — OCTOPUS PRO XL</title>
     <meta name="description" content="OctopusApp — zero-install Web MIDI console for Octopus PRO XL. 64-step sequencer, Universal MIDI Controller mode, song chains. Free in Chrome or Edge at octopus.isystem.app.">
     <meta name="copyright" content="© 2026 DIODAC ELECTRONICS / iSystem. All Rights Reserved. Proprietary and confidential.">
     <meta name="author" content="DIODAC ELECTRONICS / iSystem">
@@ -69,6 +69,7 @@
 
         * {
             box-sizing: border-box;
+            -webkit-user-select: none;
             user-select: none;
             margin: 0;
             padding: 0
@@ -76,18 +77,25 @@
 
         /* Re-enable text selection/editing for all input controls — global none blocks typing */
         input, textarea, select {
-            user-select: text;
             -webkit-user-select: text;
+            user-select: text;
             cursor: text
         }
 
+        input[type="number"]::-webkit-inner-spin-button,
+        input[type="number"]::-webkit-outer-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
         input[type="number"] {
-            -moz-appearance: textfield
+            -moz-appearance: textfield;
+            appearance: textfield
         }
 
         html {
             height: 100%;
-            -webkit-text-size-adjust: 100%
+            -webkit-text-size-adjust: 100%;
+            text-size-adjust: 100%
         }
 
         body {
@@ -115,13 +123,11 @@
 
         @media (max-width: 900px) {
             header.master-bar {
-                height: 44px;
                 padding: 0 6px
             }
 
             .view-tab {
-                padding: 0 8px;
-                font-size: 8px
+                padding: 0;
             }
 
             .btn {
@@ -139,7 +145,7 @@
             :root { --hdr-gap: 3px }
 
             header.master-bar {
-                height: 48px;
+                height: 28px;
                 padding: 0 4px;
                 gap: 4px
             }
@@ -147,7 +153,7 @@
             .view-tab {
                 padding: 0 6px;
                 font-size: 7.5px;
-                min-height: 32px
+                min-height: 22px
             }
 
             .btn {
@@ -210,7 +216,7 @@
 
             .view-tab-tip,
             .view-tab-help {
-                padding: 0 4px
+                padding: 0;
             }
         }
 
@@ -247,7 +253,7 @@
             background: #000;
             border-bottom: 1px solid var(--border-dim);
             padding: 0 8px;
-            height: 40px;
+            height: 28px;
             flex-shrink: 0;
             gap: 6px;
             overflow-x: auto;
@@ -276,10 +282,31 @@
             flex-shrink: 0
         }
 
+        /* Elastic spacer in BOTH shells — pins the connector group to the right edge
+         * so the bar lays out as one justified row instead of scrolling off-page. */
         .master-bar-spacer {
-            flex: 0 0 var(--hdr-gap);
+            flex: 1 1 auto;
             min-width: var(--hdr-gap)
         }
+
+        /* Header control vertical rhythm — one shared baseline height for every
+         * item in the master bar (scoped to header; never touches app-wide .btn). */
+        header.master-bar .btn,
+        header.master-bar .display-box,
+        header.master-bar .bpm-glow-box,
+        header.master-bar .ui-stepper,
+        header.master-bar .cpu-box,
+        header.master-bar .conn-badge {
+            height: 22px;
+            min-height: 22px;
+            box-sizing: border-box
+        }
+
+        header.master-bar .btn { align-self: center }
+
+        /* Mid groups may shrink (not the brand/connector) so the row fits page width */
+        header.master-bar .master-bar-mid { min-width: 0; flex-shrink: 1 }
+        header.master-bar .master-bar-mid .header-group { flex-shrink: 0; min-width: 0 }
 
         .brand-mark-link {
             display: flex;
@@ -299,24 +326,17 @@
 
         .master-tabs.view-tabs {
             height: 100%;
-            border-left: 1px solid #1a1a26;
             padding-left: 6px;
-            gap: 2px
+            gap: 6px
         }
 
         .view-tab.view-tab-tip {
             color: #5a6a88;
             text-decoration: none;
-            padding: 0 10px;
-            border-left: 1px solid #1a1a26;
-            margin-left: 2px
         }
 
         .view-tab.view-tab-help {
             color: #5a5a72;
-            margin-left: 0;
-            padding: 0 10px;
-            border-left: 1px solid #1a1a26
         }
 
         .header-connector {
@@ -361,17 +381,27 @@
         }
 
         .ui-stepper-btn {
-            width: 18px;
-            min-width: 18px;
+            width: 16px;
+            min-width: 16px;
             padding: 0;
             justify-content: center;
             font-size: 10px;
-            height: 18px
+            height: 16px;
+            border: none !important;
+            background: transparent !important;
+            box-shadow: none !important;
+            color: inherit;
+            opacity: 0.7;
         }
 
-        .ui-stepper.oct-cyan .ui-stepper-val { color: var(--cyan) }
-        .ui-stepper.oct-pink .ui-stepper-val { color: var(--pink) }
-        .ui-stepper.trn-purple .ui-stepper-val { color: var(--purple) }
+        .ui-stepper.oct-cyan .ui-stepper-val, .ui-stepper.oct-cyan .ui-stepper-lbl, .ui-stepper.oct-cyan .seq-bar-lbl { color: var(--cyan); text-shadow: 0 0 6px rgba(6, 182, 212, 0.6); }
+        .ui-stepper.oct-pink .ui-stepper-val, .ui-stepper.oct-pink .ui-stepper-lbl, .ui-stepper.oct-pink .seq-bar-lbl { color: var(--pink); text-shadow: 0 0 6px rgba(236, 72, 153, 0.6); }
+        .ui-stepper.trn-purple .ui-stepper-val, .ui-stepper.trn-purple .ui-stepper-lbl, .ui-stepper.trn-purple .seq-bar-lbl { color: var(--purple); text-shadow: 0 0 6px rgba(168, 85, 247, 0.6); }
+
+        .ui-stepper.oct-cyan .ui-stepper-val, .ui-stepper.oct-cyan .ui-stepper-lbl, .ui-stepper.midi-oct-cyan .ui-stepper-val, .ui-stepper.midi-oct-cyan .ui-stepper-lbl { color: var(--cyan); text-shadow: 0 0 6px rgba(6, 182, 212, 0.6); }
+        .ui-stepper.oct-pink .ui-stepper-val, .ui-stepper.oct-pink .ui-stepper-lbl, .ui-stepper.midi-oct-pink .ui-stepper-val, .ui-stepper.midi-oct-pink .ui-stepper-lbl { color: var(--pink); text-shadow: 0 0 6px rgba(236, 72, 153, 0.6); }
+        .ui-stepper.trn-purple .ui-stepper-val, .ui-stepper.trn-purple .ui-stepper-lbl, .ui-stepper.midi-trn-purple .ui-stepper-val, .ui-stepper.midi-trn-purple .ui-stepper-lbl { color: var(--purple); text-shadow: 0 0 6px rgba(168, 85, 247, 0.6); }
+        .ui-stepper.midi-oct-orange .ui-stepper-val, .ui-stepper.midi-oct-orange .ui-stepper-lbl { color: var(--orange); text-shadow: 0 0 6px rgba(249, 115, 22, 0.6); }
 
         /* Global BPM readout — replaces header DBEAM slot */
         .bpm-glow-box {
@@ -409,6 +439,64 @@
             text-shadow: 0 0 6px rgba(249, 115, 22, 0.6)
         }
 
+        .glow-box {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 0 8px;
+            height: 24px;
+            border-radius: 5px;
+            box-sizing: border-box;
+        }
+        .glow-lbl {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 8px;
+            font-weight: 800;
+            letter-spacing: 0.08em;
+        }
+        .glow-box .ui-stepper-val {
+            min-width: 28px;
+            max-width: 28px;
+            width: 28px;
+            font-size: 12px !important;
+            font-weight: 800;
+            text-align: center;
+            font-variant-numeric: tabular-nums;
+            display: inline-block;
+        }
+        .glow-box .ui-stepper-btn {
+            min-width: 16px;
+            padding: 0;
+            height: 16px;
+            font-size: 9px;
+            border: none !important;
+            background: transparent !important;
+            box-shadow: none !important;
+        }
+        .glow-cyan {
+            border: 1px solid rgba(0, 255, 255, 0.45);
+            background: linear-gradient(180deg, rgba(0, 255, 255, 0.12), rgba(0, 255, 255, 0.03));
+            box-shadow: 0 0 10px rgba(0, 255, 255, 0.25), inset 0 0 8px rgba(0, 255, 255, 0.08);
+        }
+        .glow-cyan .glow-lbl { color: var(--cyan); text-shadow: 0 0 8px rgba(0, 255, 255, 0.85); }
+        .glow-cyan .ui-stepper-val { color: var(--cyan) !important; text-shadow: 0 0 6px rgba(0, 255, 255, 0.6); }
+
+        .glow-pink {
+            border: 1px solid rgba(255, 0, 255, 0.45);
+            background: linear-gradient(180deg, rgba(255, 0, 255, 0.12), rgba(255, 0, 255, 0.03));
+            box-shadow: 0 0 10px rgba(255, 0, 255, 0.25), inset 0 0 8px rgba(255, 0, 255, 0.08);
+        }
+        .glow-pink .glow-lbl { color: var(--pink); text-shadow: 0 0 8px rgba(255, 0, 255, 0.85); }
+        .glow-pink .ui-stepper-val { color: var(--pink) !important; text-shadow: 0 0 6px rgba(255, 0, 255, 0.6); }
+
+        .glow-purple {
+            border: 1px solid rgba(168, 85, 247, 0.45);
+            background: linear-gradient(180deg, rgba(168, 85, 247, 0.12), rgba(168, 85, 247, 0.03));
+            box-shadow: 0 0 10px rgba(168, 85, 247, 0.25), inset 0 0 8px rgba(168, 85, 247, 0.08);
+        }
+        .glow-purple .glow-lbl { color: var(--purple); text-shadow: 0 0 8px rgba(168, 85, 247, 0.85); }
+        .glow-purple .ui-stepper-val { color: var(--purple) !important; text-shadow: 0 0 6px rgba(168, 85, 247, 0.6); }
+
         .sound-image-pick {
             width: 108px;
             height: 22px;
@@ -422,6 +510,8 @@
         }
 
         .brand-mark {
+            display: flex;
+            align-items: center;
             font-family: 'Orbitron', sans-serif;
             font-size: 11px;
             color: #fff;
@@ -527,17 +617,21 @@
         body[data-app-mode="midi"] #midiBpm {
             cursor: text !important;
             opacity: 1 !important;
-            width: 36px !important;
-            min-width: 36px;
+            width: 48px !important;
+            min-width: 48px;
             font-variant-numeric: tabular-nums;
-            -moz-appearance: textfield
+            -moz-appearance: textfield;
+            appearance: textfield
         }
 
         body[data-app-mode="midi"] .bpm-glow-box .ui-stepper-btn {
-            min-width: 18px;
-            padding: 0 4px;
-            height: 18px;
-            font-size: 9px
+            min-width: 16px;
+            padding: 0;
+            height: 16px;
+            font-size: 9px;
+            border: none !important;
+            background: transparent !important;
+            box-shadow: none !important;
         }
 
         body[data-app-mode="midi"] .bpm-glow-box .ui-stepper-val {
@@ -661,8 +755,8 @@
         #midi-seq-knobs .midi-knob-val {
             justify-self: end;
             width: 100%;
-            max-width: 36px;
-            min-width: 28px;
+            max-width: 48px;
+            min-width: 48px;
             height: 14px;
             line-height: 12px;
             font-size: 7px;
@@ -774,7 +868,7 @@
         }
 
         .midi-drum-note-row span {
-            width: 34px;
+            width: 32px;
             flex-shrink: 0;
             color: var(--orange);
             font-family: 'Orbitron', sans-serif;
@@ -782,15 +876,30 @@
             letter-spacing: 0.3px
         }
 
-        .midi-drum-note-row input {
-            width: 40px;
+        /* Note input — sized so all 3 digits ("127") show, spinners suppressed */
+        .midi-drum-note-row input.midi-drum-note-in {
+            width: 48px;
+            flex: 0 0 48px;
             height: 18px;
             min-height: 18px;
             max-height: 18px;
-            font-size: 8px;
-            padding: 0 4px;
+            font-size: 9px;
+            padding: 0 3px;
+            text-align: center;
             color: var(--orange) !important;
+            font-variant-numeric: tabular-nums;
             box-sizing: border-box
+        }
+
+        .midi-drum-note-row input.midi-drum-note-in::-webkit-inner-spin-button,
+        .midi-drum-note-row input.midi-drum-note-in::-webkit-outer-spin-button {
+            -webkit-appearance: none;
+            margin: 0
+        }
+
+        .midi-drum-note-row input.midi-drum-note-in {
+            -moz-appearance: textfield;
+            appearance: textfield
         }
 
         .midi-inst-panel .row-header label {
@@ -817,8 +926,8 @@
             display: none;
             flex-direction: column;
             flex-shrink: 0;
-            background: linear-gradient(180deg, #06060e 0%, #040408 100%);
-            border-bottom: 1px solid #1a1a29;
+            background: #000;
+            border-bottom: 1px solid var(--border-dim);
             width: 100%
         }
 
@@ -831,7 +940,9 @@
             justify-content: flex-start;
             width: 100%;
             padding-right: 10px;
-            box-sizing: border-box
+            box-sizing: border-box;
+            max-width: var(--content-max);
+            margin: 0 auto;
         }
 
         body[data-app-mode="midi"] .master-bar-left {
@@ -858,27 +969,22 @@
             margin-left: auto
         }
 
-        body[data-app-mode="midi"] .midi-hdr-stack,
-        body[data-app-mode="midi"] #view-midi-seq {
-            padding-left: 8px;
-            padding-right: 10px;
-            box-sizing: border-box
-        }
-
         body[data-app-mode="midi"] .midi-hdr-row {
-            padding-right: 10px
+            /* removed padding-right to align with canvas edges */
         }
 
         body[data-app-mode="midi"] .midi-hdr-row.midi-hdr-utility {
-            overflow: hidden;
             flex-wrap: nowrap !important;
             row-gap: 0;
             gap: 4px;
-            max-height: 28px;
             min-height: 28px;
             align-items: center;
             scrollbar-width: none;
-            transform-origin: left center
+            transform-origin: left center;
+            max-width: var(--content-max);
+            width: 100%;
+            overflow-x: auto;
+            overflow-y: hidden;
         }
 
         body[data-app-mode="midi"] .midi-hdr-row.midi-hdr-utility::-webkit-scrollbar {
@@ -886,14 +992,22 @@
         }
 
         body[data-app-mode="midi"] .midi-hdr-utility .midi-hdr-group {
-            flex: 1 1 0;
+            flex: 0 1 auto;
             min-width: 0;
             gap: 3px;
             padding: 1px 5px;
-            overflow: hidden;
             flex-wrap: nowrap;
             white-space: nowrap;
             max-height: 26px
+        }
+
+        /* Shrink steppers inside MIDI utility groups so they fit in equal 25% columns */
+        body[data-app-mode="midi"] .midi-hdr-utility .ui-stepper {
+            padding: 0 2px;
+            gap: 1px;
+        }
+        body[data-app-mode="midi"] .midi-hdr-utility .ui-stepper-val {
+            min-width: 20px;
         }
 
         body[data-app-mode="midi"] .midi-hdr-utility .midi-hdr-group-lbl {
@@ -902,25 +1016,7 @@
             flex-shrink: 0
         }
 
-        body[data-app-mode="midi"] .midi-hdr-utility .ui-stepper {
-            flex-wrap: nowrap;
-            flex-shrink: 1;
-            min-width: 0;
-            gap: 2px;
-            height: 18px !important
-        }
 
-        body[data-app-mode="midi"] .midi-hdr-utility .ui-stepper-btn {
-            min-width: 14px;
-            padding: 0 3px;
-            height: 16px;
-            font-size: 8px
-        }
-
-        body[data-app-mode="midi"] .midi-hdr-utility .ui-stepper-val {
-            min-width: 18px;
-            font-size: 8px
-        }
 
         body[data-app-mode="midi"] .midi-hdr-utility label {
             gap: 2px;
@@ -928,14 +1024,14 @@
         }
 
         body[data-app-mode="midi"] .midi-hdr-utility select.display-box {
-            max-width: 44px;
+            max-width: 48px;
             min-width: 0;
-            width: 40px;
+            width: 48px;
             padding: 0 2px
         }
 
         body[data-app-mode="midi"] .midi-hdr-utility input.display-box {
-            width: 30px !important;
+            width: 48px !important;
             min-width: 0;
             padding: 0 2px
         }
@@ -954,8 +1050,7 @@
             gap: 8px;
             padding: 3px 10px;
             min-height: 28px;
-            flex-wrap: nowrap;
-            overflow-x: auto;
+            flex-wrap: wrap;
             font-size: 9px;
             font-family: 'Orbitron', sans-serif;
             border-bottom: 1px solid #12121c;
@@ -967,16 +1062,20 @@
             justify-content: space-between
         }
 
+        .dropdown-compact {
+            width: auto;
+            max-width: 68px;
+            text-overflow: ellipsis;
+            padding-right: 14px;
+        }
+
         .midi-hdr-group {
             display: inline-flex;
             align-items: center;
-            gap: 6px;
+            gap: 3px;
             flex-shrink: 0;
             padding: 2px 8px;
-            border: 1px solid #1a1a28;
-            border-radius: 4px;
-            background: linear-gradient(180deg, #08080f, #050508);
-            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03)
+            background: transparent;
         }
 
         .midi-hdr-group-lbl {
@@ -985,6 +1084,10 @@
             letter-spacing: 0.5px;
             color: #444;
             margin-right: 2px
+        }
+
+        body[data-app-mode="midi"] .midi-hdr-group-lbl {
+            display: none !important;
         }
 
         .midi-hdr-row:last-child {
@@ -1032,11 +1135,11 @@
             padding: 0 3px
         }
 
-        .midi-hdr-rout #midiMelodyCh { width: 44px; color: var(--pink) !important }
-        .midi-hdr-rout #midiDrumCh { width: 44px; color: var(--orange) !important }
-        .midi-hdr-rout #midiSeqOct { width: 30px; color: var(--pink) !important; text-align: center }
-        .midi-hdr-rout #midiMelPc { width: 32px; color: var(--pink) !important; text-align: center }
-        .midi-hdr-rout #midiDrumPc { width: 32px; color: var(--orange) !important; text-align: center }
+        .midi-hdr-rout #midiMelodyCh { width: 48px; color: var(--pink) !important }
+        .midi-hdr-rout #midiDrumCh { width: 48px; color: var(--orange) !important }
+        .midi-hdr-rout #midiSeqOct { width: 48px; color: var(--pink) !important; text-align: center }
+        .midi-hdr-rout #midiMelPc { width: 48px; color: var(--pink) !important; text-align: center }
+        .midi-hdr-rout #midiDrumPc { width: 48px; color: var(--orange) !important; text-align: center }
 
         body[data-app-mode="midi"] .midi-seq-pat-group {
             gap: 5px
@@ -1227,9 +1330,6 @@
             accent-color: var(--pink)
         }
 
-        body[data-app-mode="midi"] .seq-step:hover {
-            box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.04), 0 1px 1px rgba(0, 0, 0, 0.6)
-        }
 
         body[data-app-mode="midi"] #midi-seq-knobs .sub-panel {
             border: none;
@@ -1330,6 +1430,44 @@
             color: var(--purple);
             border-color: rgba(168, 85, 247, .5);
             box-shadow: 0 0 6px rgba(168, 85, 247, .28), inset 0 0 4px rgba(168, 85, 247, .08)
+        }
+
+        /* USB MIDI rack — 2-digit channel LCD + OFF/ON; mono tabular, clear of arrow */
+        .master-bus-bar select.mbus-mini-sel {
+            width: 52px;
+            min-width: 52px;
+            max-width: 52px;
+            height: 18px;
+            padding: 0 16px 0 4px !important;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 9px;
+            font-weight: 700;
+            font-variant-numeric: tabular-nums;
+            letter-spacing: 0;
+            text-align: left;
+            text-overflow: clip;
+            overflow: hidden;
+            text-shadow: none;
+            flex-shrink: 0;
+            box-sizing: border-box
+        }
+
+        .master-bus-bar #wireHarpCh.mbus-mini-sel { color: var(--cyan) !important }
+        .master-bus-bar #wireSeqCh.mbus-mini-sel { color: var(--pink) !important }
+        .master-bus-bar #wireDrumCh.mbus-mini-sel { color: var(--orange) !important }
+        .master-bus-bar #pbEnable.mbus-mini-sel { color: #aaa !important }
+
+        .master-bus-bar input.mbus-mini-in {
+            width: 42px;
+            min-width: 42px;
+            height: 18px;
+            padding: 0 4px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 9px;
+            font-variant-numeric: tabular-nums;
+            text-align: center;
+            flex-shrink: 0;
+            box-sizing: border-box
         }
 
         .mbus-sep {
@@ -1461,6 +1599,11 @@
             box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.9), inset 0 0 6px rgba(6, 182, 212, 0.06)
         }
 
+        select.display-box {
+            padding-right: 18px;
+            text-overflow: ellipsis;
+        }
+
         select.display-box:hover,
         input.display-box:hover {
             border-color: var(--cyan);
@@ -1505,6 +1648,86 @@
 
         .dbeam-fld input {
             width: 72px
+        }
+
+        .dbeam-meter-wrap {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            width: 100%;
+            padding: 6px 2px 2px;
+            flex-shrink: 0
+        }
+
+        .dbeam-meter-bar {
+            position: relative;
+            flex: 1 1 auto;
+            min-width: 0;
+            height: 10px;
+            background: linear-gradient(180deg, #000, #040806);
+            border: 1px solid #0b1410;
+            border-radius: 2px;
+            overflow: hidden;
+            box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.9)
+        }
+
+        .dbeam-meter-fill {
+            position: absolute;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            width: 0%;
+            max-width: 100%;
+            height: 100%;
+            transition: width 0.06s ease-out;
+            background: linear-gradient(90deg, #16a34a 0%, #22c55e 58%, #eab308 78%, #f97316 90%, #ef4444 100%);
+            box-shadow: 0 0 6px rgba(34, 197, 94, 0.35);
+            pointer-events: none;
+            z-index: 0
+        }
+
+        .dbeam-meter-bar::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            background: repeating-linear-gradient(90deg, transparent 0 4px, rgba(0, 0, 0, 0.78) 4px 5px);
+            z-index: 1
+        }
+
+        .dbeam-meter-bar::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            background: linear-gradient(180deg, rgba(255, 255, 255, 0.1), transparent 45%);
+            z-index: 2
+        }
+
+        .dbeam-meter-bar.dbeam-off .dbeam-meter-fill {
+            width: 0 !important;
+            box-shadow: none
+        }
+
+        .dbeam-meter-lbl {
+            flex: 0 0 38px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 9px;
+            font-weight: 700;
+            color: var(--green);
+            text-align: right;
+            text-shadow: 0 0 5px rgba(34, 197, 94, 0.45)
+        }
+
+        .dbeam-meter-lbl.dbeam-off {
+            color: #555;
+            text-shadow: none
+        }
+
+        .dbeam-meter-lbl.dbeam-wait {
+            color: #666;
+            text-shadow: none;
+            letter-spacing: 1px
         }
 
         .drumwave-strip {
@@ -1557,20 +1780,20 @@
         /* legacy — sub-header removed; tabs live in master-bar */
         .view-tabs {
             display: flex;
-            height: 100%
+            height: 100%;
+            gap: 6px;
         }
 
         .view-tab {
             display: flex;
             align-items: center;
-            padding: 0 12px;
+            padding: 0;
             color: #44445c;
             font-family: 'Orbitron', sans-serif;
-            font-size: 9px;
+            font-size: 11px;
             font-weight: bold;
             cursor: pointer;
-            border-bottom: 2px solid transparent;
-            transition: color .2s, background .2s, border-bottom-color .2s;
+            transition: color .2s, text-shadow .2s;
             white-space: nowrap;
             height: 100%;
             transform: translateZ(0)
@@ -1578,23 +1801,22 @@
 
         .view-tab:hover {
             color: #aaa;
-            background: #06060a
+            text-shadow: 0 0 6px currentColor
         }
 
         .view-tab.active {
-            color: #fff;
-            border-bottom-color: var(--cyan);
-            background: #08080d
+            color: var(--cyan);
+            text-shadow: 0 0 6px currentColor
         }
 
         .view-tab.view-tab-tip:hover {
             color: #7eb8e8;
-            background: #08080d
+            text-shadow: 0 0 6px currentColor
         }
 
         .view-tab.view-tab-help:hover {
             color: var(--purple);
-            background: #08080d
+            text-shadow: 0 0 6px currentColor
         }
 
         .drum-header-tools {
@@ -1659,9 +1881,10 @@
             gap: 3px;
             width: 100%;
             flex: 0 0 auto;
-            align-items: center;
+            align-items: stretch;
             overflow-x: auto;
             overflow-y: hidden;
+            padding: 6px 4px;
             -webkit-overflow-scrolling: touch
         }
 
@@ -1704,9 +1927,7 @@
             filter: brightness(0.25)
         }
 
-        .mixer-monitor-row.scope-stopped .vu-fill {
-            transform: scaleX(0) !important
-        }
+        /* VU levels are driven only by _updateVuMeters() — never !important here */
 
         .drum-bus-canvas>.sub-panel.sub-panel-room-link .sub-panel-title {
             color: var(--cyan);
@@ -1932,6 +2153,27 @@
             box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 2px 6px rgba(0, 0, 0, 0.6)
         }
 
+        #view-synths .row-header {
+            flex-wrap: nowrap !important;
+            overflow: hidden;
+            white-space: nowrap;
+        }
+        #view-synths .row-header > div {
+            flex-wrap: nowrap !important;
+            overflow: hidden;
+        }
+        #view-synths .row-header .btn {
+            font-size: 7px;
+            padding: 2px 4px;
+            height: 18px;
+            min-height: 18px;
+        }
+        #view-synths .row-header .ui-stepper {
+            background: rgba(0, 0, 0, 0.4);
+            border: 1px solid #222;
+            border-radius: 4px;
+            padding: 0 4px;
+        }
         .row-header {
             font-family: 'Orbitron', sans-serif;
             font-size: 10px;
@@ -1943,7 +2185,8 @@
             justify-content: space-between;
             align-items: center;
             width: 100%;
-            height: 20px;
+            min-height: 28px;
+            height: auto;
             flex-shrink: 0;
             gap: 6px;
             overflow: hidden
@@ -1973,7 +2216,7 @@
             min-height: 0;
             overflow-x: auto;
             overflow-y: hidden;
-            padding-bottom: 2px
+            padding: 6px 4px;
         }
 
         .sub-panel {
@@ -2019,9 +2262,9 @@
             overflow: hidden
         }
 
-        /* Master console: MIX row needs breathing room; TUBE/DJ/EQ stay compact. */
+        /* Master console: MIX row needs breathing room; DISTORTION/MASTER LPF/EQ stay compact. */
         .sub-panel-knobs.knobs-spaced {
-            gap: 10px;
+            gap: 6px;
             justify-content: center;
             padding: 0 4px
         }
@@ -2029,10 +2272,10 @@
         .sub-panel-knobs.knobs-compact {
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: 1px 0;
+            gap: 3px 2px;
             justify-items: center;
             align-content: center;
-            padding: 0 1px
+            padding: 2px
         }
 
         .sub-panel-knobs.knobs-compact .knob-hitbox {
@@ -2046,9 +2289,9 @@
         }
 
         .sub-panel-knobs.knobs-balanced {
-            gap: 8px;
+            gap: 4px;
             justify-content: space-evenly;
-            padding: 0 8px
+            padding: 0 4px
         }
 
         .sub-panel.sub-panel-compact {
@@ -2058,30 +2301,34 @@
         }
 
         .sub-panel.sub-panel-mix {
-            flex: 2.2 1 210px;
-            min-width: 200px
+            /* Fallback flex */
+            flex: 8 1 200px;
         }
 
         .sub-panel.sub-panel-master-fx {
-            flex: 1.15 1 108px;
-            min-width: 100px
+            /* Fallback flex */
+            flex: 3 1 80px;
         }
 
         #master-knobs.panel-container {
             gap: 4px
         }
 
-        /* Master console sub-panels: equal flex basis for visual symmetry */
+        /* Master console sub-panels: proportional flex basis for visual symmetry (8 knobs vs 3 knobs) */
         #master-knobs .sub-panel {
             flex: 1 1 0;
-            min-width: 64px
+            min-width: 76px
         }
 
-        /* OCT stepper: hide label — display just [C0 < >] note value + arrows */
-        .ui-stepper.oct-cyan .ui-stepper-lbl,
-        .ui-stepper.oct-pink .ui-stepper-lbl {
-            display: none
+        #master-knobs .sub-panel.sub-panel-mix {
+            flex: 8 1 0;
         }
+
+        #master-knobs .sub-panel.sub-panel-master-fx {
+            flex: 3 1 0;
+        }
+
+
 
         /* Row-header right-side controls: one inline row, no wrapping (override inline styles) */
         .row-header > [style*="flex-wrap"] {
@@ -2178,6 +2425,7 @@
         .mixer-monitor-row .vu-container {
             flex: 0 0 96px;
             width: 96px;
+            min-height: 22px;
             height: auto;
             justify-content: center;
             margin-top: 0;
@@ -2186,18 +2434,20 @@
         }
 
         .mixer-monitor-row .vu-bar {
-            height: 8px
+            height: 8px;
+            min-height: 8px;
+            flex-shrink: 0
         }
 
         #view-mixer > .control-row.mixer-master-row {
             flex: 2 1 0;
-            min-height: 160px
+            min-height: 105px
         }
 
         #view-mixer > .control-row.mixer-scope-row {
             flex: 0 0 auto;
-            min-height: 108px;
-            max-height: 148px
+            min-height: 60px;
+            max-height: 100px
         }
 
         .mixer-perf-split {
@@ -2219,13 +2469,13 @@
 
         .mixer-scope-row .mixer-monitor-row {
             margin-top: 0;
-            min-height: 80px;
+            min-height: 50px;
             max-height: none;
             flex: 1
         }
 
         .mixer-scope-row .mixer-monitor-row .drum-scope-toy {
-            min-height: 72px
+            min-height: 40px
         }
 
         .save-slot-btn {
@@ -2381,16 +2631,20 @@
         }
 
         .vu-fill {
+            position: absolute;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            width: 0%;
+            max-width: 100%;
             height: 100%;
-            width: 100%;
-            /* [LIVE-PERF] GPU-composited: animate transform:scaleX (compositor only)
-             * instead of width (which forces layout + paint every rAF frame). */
-            transform: scaleX(0);
+            transform: none;
             transform-origin: left center;
-            will-change: transform;
-            background: linear-gradient(90deg, #16d65a 0%, #3ddf6f 52%, #f9b316 80%, #ff3b30 100%);
-            transition: transform 0.05s ease-out;
-            box-shadow: 0 0 5px rgba(34, 197, 94, 0.45)
+            transition: width 0.05s ease-out;
+            background: linear-gradient(90deg, #16a34a 0%, #22c55e 58%, #eab308 78%, #f97316 90%, #ef4444 100%);
+            box-shadow: 0 0 5px rgba(34, 197, 94, 0.4);
+            pointer-events: none;
+            z-index: 0
         }
 
         /* segmentation: thin dark gaps carve the fill into discrete LED bricks */
@@ -2399,7 +2653,8 @@
             position: absolute;
             inset: 0;
             pointer-events: none;
-            background: repeating-linear-gradient(90deg, transparent 0 3px, rgba(0, 0, 0, 0.82) 3px 4px)
+            background: repeating-linear-gradient(90deg, transparent 0 3px, rgba(0, 0, 0, 0.82) 3px 4px);
+            z-index: 1
         }
 
         .vu-bar::before {
@@ -2408,7 +2663,7 @@
             inset: 0;
             pointer-events: none;
             background: linear-gradient(180deg, rgba(255, 255, 255, 0.12), transparent 45%);
-            z-index: 1
+            z-index: 2
         }
 
         /* ── SEQUENCER GRID ── */
@@ -2421,7 +2676,11 @@
         #view-seq .seq-matrix-bar {
             max-width: var(--content-max);
             width: 100%;
-            align-self: center
+            align-self: center;
+        }
+
+        #view-seq .seq-matrix-bar .seq-bar-group {
+            flex-wrap: nowrap;
         }
 
         /* MIDI sequencer view — pulpit layout */
@@ -2582,9 +2841,6 @@
             transition: none
         }
 
-        body[data-app-mode="midi"] .midi-pulpit-seq .seq-step:hover {
-            box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.04), 0 1px 1px rgba(0, 0, 0, 0.6)
-        }
 
         body[data-app-mode="midi"] #midiRandDensity.midi-density-box {
             width: 48px !important;
@@ -2646,12 +2902,12 @@
         .midi-page-title {
             display: none;
             font-family: 'Orbitron', sans-serif;
-            font-size: 10px;
+            font-size: 8px;
             color: var(--cyan);
-            padding: 0 8px;
+            padding: 0 4px;
             align-items: center;
-            gap: 6px;
-            letter-spacing: 0.5px;
+            gap: 4px;
+            letter-spacing: 0.1px;
             white-space: nowrap
         }
 
@@ -2732,68 +2988,89 @@
             overflow: hidden
         }
 
+        /* 2-ROW CC CHIP — name on top (full width, full names possible),
+         * control row below: [CC#] [knob] [3-digit value]. All scoped under
+         * #midi-seq-knobs .midi-cc-chip so shared knob/label globals are untouched. */
         #midi-seq-knobs .midi-cc-chip {
             display: flex;
-            flex-direction: row;
-            flex-wrap: nowrap;
-            align-items: center;
-            gap: var(--midi-cc-gap, 2px);
+            flex-direction: column;
+            align-items: stretch;
+            justify-content: center;
+            gap: 1px;
             min-width: 0;
             max-width: 100%;
             width: 100%;
             height: 100%;
-            padding: 1px 2px;
-            border-radius: 2px;
+            padding: 2px;
+            border-radius: 3px;
             border: 1px solid #1a1a28;
             background: linear-gradient(180deg, #0a0a12, #06060c);
             box-sizing: border-box;
             overflow: hidden
         }
 
-        #midi-seq-knobs .midi-cc-chip .knob-label {
-            flex: 1 1 auto;
-            min-width: 0;
-            max-width: none;
-            font-size: var(--midi-cc-label-fs, 6px);
+        /* Row 1 — name on its own full-width line; full names like "Expression" fit */
+        #midi-seq-knobs .midi-cc-name {
+            flex: 0 0 auto;
+            width: 100%;
+            font-size: var(--midi-cc-name-fs, 8px);
             font-weight: 700;
             color: var(--pink);
-            text-align: left;
-            line-height: 1.05;
+            text-align: center;
+            line-height: 1.15;
+            letter-spacing: 0.2px;
             overflow: hidden;
             text-overflow: ellipsis;
-            white-space: nowrap
+            white-space: nowrap;
+            text-shadow: 0 0 4px rgba(236, 72, 153, 0.35)
+        }
+
+        /* Row 2 — control row: CC# + knob + value, centered */
+        #midi-seq-knobs .midi-cc-ctl {
+            flex: 1 1 auto;
+            display: flex;
+            flex-direction: row;
+            flex-wrap: nowrap;
+            align-items: center;
+            justify-content: center;
+            gap: var(--midi-cc-gap, 3px);
+            min-height: 0;
+            min-width: 0;
+            width: 100%
         }
 
         #midi-seq-knobs .midi-cc-chip .midi-cc-remap {
-            flex: 0 0 var(--midi-cc-cc-w, 22px);
-            width: var(--midi-cc-cc-w, 22px);
-            height: var(--midi-cc-input-h, 13px);
-            min-height: var(--midi-cc-input-h, 13px);
-            font-size: var(--midi-cc-label-fs, 6px);
+            flex: 0 0 var(--midi-cc-cc-w, 24px);
+            width: var(--midi-cc-cc-w, 24px);
+            height: var(--midi-cc-input-h, 14px);
+            min-height: var(--midi-cc-input-h, 14px);
+            font-size: var(--midi-cc-num-fs, 8px);
             padding: 0 1px;
             text-align: center;
+            font-variant-numeric: tabular-nums;
             color: var(--pink) !important
         }
 
         #midi-seq-knobs .midi-cc-chip .knob-hitbox {
-            flex: 0 0 var(--midi-cc-knob, 14px);
-            width: var(--midi-cc-knob, 14px);
-            height: var(--midi-cc-knob, 14px)
+            flex: 0 0 var(--midi-cc-knob, 18px);
+            width: var(--midi-cc-knob, 18px);
+            height: var(--midi-cc-knob, 18px)
         }
 
         #midi-seq-knobs .midi-cc-chip .knob {
-            width: calc(var(--midi-cc-knob, 14px) - 4px);
-            height: calc(var(--midi-cc-knob, 14px) - 4px)
+            width: calc(var(--midi-cc-knob, 18px) - 5px);
+            height: calc(var(--midi-cc-knob, 18px) - 5px)
         }
 
+        /* Value box — fixed 3-digit width so "127" always shows in full */
         #midi-seq-knobs .midi-cc-chip .midi-knob-val {
-            flex: 0 0 var(--midi-cc-val-w, 22px);
-            width: var(--midi-cc-val-w, 22px);
-            min-width: var(--midi-cc-val-w, 22px);
-            max-width: var(--midi-cc-val-w, 22px);
-            height: var(--midi-cc-input-h, 13px);
-            line-height: calc(var(--midi-cc-input-h, 13px) - 2px);
-            font-size: var(--midi-cc-label-fs, 6px);
+            flex: 0 0 var(--midi-cc-val-w, 28px);
+            width: var(--midi-cc-val-w, 28px);
+            min-width: var(--midi-cc-val-w, 28px);
+            max-width: var(--midi-cc-val-w, 28px);
+            height: var(--midi-cc-input-h, 14px);
+            line-height: calc(var(--midi-cc-input-h, 14px) - 2px);
+            font-size: var(--midi-cc-num-fs, 8px);
             font-family: 'Orbitron', sans-serif;
             font-weight: bold;
             color: #7dffb0;
@@ -2805,13 +3082,15 @@
             box-shadow: inset 0 0 4px rgba(0, 0, 0, 0.9);
             padding: 0 1px;
             overflow: hidden;
-            text-overflow: ellipsis;
             white-space: nowrap;
+            font-variant-numeric: tabular-nums;
             margin-left: 0
         }
 
-        #midi-seq-knobs.midi-cc-micro .midi-cc-chip .knob-label {
-            max-width: 18px
+        /* Micro tier — shrink the knob (most size-tolerant), keep name + value legible */
+        #midi-seq-knobs.midi-cc-micro .midi-cc-name {
+            font-size: var(--midi-cc-name-fs, 6px);
+            letter-spacing: 0
         }
 
         .midi-pitch-knob-row {
@@ -2932,9 +3211,6 @@
             contain: layout style paint
         }
 
-        .seq-step:hover {
-            box-shadow: inset 0 0 0 1px #2a2a3a, inset 0 1px 1px rgba(255, 255, 255, 0.04), 0 1px 1px rgba(0, 0, 0, 0.6)
-        }
 
         .seq-step.has-motion::after {
             content: '';
@@ -3230,62 +3506,44 @@
 ═══════════════════════════════════════════════════════════════════════════ -->
     <header class="master-bar">
         <div class="master-bar-left">
-            <a class="brand-mark brand-mark-link" href="https://octopus-info.isystem.app/" target="_blank" rel="noopener noreferrer" title="Octopus PRO XL — product info"><i class="fa-solid fa-bolt" style="color:var(--purple)"></i>OCTOPUS<span style="color:var(--cyan)">PRO</span></a>
             <nav class="view-tabs master-tabs" aria-label="App views">
-                <span class="dsp-page-title dsp-only"><i class="fa-solid fa-bolt"></i> OCTOPUS DSP ENGINE</span>
-                <span class="midi-page-title midi-only"><i class="fa-solid fa-circle-nodes"></i> OCTOPUS MIDI CONTROLLER</span>
-                <div class="view-tab active" id="tab1" onclick="app.switchView(1)">INSTRUMENTS</div>
-                <div class="view-tab dsp-only" id="tab2" onclick="app.switchView(2)">MIXER</div>
-                <div class="view-tab" id="tab3" onclick="app.switchView(3)">SEQUENCER</div>
-                <a class="view-tab view-tab-tip" href="https://www.paypal.com/donate?hosted_button_id=KX7B76V37PED8" target="_blank" rel="noopener noreferrer" title="Optional tip — DIODAC ELECTRONICS"><i class="fa-brands fa-paypal"></i> TIP</a>
-                <div class="view-tab view-tab-help" id="tabHelp" onclick="app.openHelp()" title="Open help (popup)"><i class="fa-solid fa-circle-question"></i> HELP</div>
+                <div class="brand-mark dsp-only" style="pointer-events:none;"><i class="fa-solid fa-bolt" style="color:var(--purple)"></i>OCTOPUS<span style="color:var(--cyan)">PRO </span><span style="color:var(--purple)">DSP</span></div>
+                <div class="brand-mark midi-only" style="pointer-events:none;"><i class="fa-solid fa-circle-nodes" style="color:var(--cyan)"></i>OCTOPUS<span style="color:var(--purple)">PRO </span><span style="color:var(--cyan)">MIDI</span></div>
+                <div class="view-tab active dsp-only" id="tab1" onclick="app.switchView(1)"><i class="fa-solid fa-wave-square" style="margin-right:4px"></i>INSTRUMENTS</div>
+                <div class="view-tab dsp-only" id="tab2" onclick="app.switchView(2)"><i class="fa-solid fa-sliders" style="margin-right:4px"></i>MIXER</div>
+                <div class="view-tab" id="tab3" onclick="app.switchView(3)"><i class="fa-solid fa-bars-staggered" style="margin-right:4px"></i>SEQUENCER</div>
+                <a class="view-tab view-tab-tip" href="https://www.paypal.com/donate?hosted_button_id=KX7B76V37PED8" target="_blank" rel="noopener noreferrer" title="Optional tip — DIODAC ELECTRONICS"><i class="fa-brands fa-paypal" style="margin-right:4px"></i>TIP</a>
+                <div class="view-tab view-tab-help" id="tabHelp" onclick="app.openHelp()" title="Open help (popup)"><i class="fa-solid fa-circle-question" style="margin-right:4px"></i>HELP</div>
             </nav>
         </div>
 
-        <div class="header-sep"></div>
+        <div style="width:6px; flex-shrink:0;"></div>
         <div class="master-bar-mid">
             <div class="header-group header-group-transport dsp-only">
-            <button class="btn" id="dspBtnPlay" onclick="app.play()" title="Play"><i class="fa-solid fa-play"></i></button>
+            <button class="btn" id="dspBtnPlay" onclick="app.play()" title="Play / Stop (Space)"><i class="fa-solid fa-play"></i></button>
             <button class="btn" id="dspBtnStop" onclick="app.stop()" title="Stop"><i class="fa-solid fa-stop"></i></button>
-            <button class="btn" id="dspBtnRec" onclick="app.toggleRec()" title="Record arm"><i class="fa-solid fa-circle" style="color:var(--red);font-size:8px"></i>REC</button>
+            <button class="btn" id="dspBtnRec" onclick="app.toggleRec()" title="Record arm (R) — auto-starts transport"><i class="fa-solid fa-circle" style="color:var(--red);font-size:8px"></i>REC</button>
         </div>
             <div class="header-group header-group-transport midi-only">
-            <button class="btn" id="midiBtnPlay" onclick="app.play()" title="Play"><i class="fa-solid fa-play"></i></button>
+            <button class="btn" id="midiBtnPlay" onclick="app.play()" title="Play / Stop (Space)"><i class="fa-solid fa-play"></i></button>
             <button class="btn" id="midiBtnStop" onclick="app.stop()" title="Stop"><i class="fa-solid fa-stop"></i></button>
-            <button class="btn" id="midiBtnRec" onclick="app.toggleRec()" title="Record arm"><i class="fa-solid fa-circle" style="color:var(--red);font-size:8px"></i>REC</button>
+            <button class="btn" id="midiBtnRec" onclick="app.toggleRec()" title="Record arm (R) — auto-starts transport"><i class="fa-solid fa-circle" style="color:var(--red);font-size:8px"></i>REC</button>
         </div>
 
         <div class="header-sep dsp-only"></div>
-        <div class="header-group header-group-session dsp-only">
-            <select class="display-box" id="sessionSlot" title="SESSION 1 auto-saves — pick 2–16 to recall" onchange="app.onSessionSlot(this.value)">
-                <option value="0" selected>SESSION 1</option>
-                <option value="1">SESSION 2</option>
-                <option value="2">SESSION 3</option>
-                <option value="3">SESSION 4</option>
-                <option value="4">SESSION 5</option>
-                <option value="5">SESSION 6</option>
-                <option value="6">SESSION 7</option>
-                <option value="7">SESSION 8</option>
-                <option value="8">SESSION 9</option>
-                <option value="9">SESSION 10</option>
-                <option value="10">SESSION 11</option>
-                <option value="11">SESSION 12</option>
-                <option value="12">SESSION 13</option>
-                <option value="13">SESSION 14</option>
-                <option value="14">SESSION 15</option>
-                <option value="15">SESSION 16</option>
-            </select>
-            <button class="btn" style="color:var(--green);border-color:var(--green)" onclick="app.openSaveModal()" title="Save workspace to SESSION 2–16 (browser JSON)"><i class="fa-solid fa-floppy-disk"></i>SAVE</button>
-            <button class="btn" style="font-size:8px;padding:0 5px" onclick="app.exportOctopusSession()" title="Export current workspace as JSON"><i class="fa-solid fa-download"></i>EXP</button>
-            <button class="btn" style="font-size:8px;padding:0 5px" onclick="document.getElementById('octopusImportFile').click()" title="Import session JSON to slot 2–16"><i class="fa-solid fa-upload"></i>IMP</button>
+        <div class="header-group dsp-only">
+            <button class="btn" style="color:var(--green);border-color:var(--green)" onclick="app.openSaveModal()" title="Manage Sessions (SAVE / LOAD / JSON)"><i class="fa-solid fa-floppy-disk"></i>SESSION</button>
             <input type="file" id="octopusImportFile" accept="application/json,.json" style="display:none" onchange="app.importOctopusSession(this)">
         </div>
 
         <div class="header-sep"></div>
         <div class="header-group header-group-bpm dsp-only">
-            <div class="bpm-glow-box" title="Tempo — device echo (Octopus DSP Engine)">
+            <div class="bpm-glow-box ui-stepper" title="Tempo — device echo (Octopus DSP Engine)">
                 <span class="bpm-glow-lbl">BPM</span>
-                <input type="number" class="display-box dark-input-panel" id="dspBpm" value="120" min="40" max="240" step="1" inputmode="numeric" readonly>
+                <button type="button" class="btn ui-stepper-btn" onclick="app.stepBpm(-1)" title="BPM −1">&lt;</button>
+                <input type="number" class="display-box dark-input-panel" id="dspBpm" value="120" min="40" max="240" step="1" inputmode="numeric" style="display:none" readonly>
+                <span class="ui-stepper-val" id="dspBpmLbl">120</span>
+                <button type="button" class="btn ui-stepper-btn" onclick="app.stepBpm(1)" title="BPM +1">&gt;</button>
             </div>
         </div>
         <div class="header-group header-group-bpm midi-only">
@@ -3298,15 +3556,16 @@
             </div>
         </div>
 
-            <div class="header-sep dsp-only"></div>
-            <div class="header-group header-group-tools dsp-only">
-                <div id="cpuLoad" class="cpu-box" title="Audio-core CPU load (device)"><i class="fa-solid fa-microchip cpu-box-icon" aria-hidden="true"></i><span id="cpuLoadVal" class="cpu-box-digits">--</span><span id="cpuLoadWarn" class="cpu-box-warn" aria-hidden="true">⚠</span></div>
-                <button class="btn" onclick="app.toggleMonitor()" title="SysEx link monitor (DSP Engine)"><i class="fa-solid fa-terminal"></i>MON</button>
+        <div class="header-sep dsp-only"></div>
+        <div class="header-group header-group-tools dsp-only">
+            <div class="glow-box" style="display:flex; cursor:pointer; padding:0; height:24px; border-color:#222; overflow:hidden;" onclick="app.toggleMonitor()" title="CPU Load & SysEx Monitor">
+                <span id="cpuLoad" class="cpu-box" style="border:none; border-right:none; height:100%;"><i class="fa-solid fa-microchip cpu-box-icon" aria-hidden="true"></i><span id="cpuLoadVal" class="cpu-box-digits">--</span><span id="cpuLoadWarn" class="cpu-box-warn" aria-hidden="true">⚠</span></span>
+                <span class="btn" style="border:none; background:transparent; height:100%; min-height:0; padding:0 6px; color:#aaa; font-size:9px;"><i class="fa-solid fa-terminal" style="margin-right:2px"></i>MON</span>
             </div>
+        </div>
         </div>
         <div class="master-bar-spacer"></div>
         <div class="master-bar-right">
-            <button type="button" class="btn midi-only" onclick="app.toggleMonitor()" title="MIDI activity monitor"><i class="fa-solid fa-terminal"></i> MON</button>
             <div class="header-connector" title="USB MIDI — ★ hardware = Octopus DSP Engine; generic port = Octopus MIDI Controller">
                 <select class="display-box" id="midiOut" title="★ Octopus PRO XL = DSP Engine sync; other port = MIDI Controller"></select>
                 <div id="connBadge" class="conn-badge" style="color:#444;border-color:#1a1a26"><i class="fa-solid fa-circle" style="font-size:6px"></i>DSP Off</div>
@@ -3318,26 +3577,26 @@
         <div class="midi-hdr-row midi-hdr-spread midi-hdr-utility">
             <div class="midi-hdr-group" title="Pattern length · transpose · octave">
                 <span class="midi-hdr-group-lbl">PITCH</span>
-                <div class="ui-stepper" title="Pattern length" style="height:20px">
-                    <span class="seq-bar-lbl">LEN</span>
-                    <span class="ui-stepper-val" id="midiSeqLenLbl" style="color:var(--cyan);min-width:22px">64</span>
+                <div class="ui-stepper midi-oct-cyan" title="Pattern length">
+                    <span class="ui-stepper-lbl">LEN</span>
                     <button type="button" class="btn ui-stepper-btn" onclick="app.stepSeqLen(-1)">&lt;</button>
+                    <span class="ui-stepper-val" id="midiSeqLenLbl">64</span>
                     <button type="button" class="btn ui-stepper-btn" onclick="app.stepSeqLen(1)">&gt;</button>
                     <select id="midiSeqLen" class="display-box" style="display:none" onchange="app.setSeqLength(this.value)">
                         <option value="16">16</option><option value="32">32</option><option value="48">48</option><option value="64" selected>64</option>
                     </select>
                 </div>
-                <div class="ui-stepper trn-purple" title="Transpose ±12" style="height:20px">
-                    <span class="seq-bar-lbl">TRN</span>
-                    <span class="ui-stepper-val" id="midiSeqTrnLbl">0</span>
+                <div class="ui-stepper midi-trn-purple" title="Transpose ±12">
+                    <span class="ui-stepper-lbl">TRN</span>
                     <button type="button" class="btn ui-stepper-btn" onclick="app.stepTranspose(-1)">&lt;</button>
+                    <span class="ui-stepper-val" id="midiSeqTrnLbl">0</span>
                     <button type="button" class="btn ui-stepper-btn" onclick="app.stepTranspose(1)">&gt;</button>
                     <input type="hidden" id="midiSeqTrn" value="0">
                 </div>
-                <div class="ui-stepper" title="Melody octave ±4" style="height:20px">
-                    <span class="seq-bar-lbl">OCT</span>
-                    <span class="ui-stepper-val" id="midiSeqOctLbl">C0</span>
+                <div class="ui-stepper midi-oct-cyan" title="Melody octave ±4">
+                    <span class="ui-stepper-lbl">OCT</span>
                     <button type="button" class="btn ui-stepper-btn" onclick="app.stepOctave('midi',-1)">&lt;</button>
+                    <span class="ui-stepper-val" id="midiSeqOctLbl">C4</span>
                     <button type="button" class="btn ui-stepper-btn" onclick="app.stepOctave('midi',1)">&gt;</button>
                     <input type="hidden" id="midiSeqOct" value="0">
                 </div>
@@ -3360,26 +3619,41 @@
             </div>
             <div class="midi-hdr-group" title="Session file I/O">
                 <span class="midi-hdr-group-lbl">FILE</span>
-                <button type="button" class="btn" style="font-size:8px;padding:2px 8px" onclick="app.exportMidiSession()" title="Export session JSON"><i class="fa-solid fa-download"></i> JSON</button>
-                <button type="button" class="btn" style="font-size:8px;padding:2px 8px" onclick="app.exportMidiFile()" title="Export .mid"><i class="fa-solid fa-file-audio"></i> MID</button>
-                <button type="button" class="btn" style="font-size:8px;padding:2px 8px" onclick="document.getElementById('midiImportFile').click()" title="Import JSON or .mid"><i class="fa-solid fa-upload"></i> IMP</button>
+                <button type="button" class="btn" style="font-size:8px;padding:2px 4px" onclick="app.exportMidiSession()" title="Export session JSON"><i class="fa-solid fa-download"></i> JSON</button>
+                <button type="button" class="btn" style="font-size:8px;padding:2px 4px" onclick="app.exportMidiFile()" title="Export .mid"><i class="fa-solid fa-file-audio"></i> MID</button>
+                <button type="button" class="btn" style="font-size:8px;padding:2px 4px" onclick="document.getElementById('midiImportFile').click()" title="Import JSON or .mid"><i class="fa-solid fa-upload"></i> IMP</button>
                 <input type="file" id="midiImportFile" accept="application/json,.json,.mid,audio/midi" style="display:none" onchange="app.importMidiSession(this)">
             </div>
             <div class="midi-hdr-group midi-hdr-rout" aria-label="MIDI routing">
                 <span class="midi-hdr-group-lbl">MIDI</span>
                 <button type="button" class="btn" id="btnMidiClockOut" onclick="app.setMidiClockOut(!app.midiClockOut)" title="MIDI clock 0xF8">CLK</button>
-                <label>MEL
-                    <select id="midiMelodyCh" class="display-box" onchange="app._midiRoutingChanged()" title="Melody channel"></select>
-                </label>
-                <label>DRM
-                    <select id="midiDrumCh" class="display-box" onchange="app._midiRoutingChanged()" title="Drum channel"></select>
-                </label>
-                <label>M PC
-                    <input type="number" id="midiMelPc" class="display-box dark-input-panel" value="0" min="0" max="127" onchange="app.setMidiMelPc(this.value)" title="Melody program">
-                </label>
-                <label>D PC
-                    <input type="number" id="midiDrumPc" class="display-box dark-input-panel" value="0" min="0" max="127" onchange="app.setMidiDrumPc(this.value)" title="Drum program">
-                </label>
+                <div class="ui-stepper midi-oct-pink" title="Melody channel">
+                    <span class="ui-stepper-lbl">M-CH</span>
+                    <button type="button" class="btn ui-stepper-btn" onclick="app.stepMidiMelCh(-1)">&lt;</button>
+                    <span class="ui-stepper-val" id="midiMelChLbl">1</span>
+                    <button type="button" class="btn ui-stepper-btn" onclick="app.stepMidiMelCh(1)">&gt;</button>
+                    <input type="hidden" id="midiMelodyCh" value="1">
+                </div>
+                <div class="ui-stepper midi-oct-cyan" title="Drum channel">
+                    <span class="ui-stepper-lbl">D-CH</span>
+                    <button type="button" class="btn ui-stepper-btn" onclick="app.stepMidiDrmCh(-1)">&lt;</button>
+                    <span class="ui-stepper-val" id="midiDrmChLbl">10</span>
+                    <button type="button" class="btn ui-stepper-btn" onclick="app.stepMidiDrmCh(1)">&gt;</button>
+                    <input type="hidden" id="midiDrumCh" value="10">
+                </div>
+                <div class="ui-stepper midi-oct-pink" title="Melody program">
+                    <span class="ui-stepper-lbl">M PC</span>
+                    <button type="button" class="btn ui-stepper-btn" onclick="let el=document.getElementById('midiMelPc'); el.stepDown(); el.dispatchEvent(new Event('change'))">&lt;</button>
+                    <input type="number" id="midiMelPc" class="ui-stepper-val" style="background:transparent; border:none; color:inherit; text-shadow:inherit; font-size:inherit; width:24px; text-align:center; padding:0; height:100%; min-height:0; box-shadow:none; font-family:inherit; outline:none;" value="0" min="0" max="127" onchange="app.setMidiMelPc(this.value)">
+                    <button type="button" class="btn ui-stepper-btn" onclick="let el=document.getElementById('midiMelPc'); el.stepUp(); el.dispatchEvent(new Event('change'))">&gt;</button>
+                </div>
+                <div class="ui-stepper midi-oct-orange" title="Drum program">
+                    <span class="ui-stepper-lbl">D PC</span>
+                    <button type="button" class="btn ui-stepper-btn" onclick="let el=document.getElementById('midiDrumPc'); el.stepDown(); el.dispatchEvent(new Event('change'))">&lt;</button>
+                    <input type="number" id="midiDrumPc" class="ui-stepper-val" style="background:transparent; border:none; color:inherit; text-shadow:inherit; font-size:inherit; width:24px; text-align:center; padding:0; height:100%; min-height:0; box-shadow:none; font-family:inherit; outline:none;" value="0" min="0" max="127" onchange="app.setMidiDrumPc(this.value)">
+                    <button type="button" class="btn ui-stepper-btn" onclick="let el=document.getElementById('midiDrumPc'); el.stepUp(); el.dispatchEvent(new Event('change'))">&gt;</button>
+                </div>
+                <button type="button" class="btn" onclick="app.toggleMonitor()" title="MIDI activity monitor" style="margin-left:4px;border-radius:12px;padding:2px 8px;font-size:9px"><i class="fa-solid fa-terminal"></i> MON</button>
             </div>
         </div>
     </div>
@@ -3404,8 +3678,8 @@
                         <button class="btn dsp-only" id="btnDbeam" onclick="app.toggleDbeam()" title="D-BEAM expression bypass"><i class="fa-solid fa-eye"></i>D-BEAM</button>
                         <div class="ui-stepper oct-cyan dsp-only" title="Harp octave ±4">
                             <span class="ui-stepper-lbl">OCT</span>
-                            <span class="ui-stepper-val" id="harpOctLbl">C0</span>
                             <button type="button" class="btn ui-stepper-btn" onclick="app.stepOctave('harp',-1)">&lt;</button>
+                            <span class="ui-stepper-val" id="harpOctLbl">C4</span>
                             <button type="button" class="btn ui-stepper-btn" onclick="app.stepOctave('harp',1)">&gt;</button>
                             <input type="hidden" id="harpOct" value="0">
                         </div>
@@ -3419,11 +3693,11 @@
                             <option value="6">LFO → Full Matrix</option>
                             <option value="7">LFO → Tremolo</option>
                         </select>
-                        <select class="display-box" id="harpPatch" onchange="app.txSysexSoon(CMD.H_PATCH,this.value)" style="width:210px"></select>
-                        <select class="display-box" id="harpWave" onchange="app.setHarpWave(this.value)" style="width:140px"></select>
+                        <select class="display-box" id="harpPatch" onchange="app.txSysexSoon(CMD.H_PATCH,this.value)" style="width:235px"></select>
+                        <select class="display-box" id="harpWave" onchange="app.setHarpWave(this.value)" style="width:160px"></select>
                         <select class="display-box" id="harpScale" onchange="app.setGlobalScale(this.value)" style="width:100px"></select>
-                        <select class="display-box" id="harpFxA" title="Harp FX insert" onchange="app.txSysexSoon(CMD.H_FX_IDX,this.value)" style="width:90px"></select>
-                        <select class="display-box" id="harpFxB" title="Harp Dynamics insert" onchange="app.txSysexSoon(CMD.H_FX_IDX_B,this.value)" style="width:90px"></select>
+                        <select class="display-box" id="harpFxA" title="Harp FX insert" onchange="app.txSysexSoon(CMD.H_FX_IDX,this.value)" style="width:96px"></select>
+                        <select class="display-box" id="harpFxB" title="Harp Dynamics insert" onchange="app.txSysexSoon(CMD.H_FX_IDX_B,this.value)" style="width:96px"></select>
                         <select class="display-box sound-image-pick dsp-only" id="harpImagePick" title="Recall saved harp sound image" onchange="app.recallSoundImage('harp',this.value)"></select>
                         <button class="btn save-slot-btn dsp-only" onclick="app.openSoundImageSave('harp')" title="Save harp settings as image"><i class="fa-solid fa-floppy-disk"></i>SAVE</button>
                     </div>
@@ -3436,15 +3710,15 @@
                     <div style="display:flex;gap:5px;align-items:center;flex-wrap:wrap">
                         <div class="ui-stepper oct-pink" title="Seq octave ±4">
                             <span class="ui-stepper-lbl">OCT</span>
-                            <span class="ui-stepper-val" id="seqOctLbl">C0</span>
                             <button type="button" class="btn ui-stepper-btn" onclick="app.stepOctave('seq',-1)">&lt;</button>
+                            <span class="ui-stepper-val" id="seqOctLbl">C4</span>
                             <button type="button" class="btn ui-stepper-btn" onclick="app.stepOctave('seq',1)">&gt;</button>
                             <input type="hidden" id="seqOct" value="0">
                         </div>
                         <div class="ui-stepper trn-purple" title="Seq transpose ±12 semitones">
                             <span class="ui-stepper-lbl">TRN</span>
-                            <span class="ui-stepper-val" id="seqEngTrnLbl">0</span>
                             <button type="button" class="btn ui-stepper-btn" onclick="app.stepTranspose(-1)">&lt;</button>
+                            <span class="ui-stepper-val" id="seqEngTrnLbl">0</span>
                             <button type="button" class="btn ui-stepper-btn" onclick="app.stepTranspose(1)">&gt;</button>
                             <input type="hidden" id="seqEngTrn" value="0">
                         </div>
@@ -3458,11 +3732,11 @@
                             <option value="6">LFO → Full Matrix</option>
                             <option value="7">LFO → Tremolo</option>
                         </select>
-                        <select class="display-box" style="color:var(--pink);width:210px" id="seqPatch" onchange="app.txSysexSoon(CMD.S_PATCH,this.value)"></select>
-                        <select class="display-box" style="color:var(--pink);width:140px" id="seqWave" onchange="app.setSeqWave(this.value)"></select>
+                        <select class="display-box" style="color:var(--pink);width:235px" id="seqPatch" onchange="app.txSysexSoon(CMD.S_PATCH,this.value)"></select>
+                        <select class="display-box" style="color:var(--pink);width:160px" id="seqWave" onchange="app.setSeqWave(this.value)"></select>
                         <select class="display-box" style="color:var(--pink);width:100px" id="seqScale" onchange="app.setGlobalScale(this.value)"></select>
-                        <select class="display-box" style="color:var(--pink);width:90px" id="seqFxA" onchange="app.txSysexSoon(CMD.S_FX_IDX,this.value)"></select>
-                        <select class="display-box" style="color:var(--pink);width:90px" id="seqFxB" onchange="app.txSysexSoon(CMD.S_FX_IDX_B,this.value)"></select>
+                        <select class="display-box" style="color:var(--pink);width:96px" id="seqFxA" onchange="app.txSysexSoon(CMD.S_FX_IDX,this.value)"></select>
+                        <select class="display-box" style="color:var(--pink);width:96px" id="seqFxB" onchange="app.txSysexSoon(CMD.S_FX_IDX_B,this.value)"></select>
                         <select class="display-box sound-image-pick dsp-only" id="seqImagePick" title="Recall saved melody sound image" onchange="app.recallSoundImage('seq',this.value)"></select>
                         <button class="btn save-slot-btn dsp-only" onclick="app.openSoundImageSave('seq')" title="Save seq synth settings as image"><i class="fa-solid fa-floppy-disk"></i>SAVE</button>
                     </div>
@@ -3474,7 +3748,7 @@
                     <span><i class="fa-solid fa-drum" style="color:var(--orange)"></i> AB 9-09 · 8 VOICES</span>
                     <div class="drum-header-tools">
                         <span style="font-size:8px;color:#666;font-family:'Orbitron',sans-serif">KIT</span>
-                        <select class="display-box" style="width:120px;color:var(--orange)" id="drumKit" onchange="app.setDrumKit(this.value)"></select>
+                        <select class="display-box" style="width:135px;color:var(--orange)" id="drumKit" onchange="app.setDrumKit(this.value)"></select>
                         <select class="display-box sound-image-pick" id="drumImagePick" title="Recall saved drum sound image" onchange="app.recallSoundImage('drum',this.value)"></select>
                         <button class="btn save-slot-btn" onclick="app.openSoundImageSave('drum')" title="Save drum kit settings as image"><i class="fa-solid fa-floppy-disk"></i>SAVE</button>
                     </div>
@@ -3502,6 +3776,23 @@
                     <span class="row-header-title">STUDIO MIXING CONSOLE</span>
                     <div class="master-bus-bar dsp-only">
                         <div class="mbus-group">
+                            <span class="mbus-glow" style="color:#aaa;">USB MIDI</span>
+                            <label style="color:var(--cyan);font-size:8px;display:flex;align-items:center;gap:3px">HARP
+                                <select id="wireHarpCh" class="display-box mbus-mini-sel" onchange="app._onWireChChange('wireHarpCh',CMD.WIRE_HARP_CH,this.value)" title="Harp MIDI channel (1–16)"></select>
+                            </label>
+                            <label style="color:var(--pink);font-size:8px;display:flex;align-items:center;gap:3px">SEQ
+                                <select id="wireSeqCh" class="display-box mbus-mini-sel" onchange="app._onWireChChange('wireSeqCh',CMD.WIRE_SEQ_CH,this.value)" title="Seq MIDI channel (1–16)"></select>
+                            </label>
+                            <label style="color:var(--orange);font-size:8px;display:flex;align-items:center;gap:3px">DRUM
+                                <select id="wireDrumCh" class="display-box mbus-mini-sel" onchange="app._onWireChChange('wireDrumCh',CMD.WIRE_DRUM_CH,this.value)" title="Drum MIDI channel (1–16)"></select>
+                            </label>
+                            <label style="color:#aaa;font-size:8px;display:flex;align-items:center;gap:3px">PB
+                                <input type="number" id="pbRange" class="display-box dark-input-panel mbus-mini-in" min="0" max="24" value="2" title="Pitch-bend range (±semitones)" onchange="app.setPbRange(this.value)">
+                                <select id="pbEnable" class="display-box mbus-mini-sel" onchange="app.setPbEnable(this.value)" title="USB MIDI pitch-bend enable — OFF"></select>
+                            </label>
+                        </div>
+                        <span class="mbus-sep"></span>
+                        <div class="mbus-group">
                             <span class="mbus-glow mbus-glow-fx">MASTER FX</span>
                             <select class="display-box" id="masterFxPreset" onchange="app.txSysexSoon(CMD.M_FX_IDX,this.value)" title="Master FX preset"></select>
                         </div>
@@ -3521,17 +3812,17 @@
                 <div id="master-knobs" class="panel-container"></div>
             </div>
             <div class="control-row mixer-scope-row dsp-only">
-                <div class="row-header">
+                <div class="row-header" style="min-height: 16px;">
                     <span><i class="fa-solid fa-chart-line" style="color:var(--orange)"></i> DRUM BUS SCOPE + MASTER VU</span>
                     <span style="color:#555;font-size:8px">pattern energy at playhead · read-only</span>
                 </div>
                 <div class="mixer-monitor-row" id="mixerScopeRow">
                     <div id="octopus-drum-scope-host" class="drum-scope-toy" title="Drum bus scope — pattern energy at playhead (read-only)"></div>
-                    <div class="vu-container">
-                        <div class="vu-bar">
+                    <div class="vu-container" title="Master stereo VU — pattern energy at playhead">
+                        <div class="vu-bar vu-l" title="Master L">
                             <div class="vu-fill" id="vu-left"></div>
                         </div>
-                        <div class="vu-bar">
+                        <div class="vu-bar vu-r" title="Master R">
                             <div class="vu-fill" id="vu-right"></div>
                         </div>
                     </div>
@@ -3555,7 +3846,7 @@
                     </div>
                     <div class="dbeam-panel">
                         <label class="dbeam-fld">ROUTE MODE
-                            <select class="display-box" id="dbMode" onchange="app.txSysex(CMD.DB_ROUTE,this.value)">
+                            <select class="display-box" id="dbMode" onchange="app.txSysex(CMD.DB_ROUTE,this.value);app._reflectDbeamMeter()" title="D-BEAM route">
                                 <option value="0">Off</option>
                                 <option value="1">Modulation</option>
                                 <option value="2">Volume</option>
@@ -3584,20 +3875,32 @@
                             <input type="number" class="display-box dark-input-panel" id="dbRange" min="0" max="4095" value="1000" onchange="app.txSysex(CMD.DB_RANGE,this.value)">
                         </label>
                     </div>
+                    <div class="dbeam-meter-wrap" title="Live D-BEAM expression — post-curve amplitude from hardware">
+                        <div class="dbeam-meter-bar dbeam-off" id="dbeamMeterBar">
+                            <div class="dbeam-meter-fill" id="dbeamMeterFill"></div>
+                        </div>
+                        <span class="dbeam-meter-lbl dbeam-off" id="dbeamMeterLbl">—</span>
+                    </div>
                 </div>
             </div>
         </div>
 
         <!-- OCTOPUS DSP ENGINE — SEQUENCER VIEW (hardware SysEx mirror) -->
         <div id="view-seq" class="view-content dsp-only">
-            <div id="seq-matrix-bar" class="seq-matrix-bar" aria-label="Octopus sequencer toolbar">
+            <div style="width:100%; max-width:var(--content-max); align-self:center; display:flex; justify-content:flex-end">
+            <div id="seq-matrix-bar" class="seq-matrix-bar" style="width:calc(100% - 50px)" aria-label="Octopus sequencer toolbar">
                 <div class="seq-bar-group">
-                    <span class="seq-bar-lbl">BANK</span>
                     <div class="btn" id="btnBankA" onclick="app.setBank(0)">A</div>
                     <div class="btn" id="btnBankB" onclick="app.setBank(1)">B</div>
                     <div class="btn" id="btnBankC" onclick="app.setBank(2)">C</div>
                     <div class="btn" id="btnBankD" onclick="app.setBank(3)">D</div>
                     <button class="btn" id="btnBankChain" onclick="app.toggleChainLoop()" title="Song chain — play banks in order"><i class="fa-solid fa-link"></i></button>
+                    <div class="ui-stepper" title="Pattern length" style="height:20px;margin-left:4px">
+                        <span class="seq-bar-lbl">LEN</span>
+                        <button type="button" class="btn ui-stepper-btn" onclick="app.stepSeqLen(-1)">&lt;</button>
+                        <span class="ui-stepper-val dsp-len-lbl" style="color:var(--cyan);min-width:24px">64</span>
+                        <button type="button" class="btn ui-stepper-btn" onclick="app.stepSeqLen(1)">&gt;</button>
+                    </div>
                 </div>
                 <div class="seq-bar-sep"></div>
                 <div class="seq-bar-group">
@@ -3613,48 +3916,33 @@
                     </div>
                     <button class="btn" id="btnSeqMode" onclick="app.toggleSongView()" style="color:var(--cyan);border-color:var(--cyan);min-width:68px;justify-content:center" title="Grid ↔ bank chain editor"><i class="fa-solid fa-list-ol"></i>EDIT</button>
                 </div>
-                <div class="seq-bar-sep"></div>
+                <div style="flex:1; display:flex; justify-content:center"><div class="seq-bar-sep"></div></div>
                 <div class="seq-bar-group">
-                    <select class="display-box" id="patimageSlot" title="Recall PATIMAGE 1–16" onchange="app.onPatimageSlot(this.value)" style="color:var(--green);width:108px;height:20px;font-size:8px">
+                    <select class="display-box" id="patimageSlot" title="Recall PATIMAGE 1–16" onchange="app.onPatimageSlot(this.value)" style="color:var(--green);width:96px;height:20px;font-size:8px">
                         <option value="0">PATIMAGE 1</option><option value="1">PATIMAGE 2</option><option value="2">PATIMAGE 3</option><option value="3">PATIMAGE 4</option>
                         <option value="4">PATIMAGE 5</option><option value="5">PATIMAGE 6</option><option value="6">PATIMAGE 7</option><option value="7">PATIMAGE 8</option>
                         <option value="8">PATIMAGE 9</option><option value="9">PATIMAGE 10</option><option value="10">PATIMAGE 11</option><option value="11">PATIMAGE 12</option>
                         <option value="12">PATIMAGE 13</option><option value="13">PATIMAGE 14</option><option value="14">PATIMAGE 15</option><option value="15">PATIMAGE 16</option>
                     </select>
                     <button class="btn" style="color:var(--green);border-color:var(--green);font-size:8px" onclick="app.openChainSaveModal()" title="Save grid + chain to PATIMAGE slot"><i class="fa-solid fa-floppy-disk"></i>SAVE</button>
-                    <select class="display-box pink-txt" id="synthPat" onchange="app.loadSynthPat(this.value)" style="width:132px;height:20px;font-size:8px"></select>
-                    <select class="display-box orange-txt" id="drumPat" onchange="app.loadDrumPat(this.value)" style="width:132px;height:20px;font-size:8px"></select>
+                    <select class="display-box pink-txt" id="synthPat" onchange="app.loadSynthPat(this.value)" style="width:100px;height:20px;font-size:8px"></select>
+                    <select class="display-box orange-txt" id="drumPat" onchange="app.loadDrumPat(this.value)" style="width:100px;height:20px;font-size:8px"></select>
                 </div>
-                <div class="seq-bar-sep"></div>
+                <div style="flex:1; display:flex; justify-content:center"><div class="seq-bar-sep"></div></div>
                 <div class="seq-bar-group">
                     <button class="btn" style="color:var(--cyan);border-color:var(--cyan)" onclick="app.copyGrid()" title="Copy active P page (16 steps)"><i class="fa-solid fa-copy"></i>CPY</button>
                     <button class="btn" style="color:var(--orange);border-color:var(--orange)" onclick="app.pasteGrid()" title="Paste into active P page"><i class="fa-solid fa-paste"></i>PST</button>
-                    <button class="btn active-red" onclick="app.clearGrid()" title="Clear active P page only"><i class="fa-solid fa-trash"></i>CLR</button>
+                    <button class="btn active-red" onclick="app.clearGrid()" title="Clear active P page (grid + P-locks on hardware)"><i class="fa-solid fa-trash"></i>CLR</button>
                     <button class="btn" style="color:var(--pink);border-color:var(--pink)" onclick="app.randNotes('synth')" title="Randomize synth rows 1–8 on active P page"><i class="fa-solid fa-dice"></i>RND-S</button>
                     <button class="btn" style="color:var(--orange);border-color:var(--orange)" onclick="app.randNotes('drum')" title="Randomize drum rows 9–16 on active P page"><i class="fa-solid fa-dice"></i>RND-D</button>
-                    <input class="display-box" id="randDensity" type="number" min="0" max="100" step="5" value="35" title="Randomizer density %" style="width:40px;height:20px;font-size:8px;text-align:center">
+                    <input class="display-box" id="randDensity" type="number" min="0" max="100" step="5" value="35" title="Randomizer density %" style="width:48px;height:20px;font-size:8px;text-align:center;margin-right:-6px">
                 </div>
-                <div class="seq-bar-sep"></div>
-                <div class="seq-bar-group">
-                    <div class="ui-stepper" title="Pattern length" style="height:20px">
-                        <span class="seq-bar-lbl">LEN</span>
-                        <span class="ui-stepper-val dsp-len-lbl" style="color:var(--cyan);min-width:24px">64</span>
-                        <button type="button" class="btn ui-stepper-btn" onclick="app.stepSeqLen(-1)">&lt;</button>
-                        <button type="button" class="btn ui-stepper-btn" onclick="app.stepSeqLen(1)">&gt;</button>
-                    </div>
-                    <div class="ui-stepper trn-purple" title="Transpose ±12" style="height:20px">
-                        <span class="seq-bar-lbl">TRN</span>
-                        <span class="ui-stepper-val dsp-trn-lbl">0</span>
-                        <button type="button" class="btn ui-stepper-btn" onclick="app.stepTranspose(-1)">&lt;</button>
-                        <button type="button" class="btn ui-stepper-btn" onclick="app.stepTranspose(1)">&gt;</button>
-                        <input type="hidden" id="dspSeqTrn" value="0">
-                    </div>
-                    <select id="dspSeqLen" class="display-box" style="display:none" onchange="app.setSeqLength(this.value)">
-                        <option value="16">16</option><option value="32">32</option><option value="48">48</option><option value="64" selected>64</option>
-                    </select>
-                </div>
-                <select class="display-box" style="display:none" id="songSlotSelect" onchange="app.setSongSlot(this.value)"></select>
+                <select id="dspSeqLen" class="display-box" style="display:none" onchange="app.setSeqLength(this.value)">
+                    <option value="16">16</option><option value="32">32</option><option value="48">48</option><option value="64" selected>64</option>
+                </select>
             </div>
+            </div>
+            <select class="display-box" style="display:none" id="songSlotSelect" onchange="app.setSongSlot(this.value)"></select>
             <div id="seq-grid-stage" class="seq-grid-stage">
                 <div id="seq-grid-wrap">
                     <div class="seq-grid" id="seq-grid"></div>
@@ -3698,20 +3986,17 @@
                         <div class="head-led" id="midi-led-3"></div>
                     </div>
                     <button class="btn" id="midiBtnSeqMode" onclick="app.toggleSongView()" style="color:var(--cyan);border-color:var(--cyan);min-width:56px;justify-content:center" title="Grid ↔ song editor"><i class="fa-solid fa-list-ol"></i>EDIT</button>
-                    <span class="seq-bar-lbl" style="color:var(--cyan)">SONG</span>
-                    <select class="display-box" id="midiSongSlotSelect" onchange="app.setSongSlot(this.value)" title="Song slot 1–16" style="width:72px"></select>
+                    <select class="display-box dropdown-compact" id="midiSongSlotSelect" onchange="app.setSongSlot(this.value)" title="Song slot 1–16" style="width:72px"></select>
                 </div>
                 <div class="seq-bar-sep"></div>
                 <div class="seq-bar-group midi-seq-pat-group">
                     <span class="seq-bar-lbl">SCALE</span>
                     <select class="display-box" id="midiScale" onchange="app.setGlobalScale(this.value)" title="Melody scale"></select>
-                    <span class="seq-bar-lbl" style="color:var(--pink)">MEL</span>
-                    <select class="display-box pink-txt" id="midiSynthPat" onchange="app.loadSynthPat(this.value)" title="Melody pattern"></select>
-                    <span class="seq-bar-lbl" style="color:var(--orange)">DRM</span>
-                    <select class="display-box orange-txt" id="midiDrumPat" onchange="app.loadDrumPat(this.value)" title="Drum pattern"></select>
+                    <select class="display-box pink-txt dropdown-compact" id="midiSynthPat" onchange="app.loadSynthPat(this.value)" title="Melody pattern"></select>
+                    <select class="display-box orange-txt dropdown-compact" id="midiDrumPat" onchange="app.loadDrumPat(this.value)" title="Drum pattern"></select>
                     <button class="btn" style="color:var(--cyan);border-color:var(--cyan)" onclick="app.copyGrid()" title="Copy P page"><i class="fa-solid fa-copy"></i>CPY</button>
                     <button class="btn" style="color:var(--orange);border-color:var(--orange)" onclick="app.pasteGrid()" title="Paste P page"><i class="fa-solid fa-paste"></i>PST</button>
-                    <button class="btn active-red" onclick="app.clearGrid()" title="Clear P page"><i class="fa-solid fa-trash"></i>CLR</button>
+                    <button class="btn active-red" onclick="app.clearGrid()" title="Clear active P page (grid + motion lanes)"><i class="fa-solid fa-trash"></i>CLR</button>
                     <button class="btn" style="color:var(--pink);border-color:var(--pink)" onclick="app.randNotes('synth')" title="Random synth"><i class="fa-solid fa-dice"></i>RND-S</button>
                     <button class="btn" style="color:var(--orange);border-color:var(--orange)" onclick="app.randNotes('drum')" title="Random drums"><i class="fa-solid fa-dice"></i>RND-D</button>
                     <input class="display-box midi-density-box" id="midiRandDensity" type="number" min="0" max="100" step="5" value="35" title="Density % (0–100)">
@@ -3720,11 +4005,17 @@
             <div class="midi-pulpit-body">
                 <div class="midi-pulpit-inst">
                     <div class="midi-pulpit-inst-top control-row midi-inst-panel">
-                        <div class="midi-inst-compact-title pink"><i class="fa-solid fa-wave-square"></i> SEQ SYNTH · 24×CC</div>
+                        <div class="midi-inst-compact-title pink">
+                            <span><i class="fa-solid fa-wave-square"></i> SEQ SYNTH · 24×CC</span>
+                            <button class="btn" style="float:right; margin-top:-2px; padding:2px 6px; font-size:8px; border:1px solid var(--border-dim); background:#111; color:var(--pink); border-radius:4px" onclick="app.initMidiUserCc()" title="Reset to standard CC layout">INIT CC</button>
+                        </div>
                         <div id="midi-seq-knobs" class="panel-container"></div>
                     </div>
                     <div class="midi-pulpit-inst-bottom control-row midi-inst-panel">
-                        <div class="midi-inst-compact-title orange"><i class="fa-solid fa-drum"></i> DRUM NOTE MAP</div>
+                        <div class="midi-inst-compact-title orange">
+                            <span><i class="fa-solid fa-drum"></i> DRUM NOTE MAP</span>
+                            <button class="btn" style="float:right; margin-top:-2px; padding:2px 6px; font-size:8px; border:1px solid var(--border-dim); background:#111; color:var(--orange); border-radius:4px" onclick="app.initMidiDrumNotes()" title="Reset to standard GM map">INIT NOTES</button>
+                        </div>
                         <div class="midi-inst-panel-body">
                             <div class="midi-drum-notes" id="midi-drum-notes"></div>
                             <div class="midi-drum-pitch-row" title="Global melody pitch offset">
@@ -3796,7 +4087,7 @@
                 <button type="button" class="btn midi-only" id="helpTabMidi" onclick="app.showHelpTab('midi')">OCTOPUS MIDI CONTROLLER</button>
             </div>
             <div id="helpBodyDsp" class="dsp-only" style="font-size:10px;color:#aaa;overflow-y:auto;flex:1;line-height:1.65;padding-right:4px">
-                <p style="color:#fff;font-size:9px;border-bottom:1px solid #1c1c2e;padding-bottom:4px;margin-bottom:8px;font-family:'Orbitron',sans-serif">OCTOPUS DSP ENGINE · FIRMWARE 6.1.01 · OCTOPUSAPP v6.6.00</p>
+                <p style="color:#fff;font-size:9px;border-bottom:1px solid #1c1c2e;padding-bottom:4px;margin-bottom:8px;font-family:'Orbitron',sans-serif">OCTOPUS DSP ENGINE · FIRMWARE 6.1.01 · OCTOPUSAPP v6.6.01</p>
                 <p style="margin-top:0;font-size:9px;margin-bottom:10px">
                     <a href="https://octopus-info.isystem.app" target="_blank" rel="noopener" style="color:var(--purple)">Product site</a>
                     · <a href="https://octopus.isystem.app" style="color:var(--cyan)">octopus.isystem.app</a>
@@ -3822,7 +4113,7 @@
                 • <b>Organic Drive</b> insert FX (FX-A index 12) — organic saturation for melody and drums.<br>
                 • <b>Drum engine</b> — global D.PITCH, fog-reject gate, <b>24 kits</b> (TR-909 / TR-808 / Trap / House + 20 App voicing presets), and a live <b>UV energy-map drum scope</b> (MIXER tab) that shows active voice energy at the device playhead.<br>
                 • <b>128 factory presets</b> + 64 user sound slots per engine on hardware (HARP/SEQ SYNTH → Save/Load Slot).<br>
-                • <b>D-BEAM</b> — local DSP only; route + target in MIXER tab; enable/bypass in header DBEAM button.<br>
+                • <b>D-BEAM</b> — local DSP only; route + target in MIXER tab; enable/bypass in header D-BEAM button; live amplitude bargraph under expression controls (hardware telemetry).<br>
                 • <b>Transport</b> — shared play/stop/rec state: hardware SCALE or App ▶/■ both toggle; device echoes keep buttons in sync.<br>
                 • <b>App telemetry</b> — CPU load in header; SYSEX MON panel (FILTER hides PING / STEP / CPU streams).<br>
                 • <b>USB-only MIDI</b> — DIN MIDI removed; v6.0 SysEx protocol (manufacturer 0x7C device→App, 0x7D App→device).</p>
@@ -3832,6 +4123,15 @@
                 <button type="button" class="btn" style="margin-top:6px;color:var(--cyan);border-color:var(--cyan)" onclick="app.loadFactoryExamples(true)"><i class="fa-solid fa-graduation-cap"></i> RELOAD TUTORIAL EXAMPLES</button>
                 <button type="button" class="btn" style="margin-top:6px;color:var(--pink);border-color:var(--pink)" onclick="app.loadMidiDemoSong()"><i class="fa-solid fa-music"></i> LOAD MIDI DEMO SONG</button>
                 <span style="display:block;margin-top:4px;font-size:8px;color:#555">Exportable JSON also in <code>examples/octopusapp/</code> on GitHub.</span></p>
+                <p style="margin-top:10px"><b style="color:var(--green)">WHAT'S NEW IN v6.6.01 (APP FINAL)</b><br>
+                • <b>CLR → hardware sync</b> — sequencer <b>CLR</b> clears the active P-page grid <b>and</b> P-lock motion lanes on the device (not just the App).<br>
+                • <b>Reconnect state echo</b> — USB replug or resync sends <b>APP_SYNC_REQ</b>; firmware bursts knobs, grid, transport, playhead, patches, and D-BEAM state after handshake.<br>
+                • <b>D-BEAM bargraph</b> — MIXER tab shows live expression level from hardware (sub 0x06 telemetry).<br>
+                • <b>WAVE sync</b> — harp / melody waveform dropdowns stay in 3-way sync with instrument knobs and hardware echoes.<br>
+                • <b>Harp patch echo</b> — dashboard encoder browse and preset recall mirror <b>H_PATCH</b> to the App in real time.<br>
+                • <b>Connect prompt</b> — ▶ Play without a MIDI port opens a short connect guide (★ Octopus DSP or MIDI Controller).<br>
+                • <b>Keyboard shortcuts</b> — DSP: <b>1/2/3</b> tabs · <b>Space</b> play/stop · <b>R</b> record (auto-play when arming). MIDI: <b>Space</b> · <b>R</b>.<br>
+                • <b>Studio VU</b> — master stereo meters use traditional green / yellow / red level bands.</p>
                 <p style="margin-top:10px"><b style="color:var(--green)">WHAT'S NEW IN v6.6.00 (APP SHELL)</b><br>
                 • <b>Master bar</b> — logo → octopus-info.isystem.app · global glowing BPM · D-BEAM on HARP row · connector closer to MON.<br>
                 • <b>INSTRUMENTS IDLE</b> — animated idle overlay when no ★ Octopus connected; auto-hides on connection.<br>
@@ -3846,7 +4146,7 @@
                 • <b>Octopus auto-connect</b> — ★ port connects automatically. Non-Octopus ports stay idle until you pick one and click <b>MIDI OUT</b> (connector box, right side).<br>
                 • <b>Mode-separation hardening</b> — Octopus and MIDI connect paths fully split; MIDI activity scopes no longer freeze; Octopus knob panels build lazily.<br>
                 • <b>GOD playhead</b> — dedicated GPU layer; smooth during hover, repaints, and P-page switches (STEP_SYNC in Octopus mode).<br>
-                • <b>P-page grid tools</b> — CPY, PST, CLR, RND-S, RND-D, and factory pattern loads affect the <b>active P page only</b> (16 steps). Click P1–P4 to lock the grid view while playing.<br>
+                • <b>P-page grid tools</b> — CPY, PST, CLR, RND-S, RND-D, and factory pattern loads affect the <b>active P page only</b> (16 steps). CLR also wipes P-lock motion on hardware. Click P1–P4 to lock the grid view while playing.<br>
                 • <b>INSTRUMENTS</b> — Harp, Sequencer synth, Drum engines only (knobs + patches).<br>
                 • <b>MIXER</b> — AB 9-09 bus controls (global/aux/FX), master console, aux sends + shared room + USB wire, drum scope + VU, Laser Show + Hue, D-BEAM calibration.<br>
                 • <b>Drum voicing (firmware 6.1.01)</b> — classic-leaning snare, clap and metal hats per kit (body+rattle snare, bandpass clap with noise layer, 6-osc metal hats). Reflash to hear it; see <b>DRUM KITS &amp; VOICING</b> below.</p>
@@ -3865,8 +4165,10 @@
                 • <b>NVS namespace</b> <code>octopus</code> — legacy flash data migrates automatically on first boot.</p>
 
                 <p style="margin-top:10px"><b style="color:var(--cyan)">CONNECTION &amp; SYNC</b><br>
-                Plug in USB — <b>auto-connect</b> detects ★ Octopus port. On <b>first connection</b> in a browser session the App performs a hard-refresh (Ctrl+Shift+R equivalent) to ensure clean WebMIDI state, then reconnects automatically. After refresh: import state (orange <b>SYNC</b>), then green <b>ON</b> when playhead/transport mirror is live. ▶/■/REC work from App or hardware.<br>
+                Plug in USB — <b>auto-connect</b> detects ★ Octopus port. On <b>first connection</b> in a browser session the App performs a hard-refresh (Ctrl+Shift+R equivalent) to ensure clean WebMIDI state, then reconnects automatically. After refresh: import state (orange <b>SYNC</b>), then green <b>ON</b> when playhead/transport mirror is live. On <b>reconnect</b> (replug or resync) the App sends <b>APP_SYNC_REQ</b> — wait for the burst to finish before editing; active steps, playhead, knobs, and patches should match hardware.<br>
+                ▶/■/REC work from App or hardware. Pressing ▶ with no connection shows the connect guide instead of failing silently.<br>
                 <b>Hardware while connected:</b> SCALE = play/stop · OC short = record-arm · encoder turn = BPM.<br>
+                <b>Keyboard (DSP):</b> <b>1</b> INSTRUMENTS · <b>2</b> MIXER · <b>3</b> SEQUENCER · <b>Space</b> play/stop · <b>R</b> record (auto-starts transport when arming).<br>
                 <b>Playhead:</b> switch to the <b>SEQUENCER</b> tab while playing — the cyan bar tracks the hardware step <b>1:1</b> (discrete, driven directly by STEP_SYNC). It never drifts or stutters. BPM range 40–240.<br>
                 <b>INSTRUMENTS IDLE:</b> when no ★ Octopus is connected, the INSTRUMENTS view shows the idle overlay. The panels activate automatically on connection.<br>
                 <b>No inbound echo?</b> Close other OctopusApp tabs, hard-refresh (Ctrl+Shift+R), open MON with FILTER off — you must see ← lines when moving hardware controls.</p>
@@ -3876,14 +4178,14 @@
                 The classic voices are hand-tuned per kit: <b>snare</b> = body wavetable + bandpassed rattle + click (Tune = snap brightness, Noise = wires), <b>clap</b> = bandpass triple-burst with a noise layer (Tune = filter centre, Noise = layer), <b>hats</b> = 6-osc inharmonic metal (Tune = HPF cutoff, Noise = wash). <b>Drm Pitch</b> sweeps the whole bus; kick/toms/perc track it directly while snare body + hats normalise to the classic ×0.60 default.</p>
 
                 <p style="margin-top:10px"><b style="color:var(--orange)">SAVE · RESET · CLR</b><br>
-                Header <b>SAVE</b> stores the workspace to <b>SESSION 2–16</b> in browser JSON (no reload). <b>SESSION 1</b> auto-saves. Optional checkbox mirrors to device NVS (reboots). Hardware factory <b>RESET</b> is menu-only — not in the App header. Header <b>CLR</b> clears the active P page only (16 steps).</p>
+                Header <b>SAVE</b> stores the workspace to <b>SESSION 2–16</b> in browser JSON (no reload). <b>SESSION 1</b> auto-saves. Optional checkbox mirrors to device NVS (reboots). Hardware factory <b>RESET</b> is menu-only — not in the App header. Header <b>CLR</b> clears the active P page (16 steps) <b>and</b> P-lock motion on the connected device; other P pages and sound presets are unchanged.</p>
 
                 <p style="margin-top:10px"><b style="color:var(--green)">BROWSER LIBRARIES (v6.6)</b><br>
                 <b>SESSION 1–16</b> — full studio snapshot (grids, chains, knobs, mixer, refs). Recall pushes to USB when connected.<br>
                 <b>PATIMAGE 1–16</b> — Bank Manager pattern library (grid + chains).<br>
                 <b>SOUND / MIX 1–16</b> — per-engine snapshots via instrument <b>SAVE</b> popups (RECALL in modal).<br>
-                <b>MIXER tab</b> — AB 9-09 bus (global, aux, FX-A/B), master console, aux/shared-room sends (knobs = live levels), USB wire rack, drum scope, laser, D-BEAM.<br>
-                <b>INSTRUMENTS tab</b> — AB 9-09 eight-voice canvas (wave + 4 knobs per voice), KIT + SAVE in drum header.<br>
+                <b>MIXER tab</b> — AB 9-09 bus (global, aux, FX-A/B), STUDIO mixing console, aux/shared-room sends, USB wire rack, drum scope + traditional G/Y/R master VU, laser, D-BEAM route/target + live bargraph.<br>
+                <b>INSTRUMENTS tab</b> — AB 9-09 eight-voice canvas (wave dropdown + 4 knobs per voice — wave stays synced with hardware), harp patch dropdown, KIT + SAVE in drum header.<br>
                 <b>HELP tab</b> — opens this popup (no view switch).<br>
                 <b>EXP / IMP</b> — export/import <code>octopus_session_N.json</code> (import targets slots 2–16 only).</p>
 
@@ -3891,7 +4193,7 @@
                 <b>Banks A–D</b> — four independent patterns; edits never bleed across banks.<br>
                 <b>🔗 Chain</b> — song mode plays banks in order; up to 16 steps per song slot.<br>
                 <b>SONG</b> — visual chain editor (bank + repeats per step). <b>P1–P4</b> — 16-step pages within active bank (click to lock view while playing).<br>
-                <b>CPY/PST</b> — copy/paste <b>active P page</b> (16 steps). <b>CLR</b> — clear active P page only. <b>RND-S / RND-D</b> — randomize synth or drum rows on active P page (density slider). Factory pattern dropdowns also load into the active P page.</p>
+                <b>CPY/PST</b> — copy/paste <b>active P page</b> (16 steps). <b>CLR</b> — clear active P page grid + P-locks on hardware (DSP mode) or motion lanes (MIDI mode). <b>RND-S / RND-D</b> — randomize synth or drum rows on active P page (density slider). Factory pattern dropdowns also load into the active P page.</p>
 
                 <p style="margin-top:10px;color:#666;font-size:9px">
                     <a href="https://octopus-info.isystem.app" target="_blank" rel="noopener" style="color:var(--purple)">octopus-info.isystem.app</a> — product info &amp; specs<br>
@@ -3903,7 +4205,7 @@
                 </p>
             </div>
             <div id="helpBodyMidi" class="midi-only" style="display:none;font-size:10px;color:#aaa;overflow-y:auto;flex:1;line-height:1.65;padding-right:4px">
-                <p style="color:#fff;font-size:9px;border-bottom:1px solid #1c1c2e;padding-bottom:4px;margin-bottom:8px;font-family:'Orbitron',sans-serif">OCTOPUS MIDI CONTROLLER · OCTOPUSAPP v6.6</p>
+                <p style="color:#fff;font-size:9px;border-bottom:1px solid #1c1c2e;padding-bottom:4px;margin-bottom:8px;font-family:'Orbitron',sans-serif">OCTOPUS MIDI CONTROLLER · OCTOPUSAPP v6.6.01</p>
                 <p style="margin-top:0"><b style="color:var(--cyan)">WHAT IS THIS?</b><br>
                 <b>Octopus MIDI Controller</b> — a free step sequencer in your browser. Standard MIDI out to hardware synths, drum machines, and DAWs. No Octopus PRO XL required. No server — Chrome talks USB MIDI directly.</p>
                 <p style="margin-top:10px"><b style="color:var(--purple)">WANT OCTOPUS DSP ENGINE?</b><br>
@@ -3912,17 +4214,22 @@
                 1. Unplug ★ Octopus (or pick a port without ★).<br>
                 2. Chrome → <a href="https://octopus.isystem.app" style="color:var(--cyan)">octopus.isystem.app</a> → Allow MIDI.<br>
                 3. Badge = <b style="color:var(--cyan)">MIDI OUT</b> · single <b>pulpit</b> page: instruments left (~67%) + grid right (~33%).<br>
-                4. Paint cells · set BPM · ▶ Play. Route to hardware or virtual cable (IAC / loopMIDI) into your DAW.</p>
+                4. Paint cells · set BPM · ▶ Play. Route to hardware or virtual cable (IAC / loopMIDI) into your DAW.<br>
+                <b>Keyboard:</b> <b>Space</b> play/stop · <b>R</b> record (auto-starts transport when arming motion lanes).<br>
+                <b>No port selected?</b> ▶ Play opens a connect guide — pick any MIDI interface in the header, then play again.</p>
                 <p style="margin-top:10px"><b style="color:var(--green)">PULPIT LAYOUT</b><br>
                 • <b>Utility header</b> — LEN/TRN/OCT · ARP · JSON/MID/IMP · CLK + channels + MON.<br>
                 • <b>Sequencer bar</b> — BANK, P1–P4, EDIT, <b>SONG 01–16</b>, SCALE, patterns, CPY/PST/CLR/RND.<br>
                 • <b>Left</b> — SEQ SYNTH 24×CC (top) + drum note map + scope (bottom).<br>
                 • <b>Right</b> — 16×16 matrix + playhead (isolated from DSP grid).</p>
+                <p style="margin-top:10px"><b style="color:var(--cyan)">GRID TOOLS &amp; MOTION</b><br>
+                <b>CPY/PST/CLR/RND</b> affect the <b>active P page only</b> (16 steps within the bank). <b>CLR</b> also clears recorded motion (CC P-locks) on that page — purple dots on the grid disappear.<br>
+                <b>REC</b> + ▶ — twist SEQ SYNTH CC knobs while playing to capture up to <b>4 motion lanes</b> per bank (purple dot per step). Max 4 lanes — extra automation is dropped with a one-shot log warning.</p>
                 <p style="margin-top:10px"><b style="color:var(--cyan)">SONG MODE</b><br>
                 🔗 next to banks enables chain playback. Pick <b>Chain 01–16</b> in toolbar. EDIT opens bank manager (bank + repeats per step). Saves in browser + JSON export.</p>
                 <p style="margin-top:10px"><b style="color:var(--orange)">SAVE / EXPORT</b><br>
-                • Auto-save in browser (localStorage).<br>
-                • <b>JSON</b> — full session (grid, chains, CC map, ARP, motion).<br>
+                • Auto-save in browser (localStorage) — SESSION 1.<br>
+                • <b>JSON</b> — full session (grid, chains, CC map, ARP, motion lanes).<br>
                 • <b>MID</b> — Standard MIDI File of active bank pattern.<br>
                 • <b>IMP</b> — JSON session or basic .mid → grid.</p>
                 <p style="margin-top:10px"><b style="color:var(--orange)">DAW ROUTING</b><br>
@@ -3935,17 +4242,19 @@
         </div>
     </div>
 
-    <!-- ── SAVE popup: local session slots 2–16 (SESSION 1 = auto-save) ───────── -->
+    <!-- ── SAVE popup: local session slots & JSON Export/Import ───────── -->
     <div class="modal" id="saveModal">
         <div class="modal-content" style="width:400px">
             <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #1c1c2e;padding-bottom:6px;margin-bottom:12px">
-                <h3 style="margin:0;font-size:10px;color:var(--green)">SAVE SESSION</h3>
+                <h3 style="margin:0;font-size:10px;color:var(--green)"><i class="fa-solid fa-floppy-disk" style="margin-right:6px"></i>SESSION MANAGER</h3>
                 <button class="btn active-red" onclick="app.closeSaveModal()">CLOSE</button>
             </div>
             <div style="display:flex;flex-direction:column;gap:10px">
-                <div style="color:#666;font-size:9px;line-height:1.5"><b>SESSION 1</b> auto-saves in this browser. Pick a slot below to store the current workspace as JSON (patterns, chains, sound refs, knobs).</div>
-                <label style="font-size:9px;color:#888;font-family:'Orbitron',sans-serif">DESTINATION
-                    <select class="display-box" id="sessionSavePick" style="width:100%;margin-top:4px;color:var(--green)">
+                
+                <div style="border:1px solid #1a1a26; padding:10px; border-radius:4px; background:#08080d;">
+                    <div style="color:#888;font-size:9px;margin-bottom:8px;font-family:'Orbitron',sans-serif">LOAD ACTIVE SESSION</div>
+                    <select class="display-box" id="sessionSlot" title="SESSION 1 auto-saves — pick 2–16 to recall" style="width:100%" onchange="app.onSessionSlot(this.value); app.closeSaveModal()">
+                        <option value="0" selected>SESSION 1</option>
                         <option value="1">SESSION 2</option>
                         <option value="2">SESSION 3</option>
                         <option value="3">SESSION 4</option>
@@ -3962,12 +4271,43 @@
                         <option value="14">SESSION 15</option>
                         <option value="15">SESSION 16</option>
                     </select>
-                </label>
-                <label style="font-size:9px;color:#888;display:flex;align-items:center;gap:6px;margin-top:4px">
-                    <input type="checkbox" id="sessionAlsoDevice">
-                    Also mirror to device NVS (reboots ESP)
-                </label>
-                <button class="btn" style="color:var(--green);border-color:var(--green)" onclick="app.saveSessionToSlot(document.getElementById('sessionSavePick').value)"><i class="fa-solid fa-floppy-disk"></i>SAVE</button>
+                </div>
+
+                <div style="border:1px solid #1a1a26; padding:10px; border-radius:4px; background:#08080d;">
+                    <div style="color:#888;font-size:9px;margin-bottom:8px;font-family:'Orbitron',sans-serif">SAVE TO DESTINATION SLOT</div>
+                    <div style="color:#666;font-size:9px;line-height:1.5;margin-bottom:8px"><b>SESSION 1</b> auto-saves in this browser. Pick a slot below to store the current workspace.</div>
+                    <select class="display-box" id="sessionSavePick" style="width:100%;margin-bottom:8px;color:var(--green)">
+                        <option value="1">SESSION 2</option>
+                        <option value="2">SESSION 3</option>
+                        <option value="3">SESSION 4</option>
+                        <option value="4">SESSION 5</option>
+                        <option value="5">SESSION 6</option>
+                        <option value="6">SESSION 7</option>
+                        <option value="7">SESSION 8</option>
+                        <option value="8">SESSION 9</option>
+                        <option value="9">SESSION 10</option>
+                        <option value="10">SESSION 11</option>
+                        <option value="11">SESSION 12</option>
+                        <option value="12">SESSION 13</option>
+                        <option value="13">SESSION 14</option>
+                        <option value="14">SESSION 15</option>
+                        <option value="15">SESSION 16</option>
+                    </select>
+                    <label style="font-size:9px;color:#888;display:flex;align-items:center;gap:6px;margin-bottom:8px">
+                        <input type="checkbox" id="sessionAlsoDevice">
+                        Also mirror to device NVS (reboots ESP)
+                    </label>
+                    <button class="btn" style="width:100%;color:var(--green);border-color:var(--green)" onclick="app.saveSessionToSlot(document.getElementById('sessionSavePick').value); app.closeSaveModal()"><i class="fa-solid fa-floppy-disk"></i>SAVE TO SLOT</button>
+                </div>
+
+                <div style="border:1px solid #1a1a26; padding:10px; border-radius:4px; background:#08080d;">
+                    <div style="color:#888;font-size:9px;margin-bottom:8px;font-family:'Orbitron',sans-serif">FILE EXPORT / IMPORT (JSON)</div>
+                    <div style="display:flex; gap:8px;">
+                        <button class="btn" style="flex:1" onclick="app.exportOctopusSession(); app.closeSaveModal()" title="Export current workspace as JSON"><i class="fa-solid fa-download"></i>EXPORT JSON</button>
+                        <button class="btn" style="flex:1" onclick="document.getElementById('octopusImportFile').click(); app.closeSaveModal()" title="Import session JSON"><i class="fa-solid fa-upload"></i>IMPORT JSON</button>
+                    </div>
+                </div>
+
             </div>
         </div>
     </div>
@@ -4143,11 +4483,27 @@
         </div>
     </div>
 
+    <!-- ── Connect prompt (play without MIDI / Octopus) ───────────────── -->
+    <div class="modal" id="connectModal">
+        <div class="modal-content" style="width:420px;text-align:center;padding:22px 18px">
+            <h3 style="margin:0 0 12px;font-size:11px;color:var(--cyan);font-family:'Orbitron',sans-serif;letter-spacing:1px">
+                <i class="fa-solid fa-plug" style="margin-right:6px"></i>NO MIDI CONNECTION
+            </h3>
+            <p style="margin:0 0 16px;font-size:11px;line-height:1.55;color:#bbb">
+                Connect Octopus PRO XL Hardware DSP Engine or use as Octopus MIDI Controller.
+            </p>
+            <p style="margin:0 0 18px;font-size:9px;color:#666">
+                Pick a port in the header <b style="color:#888">MIDI OUT</b> — ★ Octopus for DSP Engine, or any interface for MIDI Controller mode.
+            </p>
+            <button class="btn active-green" style="min-width:120px;justify-content:center;margin:0 auto" onclick="app.closeConnectModal()">OK</button>
+        </div>
+    </div>
+
     <!-- ═══════════════════════════════════════════════════════════════════════════
      JAVASCRIPT
 ═══════════════════════════════════════════════════════════════════════════ -->
     <script>
-        const APP_VERSION = '6.6.00';
+        const APP_VERSION = '6.6.01';
         const PAYPAL_DONATE_URL = 'https://www.paypal.com/donate?hosted_button_id=KX7B76V37PED8';
         const MIDI_SESSION_KEY = 'octopusapp_midi_session_v1';
         const OCTOPUS_SESSION_STORE = 'octopusapp_session_bundle_v1';
@@ -4338,7 +4694,8 @@
             // Sent after RND-S / RND-D so the new random pattern plays from beat 1.
             SEQ_RESTART: 193,
             AUX_SCENE_IDX: 194,    // v14 0–15 shared room scene (loadAuxScene)
-            LINK_AUX_PRESET: 195   // v14 0=OFF 16383=ON — FX-A recall copies aux when ON
+            LINK_AUX_PRESET: 195,  // v14 0=OFF 16383=ON — FX-A recall copies aux when ON
+            DBEAM_AMP: 196         // Device→App: live expression 0–16383 (dbeamAmplitude)
         };
         const ARP_PAT_NAMES = ['Up', 'Down', 'UpDn', 'DnUp', 'Rnd', 'AsIs', 'Up+1', 'Dn-1'];
         const ARP_RATE_NAMES = ['1/1', '1/2', '1/4', '1/8', '1/8T', '1/16', '1/16T', '1/32'];
@@ -5501,98 +5858,9 @@
                         return (st >= 0 ? '+' : '') + st.toFixed(1) + 'st';
                     }
                 },
+                /* AUX & ROUTING and SHARED ROOM moved to KNOBS.drumsBus */
                 {
-                    group: 'USB/MIDI',
-                    label: 'H.DLY',
-                    cmd: 121,
-                    min: 0,
-                    max: 16383,
-                    def: 0,
-                    fmt: v => Math.round(v / 16383 * 100) + '%'
-                },
-                {
-                    group: 'USB/MIDI',
-                    label: 'H.REV',
-                    cmd: 122,
-                    min: 0,
-                    max: 16383,
-                    def: 0,
-                    fmt: v => Math.round(v / 16383 * 100) + '%'
-                },
-                {
-                    group: 'USB/MIDI',
-                    label: 'S.DLY',
-                    cmd: 123,
-                    min: 0,
-                    max: 16383,
-                    def: 0,
-                    fmt: v => Math.round(v / 16383 * 100) + '%'
-                },
-                {
-                    group: 'USB/MIDI',
-                    label: 'S.REV',
-                    cmd: 124,
-                    min: 0,
-                    max: 16383,
-                    def: 0,
-                    fmt: v => Math.round(v / 16383 * 100) + '%'
-                },
-                {
-                    group: 'SHARED ROOM',
-                    label: 'RM TIME',
-                    cmd: 113,
-                    min: 0,
-                    max: 16383,
-                    def: AUX_ENC.dlyTime(0.35),
-                    fmt: v => (v / 16383 * 1.5).toFixed(2) + 's'
-                },
-                {
-                    group: 'SHARED ROOM',
-                    label: 'RM FB',
-                    cmd: 142,
-                    min: 0,
-                    max: 16383,
-                    def: AUX_ENC.dlyFb(0.45),
-                    fmt: v => Math.round(v / 16383 * 95) + '%'
-                },
-                {
-                    group: 'SHARED ROOM',
-                    label: 'RM SIZE',
-                    cmd: 114,
-                    min: 0,
-                    max: 16383,
-                    def: AUX_ENC.revSize(0.55),
-                    fmt: v => (v / 16383 * 0.95).toFixed(2)
-                },
-                {
-                    group: 'SHARED ROOM',
-                    label: 'RM DAMP',
-                    cmd: 143,
-                    min: 0,
-                    max: 16383,
-                    def: AUX_ENC.revDamp(0.35),
-                    fmt: v => Math.round(v / 16383 * 100) + '%'
-                },
-                {
-                    group: 'SHARED ROOM',
-                    label: 'SCENE',
-                    cmd: 194,
-                    min: 0,
-                    max: 15,
-                    steps: 16,
-                    discrete: true,
-                    def: 0,
-                    fmt: v => AUX_SCENE_NAMES[Math.round(v) & 15] || '?'
-                },
-                {
-                    group: 'SHARED ROOM',
-                    label: 'LINK',
-                    cmd: 195,
-                    toggle: true,
-                    def: 0
-                },
-                {
-                    group: 'TUBE',
+                    group: 'DISTORTION',
                     label: 'DRV',
                     cmd: 73,
                     min: 0,
@@ -5601,7 +5869,7 @@
                     fmt: v => Math.round(v / 16383 * 100) + '%'
                 },
                 {
-                    group: 'TUBE',
+                    group: 'DISTORTION',
                     label: 'TONE',
                     cmd: 74,
                     min: 0,
@@ -5610,7 +5878,7 @@
                     fmt: v => Math.round(v / 16383 * 100) + '%'
                 },
                 {
-                    group: 'TUBE',
+                    group: 'DISTORTION',
                     label: 'MIX',
                     cmd: 75,
                     min: 0,
@@ -5619,7 +5887,7 @@
                     fmt: v => Math.round(v / 16383 * 100) + '%'
                 },
                 {
-                    group: 'DJ',
+                    group: 'MASTER LPF',
                     label: 'FREQ',
                     cmd: 76,
                     min: 0,
@@ -5628,7 +5896,7 @@
                     fmt: v => Math.round(v / 16383 * 100) + '%'
                 },
                 {
-                    group: 'DJ',
+                    group: 'MASTER LPF',
                     label: 'RES',
                     cmd: 77,
                     min: 0,
@@ -5637,7 +5905,7 @@
                     fmt: v => Math.round(v / 16383 * 100) + '%'
                 },
                 {
-                    group: 'DJ',
+                    group: 'MASTER LPF',
                     label: 'MIX',
                     cmd: 78,
                     min: 0,
@@ -5707,29 +5975,48 @@
         const OCTOPUS_SOUND_IMAGE_STORE = 'octopusapp_sound_images_v1';
         const DRUM_VOICE_GROUP_SET = new Set(DRUM_ROW_LABELS);
         KNOBS.drumsVoices = KNOBS.drums.filter(k => DRUM_VOICE_GROUP_SET.has(k.group));
-        const _drumBusCore = KNOBS.drums.filter(k => ['DRUM GLOBAL', 'DRUM AUX', 'DRUM FX'].includes(k.group));
-        const _roomKnobs = KNOBS.master.filter(k => k.group === 'SHARED ROOM');
+        const _drumBusCore = KNOBS.drums.filter(k => ['DRUM GLOBAL', 'DRUM AUX', 'DRUM FX', 'MIX'].includes(k.group));
+        const _auxAndRoomKnobs = [
+            { group: 'AUX & ROUTING', label: 'H.DLY', cmd: 121, min: 0, max: 16383, def: 0, fmt: v => Math.round(v / 16383 * 100) + '%' },
+            { group: 'AUX & ROUTING', label: 'H.REV', cmd: 122, min: 0, max: 16383, def: 0, fmt: v => Math.round(v / 16383 * 100) + '%' },
+            { group: 'AUX & ROUTING', label: 'S.DLY', cmd: 123, min: 0, max: 16383, def: 0, fmt: v => Math.round(v / 16383 * 100) + '%' },
+            { group: 'AUX & ROUTING', label: 'S.REV', cmd: 124, min: 0, max: 16383, def: 0, fmt: v => Math.round(v / 16383 * 100) + '%' },
+            { group: 'SHARED ROOM', label: 'RM TIME', cmd: 113, min: 0, max: 16383, def: AUX_ENC.dlyTime(0.35), fmt: v => (v / 16383 * 1.5).toFixed(2) + 's' },
+            { group: 'SHARED ROOM', label: 'RM FB', cmd: 142, min: 0, max: 16383, def: AUX_ENC.dlyFb(0.45), fmt: v => Math.round(v / 16383 * 95) + '%' },
+            { group: 'SHARED ROOM', label: 'RM SIZE', cmd: 114, min: 0, max: 16383, def: AUX_ENC.revSize(0.55), fmt: v => (v / 16383 * 0.95).toFixed(2) },
+            { group: 'SHARED ROOM', label: 'RM DAMP', cmd: 143, min: 0, max: 16383, def: AUX_ENC.revDamp(0.35), fmt: v => Math.round(v / 16383 * 100) + '%' },
+            { group: 'SHARED ROOM', label: 'SCENE', cmd: 194, min: 0, max: 15, steps: 16, discrete: true, def: 0, fmt: v => AUX_SCENE_NAMES[Math.round(v) & 15] || '?' },
+            { group: 'SHARED ROOM', label: 'LINK', cmd: 195, toggle: true, def: 0 }
+        ];
         KNOBS.drumsBus = [
             ..._drumBusCore,
-            ..._roomKnobs.filter(k => k.label === 'SCENE' || k.label === 'LINK')
-                .map(k => ({ ...k, group: 'ROOM · LINK' })),
-            ..._roomKnobs.filter(k => k.label.startsWith('RM'))
-                .map(k => ({ ...k, group: 'ROOM AUX' }))
+            ..._auxAndRoomKnobs
         ];
+        KNOBS.routingBus = [];
         /* Standard MIDI CC map — 24 user-remappable slots (GM-friendly defaults). */
         const MIDI_USER_CC_LABELS = [
             'MOD', 'BRTH', 'PORT', 'VOL', 'BAL', 'EXPR', 'SUS', 'REL',
             'PAN', 'CUT', 'RES', 'ATK', 'DEC', 'VIB', 'PHS', 'REV',
             'CHO', 'BRT', 'PRES', 'LEG', 'PWM', 'NH', 'ANL', 'CC'
         ];
+        /* Full readable names — shown on the 2-row CC chip name line (the chip's own
+         * row gives them width); short label above is the fallback for narrow tiers. */
+        const MIDI_USER_CC_FULLNAMES = [
+            'Modulation', 'Breath', 'Portamento', 'Volume', 'Balance', 'Expression', 'Sustain', 'Release',
+            'Pan', 'Cutoff', 'Resonance', 'Attack', 'Decay', 'Vibrato', 'Phaser', 'Reverb',
+            'Chorus', 'Brightness', 'Pressure', 'Legato', 'PWM', 'Harmonics', 'Analog', 'Generic CC'
+        ];
         const MIDI_USER_CC_NUMS = [
-            1, 2, 4, 5, 7, 8, 11, 64, 10, 74, 71, 73, 75, 77, 78, 91,
+            1, 2, 5, 7, 8, 11, 64, 72, 10, 74, 71, 73, 75, 77, 78, 91,
             93, 12, 16, 68, 70, 69, 92, 3
         ];
         const MIDI_USER_CC_DEFAULTS = MIDI_USER_CC_LABELS.map((label, i) => {
             const cc = MIDI_USER_CC_NUMS[i] || (i + 1);
-            const val = cc === 7 ? 100 : (cc === 11 ? 127 : (cc === 10 ? 64 : 64));
-            return { label, cc, val };
+            let val = 0;
+            if (cc === 7) val = 100;
+            else if (cc === 11 || cc === 74) val = 127;
+            else if (cc === 10 || cc === 8 || cc === 73 || cc === 75 || cc === 72) val = 64;
+            return { label, full: MIDI_USER_CC_FULLNAMES[i] || label, cc, val };
         });
         const MIDI_KNOBS = { seqSynth: [] }; /* legacy alias — use midiMap.userCc + buildMidiUserCcKnobs */
 
@@ -6426,7 +6713,7 @@
                         accent: '#22c55e',
                         title: 'MIX · Club Console',
                         subtitle: 'sound_mix — levels + mutes + master FX',
-                        badges: ['M.TUBE', 'DJ FILTER', 'EQ ±'],
+                        badges: ['DISTORTION', 'MASTER LPF', 'EQ ±'],
                         rows: [['MASTER', '73%'], ['HARP', '61%'], ['SEQ', '58%'], ['DRUM', '67%'], ['MUTE', 'H/S/D off']],
                         tip: 'mix-image ▼ on MIXER · separate from MIX 1–16 slots'
                     }
@@ -6784,6 +7071,10 @@
             _vuLastStep: -1,      // VU + scope: read-only grid energy (no sequencer writes)
             _vuSynthE: 0,
             _vuDrumE: 0,
+            _dbeamAmp: 0,
+            _dbeamAmpSmooth: 0,
+            _lastDbeamAmpRxMs: 0,
+            _dbeamFwHinted: false,
             _vuLastTs: 0,
             _lastTransportRxMs: 0,
             _lastStepSyncRxMs: 0,
@@ -6854,7 +7145,7 @@
                 const m = { play: 'BtnPlay', stop: 'BtnStop', rec: 'BtnRec' };
                 return document.getElementById(this._transportPrefix() + (m[which] || which));
             },
-            _seqTrnEl() { return document.getElementById(this._appMode === 'midi' ? 'midiSeqTrn' : 'dspSeqTrn'); },
+            _seqTrnEl() { return document.getElementById(this._appMode === 'midi' ? 'midiSeqTrn' : 'seqEngTrn'); },
             _seqLenSel() { return document.getElementById(this._appMode === 'midi' ? 'midiSeqLen' : 'dspSeqLen'); },
             _initSeqShells() {
                 if (!this._dspSeq) this._dspSeq = createSeqShell(SEQ_IDS_DSP);
@@ -6923,19 +7214,22 @@
                 if (this.midiOut && this.midiOut.id === port.id) {
                     if (sel) sel.value = port.id;
                     /* Same USB id — WebMIDI onstatechange often fires without a new
-                     * port object.  Re-run full sync when offline or Octopus was stale. */
-                    if (this._isOctopusPortName(port.name) && this._appMode === 'dsp') {
-                        if (this._connOnline && !this._syncBurstExpected && !this._syncBurstActive)
-                            return true;
-                        if (this._appMode !== 'dsp' || !this._connOnline)
-                            await this._adoptMidiPort(port, sel);
-                        else
+                     * port object. Refresh stale handles; re-sync when link was offline. */
+                    if (!this._portLive(this.midiOut))
+                        return this._adoptMidiPort(port, sel);
+                    if (this._isOctopusPortName(port.name)) {
+                        if (this._appMode === 'disconnected' || !this._connOnline)
+                            return this._adoptMidiPort(port, sel);
+                        if (this._appMode === 'dsp') {
+                            if (!this._syncBurstExpected && !this._syncBurstActive)
+                                return true;
                             this._octopusResync(reason || 'same port');
-                        return true;
+                            return true;
+                        }
+                        return this._adoptMidiPort(port, sel);
                     }
-                    if (this._isOctopusPortName(port.name) && this._appMode === 'dsp') {
-                        this._octopusResync(reason || 'same port');
-                    }
+                    if (this._appMode === 'disconnected')
+                        return this._adoptMidiPort(port, sel);
                     return true;
                 }
                 const prev = this.midiOut;
@@ -6960,6 +7254,10 @@
                 this._linkWarned = false;
                 this._lastDeviceRxMs = 0;
                 this._lastBpmRxMs = 0;
+                this._lastDbeamAmpRxMs = 0;
+                this._dbeamFwHinted = false;
+                this._dbeamAmp = 0;
+                this._dbeamAmpSmooth = 0;
                 this._rxQueue.length = 0;
                 this._rxDrainScheduled = false;
                 this._dspShell()._gridModelDirty = false;
@@ -7028,6 +7326,10 @@
                 this._octopusLocked = true;
                 this._connOnline = false;
                 this._lastBpmRxMs = 0;
+                this._lastDbeamAmpRxMs = 0;
+                this._dbeamFwHinted = false;
+                this._dbeamAmp = 0;
+                this._dbeamAmpSmooth = 0;
                 this._linkGraceUntil = Date.now() + this.LINK_CONNECT_GRACE_MS;
                 this.log('Octopus returned — syncing…');
                 const sel = document.getElementById('midiOut');
@@ -7175,6 +7477,7 @@
                     this._connOnline = true;
                     this._linkWarned = false;
                     this.updateConnBadge(true);
+                    this._reflectDbeamMeter();
                     this.log('Octopus connected — importing live device state.');
                     if (this._reloadAfterReconnect) {
                         this._reloadAfterReconnect = false;
@@ -7202,10 +7505,34 @@
                 if (el) el.value = String(b);
                 const lbl = document.getElementById('midiBpmLbl');
                 if (lbl) lbl.textContent = String(b);
+                const dspLbl = document.getElementById('dspBpmLbl');
+                if (dspLbl) dspLbl.textContent = String(b);
             },
             stepBpm(delta) {
                 this._syncBpmDisplay((this.bpm | 0) + (delta | 0));
                 if (this._appMode === 'midi') this._midiPersistSoon();
+            },
+            stepMidiMelCh(delta) {
+                const el = document.getElementById('midiMelodyCh');
+                if (!el) return;
+                let ch = parseInt(el.value) + delta;
+                if (ch < 1) ch = 16;
+                if (ch > 16) ch = 1;
+                el.value = ch;
+                const lbl = document.getElementById('midiMelChLbl');
+                if (lbl) lbl.innerText = String(ch);
+                this._midiRoutingChanged();
+            },
+            stepMidiDrmCh(delta) {
+                const el = document.getElementById('midiDrumCh');
+                if (!el) return;
+                let ch = parseInt(el.value) + delta;
+                if (ch < 1) ch = 16;
+                if (ch > 16) ch = 1;
+                el.value = ch;
+                const lbl = document.getElementById('midiDrmChLbl');
+                if (lbl) lbl.innerText = String(ch);
+                this._midiRoutingChanged();
             },
             /** Initial APP_SYNC import only — not RX queue drain. FROZEN AXIS 1 badge rule. */
             _sessionImporting() {
@@ -7351,6 +7678,7 @@
             closeAllPersistModals() {
                 this.closeSaveModal();
                 this.closeResetModal();
+                this.closeConnectModal();
                 this._hidePersistWait();
                 this._hidePersistBanner();
                 const el = document.getElementById('doneModal');
@@ -7400,7 +7728,7 @@
             // Transport + playhead bypass the deferred queue — everything else is budgeted.
             _rxIsPriority(cmd) {
                 return cmd === CMD.STEP_SYNC || cmd === CMD.TRANSPORT || cmd === CMD.TRIG_MODE
-                    || cmd === CMD.BPM || cmd === CMD.PING || cmd === CMD.CPU_LOAD || cmd === CMD.SONG_POS
+                    || cmd === CMD.BPM || cmd === CMD.PING || cmd === CMD.CPU_LOAD || cmd === CMD.DBEAM_AMP || cmd === CMD.SONG_POS
                     || cmd === CMD.SESSION_SAVE
                     || cmd === CMD.SESSION_SLOT_ACK
                     || cmd === CMD.SCOPED_RESET;
@@ -7682,6 +8010,18 @@
                 this._updatePageButtons();
                 this._initSelectTitles();
                 await this.setupMIDI();
+                
+                // PB + wire routing UI defaults (offline); hardware APP_SYNC echoes override when linked.
+                if (this._appMode !== 'midi') {
+                    this._reflectPbEnable(false);
+                    const pr = document.getElementById('pbRange');
+                    if (pr) pr.value = '2';
+                    if (this._octopusSysexAllowed()) {
+                        this.setPbRange(2);
+                        this.setPbEnable(0);
+                    }
+                }
+
                 if (this._appMode !== 'midi') this._ensureDspKnobs();
                 this._applyTransportChrome();
                 if (this._appMode === 'midi') this._loadMidiSession();
@@ -7701,6 +8041,7 @@
                 this._syncSeqLenLabel(this._dspShell().seqLen || 64, this._dspShell());
                 this._syncSeqLenLabel(this._midiShell().seqLen || 64, this._midiShell());
                 FactoryExamples.seed(this, false);
+                this._reflectDbeamMeter();
                 this.animateVU();
                 /* Idle stopped state: show playhead at step 0 (matches hardware boot). */
                 const O = this._dspShell();
@@ -7728,7 +8069,44 @@
                     }
                     this.allNotesOff();
                 });
+                document.addEventListener('keydown', (e) => this._onGlobalKeydown(e));
                 this.log('OctopusApp v' + APP_VERSION + ' · ' + location.origin);
+            },
+
+            /** Ignore shortcuts while typing in form fields. */
+            _keyTargetIsEditable(el) {
+                if (!el || !el.tagName) return false;
+                const t = el.tagName;
+                if (t === 'INPUT' || t === 'TEXTAREA' || t === 'SELECT') return true;
+                return !!el.isContentEditable;
+            },
+            _modalBlocksShortcuts() {
+                return ['helpModal', 'monitorModal', 'saveModal', 'resetModal', 'connectModal', 'doneModal', 'songModal', 'bankModal']
+                    .some(id => {
+                        const m = document.getElementById(id);
+                        return m && m.style.display === 'flex';
+                    });
+            },
+            /** Global shortcuts: DSP 1/2/3 tabs · Space play/stop · R record (auto-play when arming). */
+            _onGlobalKeydown(e) {
+                if (e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
+                if (this._keyTargetIsEditable(e.target) || this._modalBlocksShortcuts()) return;
+                const k = e.key;
+                if (this._appMode === 'dsp') {
+                    if (k === '1') { e.preventDefault(); this.switchView(1); return; }
+                    if (k === '2') { e.preventDefault(); this.switchView(2); return; }
+                    if (k === '3') { e.preventDefault(); this.switchView(3); return; }
+                }
+                if (k === ' ' || k === 'Spacebar') {
+                    e.preventDefault();
+                    if (this.isPlaying) this.stop();
+                    else this.play();
+                    return;
+                }
+                if (k === 'r' || k === 'R') {
+                    e.preventDefault();
+                    this.toggleRec();
+                }
             },
 
             // Long dropdown names: a closed <select> ellipsizes overflowing text, so
@@ -7774,19 +8152,33 @@
                     DRUM_KIT_DISPLAY.forEach((name, i) => dk.appendChild(new Option(name, i)));
                 }
                 this._refreshSoundImagePicklists();
-                fill('synthPat', SYNTH_PATTERNS.map(p => p.name), 'MELODY PATTERNS');
-                fill('drumPat', DRUM_PATTERNS.map(p => p.name), 'DRUM PATTERNS');
-                fill('midiSynthPat', SYNTH_PATTERNS.map(p => p.name), 'MELODY PATTERNS');
-                fill('midiDrumPat', DRUM_PATTERNS.map(p => p.name), 'DRUM PATTERNS');
+                fill('synthPat', SYNTH_PATTERNS.map(p => p.name), 'MELODY');
+                fill('drumPat', DRUM_PATTERNS.map(p => p.name), 'DRUM');
+                fill('midiSynthPat', SYNTH_PATTERNS.map(p => p.name), 'MELODY');
+                fill('midiDrumPat', DRUM_PATTERNS.map(p => p.name), 'DRUM');
+                // Closed-face labels: 01…16 (channel number); full name in title + SysEx value.
                 const fillMidiCh = (id, def) => {
                     const el = document.getElementById(id);
-                    if (!el) return;
+                    if (!el || el.tagName !== 'SELECT') return;
                     el.innerHTML = '';
-                    for (let i = 1; i <= 16; i++) el.appendChild(new Option('Ch ' + i, i));
+                    for (let i = 1; i <= 16; i++) {
+                        el.appendChild(new Option(String(i).padStart(2, '0'), i));
+                    }
                     if (def != null) el.value = String(def);
+                    this._syncWireChTitle(id);
                 };
-                fillMidiCh('midiMelodyCh', 1);
-                fillMidiCh('midiDrumCh', 10);
+                fillMidiCh('wireHarpCh', 1);
+                fillMidiCh('wireSeqCh', 2);
+                fillMidiCh('wireDrumCh', 10);
+                const pbEn = document.getElementById('pbEnable');
+                if (pbEn) {
+                    pbEn.innerHTML = '';
+                    pbEn.appendChild(new Option('OFF', '0'));
+                    pbEn.appendChild(new Option('ON', '1'));
+                    pbEn.value = '0';
+                    pbEn.title = 'USB MIDI pitch-bend enable — OFF';
+                    pbEn.dataset.fixedTitle = '1';
+                }
                 // Patch selectors
                 ['harpPatch', 'seqPatch'].forEach(id => {
                     const el = document.getElementById(id);
@@ -7830,11 +8222,16 @@
             // Parse one complete device→App SysEx frame (manufacturer 0x7C).
             _parseDeviceSysex(data) {
                 if (this._appMode === 'midi') return;
-                if (!data || data.length < 7 || data[0] !== 0xF0 || data[1] !== 0x7C) return;
+                if (!data || data.length < 6 || data[0] !== 0xF0 || data[1] !== 0x7C) return;
                 this._touchDeviceRx();
                 const sub = data[2];
-                // [FIX-GRID-ENC] New lossless grid-row format (sub 0x05).
-                // { F0, 7C, 05, bank_row, page, lo_lo4, lo_hi4, hi_lo4, hi_hi4, F7 }
+                // Device→App D-BEAM amplitude blob (sub 0x06): { F0, 7C, 06, ampHi, ampLo, F7 } — 6 bytes
+                if (sub === 0x06 && data.length >= 6) {
+                    const v14 = ((data[3] & 0x7F) << 7) | (data[4] & 0x7F);
+                    this._applyDbeamAmp(v14);
+                    return;
+                }
+                if (data.length < 7) return;
                 if (sub === 0x05 && data.length >= 10) {
                     const bankRow = data[3];
                     const bank = (bankRow >> 4) & 3, row = bankRow & 15;
@@ -7923,25 +8320,6 @@
                     await this._openAllMidiPorts(access);
                     this._midiAccess = access; // [RECONNECT] kept so the watchdog can re-scan by name
                     this._scanMidi = async () => {
-                        if (this.midiOut && !this._portLive(this.midiOut) && this._portIsOctopus()) {
-                            this.log('USB port closed — watching for reconnect…');
-                            this._connOnline = false;
-                            this.updateConnBadge(false);
-                            this.stopHeartbeat();
-                            this._startReconnectPoll();
-                            return;
-                        }
-                        if (this.midiOut && !this._portLive(this.midiOut) && !this._portIsOctopus()) {
-                            this.allNotesOff(this.midiOut);
-                            this.midiOut = null;
-                            this.stopHeartbeat();
-                            if (this._appMode === 'midi') {
-                                this.setAppMode('disconnected');
-                                this.log('MIDI port closed — plug in dongle or pick a port');
-                            } else {
-                                this.updateConnBadge(false);
-                            }
-                        }
                         const sel = document.getElementById('midiOut');
                         if (sel) {
                             sel.innerHTML = '<option value="">— MIDI port —</option>';
@@ -7955,8 +8333,38 @@
                             }
                         }
 
-                        const boot = this._readPortBoot();
                         const preferred = this._pickAutoOutput(access);
+                        /* Stale port handle: same id, old object dead, fresh output live (USB replug). */
+                        if (this.midiOut && !this._portLive(this.midiOut) && preferred &&
+                            this.midiOut.id === preferred.id && this._portLive(preferred)) {
+                            await this._adoptMidiPort(preferred, sel);
+                            if (inN === 0 && outList.length)
+                                this.log('Warning: no MIDI inputs — close other tabs using this device');
+                            return;
+                        }
+                        if (this.midiOut && !this._portLive(this.midiOut) && this._portIsOctopus()) {
+                            if (!preferred || !this._isOctopusPortName(preferred.name)) {
+                                this.log('USB port closed — watching for reconnect…');
+                                this._connOnline = false;
+                                this.updateConnBadge(false);
+                                this.stopHeartbeat();
+                                this._startReconnectPoll();
+                                return;
+                            }
+                        }
+                        if (this.midiOut && !this._portLive(this.midiOut) && !this._portIsOctopus()) {
+                            this.allNotesOff(this.midiOut);
+                            this.midiOut = null;
+                            this.stopHeartbeat();
+                            if (this._appMode === 'midi') {
+                                this.setAppMode('disconnected');
+                                this.log('MIDI port closed — plug in dongle or pick a port');
+                            } else {
+                                this.updateConnBadge(false);
+                            }
+                        }
+
+                        const boot = this._readPortBoot();
                         const octopusOut = preferred && this._isOctopusPortName(preferred.name)
                             ? preferred : null;
                         if (boot) {
@@ -7974,12 +8382,16 @@
                         if (preferred) {
                             if (this.midiOut && this.midiOut.id === preferred.id) {
                                 if (sel) sel.value = preferred.id;
-                                await this._bindMidiInputs(access);
-                                if (this._isOctopusPortName(preferred.name) &&
-                                    this._appMode === 'dsp' && !this._connOnline &&
-                                    !this._syncBurstExpected &&
-                                    Date.now() > this._linkGraceUntil) {
-                                    this._octopusResync('MIDI rescan');
+                                if (this._appMode === 'disconnected' || !this._portLive(this.midiOut))
+                                    await this._adoptMidiPort(preferred, sel);
+                                else {
+                                    await this._bindMidiInputs(access);
+                                    if (this._isOctopusPortName(preferred.name) &&
+                                        this._appMode === 'dsp' && !this._connOnline &&
+                                        !this._syncBurstExpected &&
+                                        Date.now() > this._linkGraceUntil) {
+                                        this._octopusResync('MIDI rescan');
+                                    }
                                 }
                             } else {
                                 await this._connectMidiPort(preferred, sel, hasOctopus ? 'octopus priority' : 'auto connect');
@@ -8060,6 +8472,10 @@
                 this._linkWarned = false;
                 this._lastDeviceRxMs = 0;
                 this._lastBpmRxMs = 0;
+                this._lastDbeamAmpRxMs = 0;
+                this._dbeamFwHinted = false;
+                this._dbeamAmp = 0;
+                this._dbeamAmpSmooth = 0;
                 this._lastTransportRxMs = 0;
                 this._lastStepSyncRxMs = 0;
                 this._linkDegradedUntil = 0;
@@ -8108,6 +8524,10 @@
                 this._octopusLocked = true;
                 this._connOnline = false;
                 this._lastBpmRxMs = 0;
+                this._lastDbeamAmpRxMs = 0;
+                this._dbeamFwHinted = false;
+                this._dbeamAmp = 0;
+                this._dbeamAmpSmooth = 0;
                 this._linkGraceUntil = Date.now() + this.LINK_CONNECT_GRACE_MS;
                 this.setAppMode('dsp');
                 this.updateConnBadge(false);
@@ -8472,10 +8892,14 @@
             _midiInstMelCh(v) {
                 const bar = document.getElementById('midiMelodyCh');
                 if (bar) bar.value = String(v);
+                const lbl = document.getElementById('midiMelChLbl');
+                if (lbl) lbl.innerText = String(v);
             },
             _midiInstDrumCh(v) {
                 const bar = document.getElementById('midiDrumCh');
                 if (bar) bar.value = String(v);
+                const lbl = document.getElementById('midiDrmChLbl');
+                if (lbl) lbl.innerText = String(v);
             },
             _midiInstScale(v) {
                 this.setGlobalScale(v);
@@ -8736,8 +9160,9 @@
                     if (o.midiMap.drumPc != null) this.midiMap.drumPc = (+o.midiMap.drumPc) & 127;
                     if (o.midiMap.globalPitch != null) this.setMidiGlobalPitch(o.midiMap.globalPitch);
                     if (Array.isArray(o.midiMap.userCc) && o.midiMap.userCc.length === 24)
-                        this.midiMap.userCc = o.midiMap.userCc.map(s => ({
-                            label: s.label || 'CC',
+                        this.midiMap.userCc = o.midiMap.userCc.map((s, i) => ({
+                            label: s.label || MIDI_USER_CC_LABELS[i] || 'CC',
+                            full: s.full || MIDI_USER_CC_FULLNAMES[i] || s.label || 'CC',
                             cc: Math.max(0, Math.min(127, (+s.cc) | 0)),
                             val: Math.max(0, Math.min(127, (+s.val) | 0))
                         }));
@@ -9144,11 +9569,23 @@
             _updateSeqRowLabels(S) {
                 const shells = S ? [S] : [this._dspShell(), this._midiShell()];
                 shells.forEach(sh => {
-                    if (sh.ids?.kind !== 'midi') return;
-                    for (let r = 0; r < 8; r++) {
-                        const lbl = sh._seqRowLabelEls[r];
-                        if (!lbl) continue;
-                        lbl.innerText = this._formatMidiNoteLabel(this._midiMelodyNoteForRow(r, true));
+                    if (sh.ids?.kind === 'midi') {
+                        for (let r = 0; r < 8; r++) {
+                            const lbl = sh._seqRowLabelEls[r];
+                            if (!lbl) continue;
+                            lbl.innerText = this._formatMidiNoteLabel(this._midiMelodyNoteForRow(r, true));
+                        }
+                    } else if (sh.ids?.kind === 'dsp') {
+                        const scaleIdx = this.midiScaleIdx || 13; // default Chromatic
+                        const scale = SCALE_MIDI_NOTES[scaleIdx] || SCALE_MIDI_NOTES[13];
+                        const trn = Math.max(-12, Math.min(12, Math.round(+(document.getElementById('seqEngTrn')?.value || 0))));
+                        const oct = Math.max(-4, Math.min(4, Math.round(+(document.getElementById('seqOct')?.value || 0))));
+                        for (let r = 0; r < 8; r++) {
+                            const lbl = sh._seqRowLabelEls[r];
+                            if (!lbl) continue;
+                            const note = Math.max(0, Math.min(127, scale[7 - r] + trn + oct * 12));
+                            lbl.innerText = this._formatMidiNoteLabel(note);
+                        }
                     }
                 });
             },
@@ -9312,12 +9749,28 @@
                     btn.innerText = on ? 'ON' : 'OFF';
                 });
             },
-            // Select the matching channel option when firmware echoes a wire-routing channel
+            _onWireChChange(id, cmd, val) {
+                this._syncWireChTitle(id);
+                this.txSysex(cmd, val);
+            },
+            // Select the matching channel option when firmware echoes a wire-routing channel (1–16).
+            _syncWireChTitle(id) {
+                const el = document.getElementById(id);
+                if (!el || el.tagName !== 'SELECT') return;
+                const ch = +el.value | 0;
+                const names = { wireHarpCh: 'Harp', wireSeqCh: 'Seq', wireDrumCh: 'Drum' };
+                const bus = names[id] || 'MIDI';
+                el.title = bus + ' MIDI channel ' + (ch >= 1 && ch <= 16 ? ch : '?');
+            },
             _setWireCh(id, ch) {
                 const el = document.getElementById(id);
-                if (!el) return;
-                const o = [...el.options].find(o => +o.value === +ch);
-                if (o) el.value = o.value;
+                if (!el || el.tagName !== 'SELECT') return;
+                const v = Math.max(1, Math.min(16, +ch | 0));
+                const o = [...el.options].find(o => +o.value === v);
+                if (o) {
+                    el.value = o.value;
+                    this._syncWireChTitle(id);
+                }
             },
 
             // ── Apply incoming sysex state ────────────────────────────────────────────
@@ -9345,7 +9798,7 @@
                     [CMD.WIRE_SEQ_CH]:  v14 => { this._setWireCh('wireSeqCh',  v14); },
                     [CMD.WIRE_DRUM_CH]: v14 => { this._setWireCh('wireDrumCh', v14); },
                     [CMD.PB_RANGE]:  v14 => { const e = document.getElementById('pbRange');  if (e) e.value = String(v14); },
-                    [CMD.PB_ENABLE]: v14 => { const e = document.getElementById('pbEnable'); if (e) e.value = v14 > 0 ? '16383' : '0'; },
+                    [CMD.PB_ENABLE]: v14 => { this._reflectPbEnable(v14 > 0); },
                     // [GAP-4] LFO routes are selects, not knobs; duplicate for both alias CMDs.
                     [CMD.HLFO_RT]:     v14 => { const e = document.getElementById('hlfoRoute'); if (e) e.value = String(v14 & 7); },
                     [CMD.HLFO_RT_ALT]: v14 => { const e = document.getElementById('hlfoRoute'); if (e) e.value = String(v14 & 7); },
@@ -9360,20 +9813,18 @@
                     [CMD.HARP_ARP_PAT]:   v14 => { this._setKnob(CMD.HARP_ARP_PAT,  v14); },
                     [CMD.HARP_ARP_RATE]:  v14 => { this._setKnob(CMD.HARP_ARP_RATE, v14); },
                     [CMD.HARP_ARP_GATE]:  v14 => { this._setKnob(CMD.HARP_ARP_GATE, v14); },
-                    // H_WAVE / S_WAVE: update the select element; _setKnob is handled by
-                    // the catch-all below — removing the explicit call here eliminates a
-                    // double _setKnob() invocation (and two redundant DOM knob updates)
-                    // on every H_WAVE / S_WAVE echo.
-                    [CMD.H_WAVE]: v14 => { const e = document.getElementById('harpWave'); if (e) e.value = v14; },
-                    [CMD.S_WAVE]: v14 => { const e = document.getElementById('seqWave');  if (e) e.value = v14; },
+                    // H_WAVE / S_WAVE: 3-way sync (dropdown ↔ knob ↔ echo) via _syncWaveUi.
+                    [CMD.H_WAVE]: v14 => { this._syncWaveUi('harp', v14, 'echo'); },
+                    [CMD.S_WAVE]: v14 => { this._syncWaveUi('seq',  v14, 'echo'); },
                     [CMD.H_FX_IDX]:   v14 => { document.getElementById('harpFxA').value = v14; },
                     [CMD.H_FX_IDX_B]: v14 => { document.getElementById('harpFxB').value = v14; },
                     [CMD.S_FX_IDX]:   v14 => { document.getElementById('seqFxA').value  = v14; },
                     [CMD.S_FX_IDX_B]: v14 => { document.getElementById('seqFxB').value  = v14; },
                     [CMD.D_FX_IDX]:   v14 => { const e = document.getElementById('drumFxA'); if (e) e.value = String(v14 & 15); },
                     [CMD.D_FX_IDX_B]: v14 => { const e = document.getElementById('drumFxB'); if (e) e.value = String(v14 & 15); },
-                    [CMD.DB_ENABLED]: v14 => { this.isDbeam = (v14 > 0); this._reflectDbeamEnable(); },
-                    [CMD.DB_ROUTE]:   v14 => { const e = document.getElementById('dbMode');   if (e) e.value = String(v14 & 3); },
+                    [CMD.DBEAM_AMP]: v14 => { this._applyDbeamAmp(v14); },
+                    [CMD.DB_ENABLED]: v14 => { this.isDbeam = (v14 > 0); this._reflectDbeamEnable(); this._reflectDbeamMeter(); },
+                    [CMD.DB_ROUTE]:   v14 => { const e = document.getElementById('dbMode');   if (e) e.value = String(v14 & 3); this._reflectDbeamMeter(); },
                     [CMD.DB_TARGET]:  v14 => { const e = document.getElementById('dbTarget'); if (e) e.value = String(v14 & 1); },
                     [CMD.DB_CURVE]:   v14 => { const e = document.getElementById('dbCurve');  if (e) e.value = String(v14 % 5); },
                     [CMD.DB_OFFSET]:  v14 => { const e = document.getElementById('dbOffset'); if (e) e.value = String(v14); },
@@ -9401,7 +9852,10 @@
                         if (v14 === 16383) this._persistFinished(true, true);
                         else if (v14 === 0) this._persistFinished(false, false);
                     },
-                    [CMD.H_PATCH]: v14 => { document.getElementById('harpPatch').value = v14; },
+                    [CMD.H_PATCH]: v14 => {
+                        const e = document.getElementById('harpPatch');
+                        if (e) e.value = String(v14 & 127);
+                    },
                     [CMD.S_PATCH]: v14 => { document.getElementById('seqPatch').value  = v14; },
                     [CMD.H_SCALE]: v14 => {
                         this.midiScaleIdx = v14 & 15;
@@ -9538,7 +9992,8 @@
                     if (!this._dispatch) this._dispatch = this._buildDispatch();
                     const fn = this._dispatch[cmd];
                     if (fn) fn(v14);
-                    if (this.knobStates[cmd]) this._setKnob(cmd, v14);
+                    if (this.knobStates[cmd] && cmd !== CMD.H_WAVE && cmd !== CMD.S_WAVE)
+                        this._setKnob(cmd, v14);
                 } catch (e) {}
                 this._suppressTx = false;
             },
@@ -9610,7 +10065,19 @@
             },
             play() {
                 if (this._appMode === 'midi') {
+                    if (!this._hasPlayableMidiOut()) {
+                        this.openConnectModal();
+                        return;
+                    }
                     if (!this.isPlaying) this._setTransport(true, this.isRecording);
+                    return;
+                }
+                if (!this._hasPlayableMidiOut() || !this._portIsOctopus()) {
+                    this.openConnectModal();
+                    return;
+                }
+                if (this._syncBurstExpected || Date.now() <= this._linkGraceUntil) {
+                    this.log('Syncing with Octopus…');
                     return;
                 }
                 if (!this._octopusSysexAllowed()) return;
@@ -9644,7 +10111,16 @@
                     return;
                 }
                 if (!this._octopusSysexAllowed()) return;
+                const nextRec = !this.isRecording;
+                if (this._syncBurstExpected || Date.now() <= this._linkGraceUntil) {
+                    this.log('Syncing with Octopus…');
+                    return;
+                }
+                if (nextRec && !this.isPlaying)
+                    this.txParam(CMD.TRANSPORT, 1);
                 this.txParam(CMD.TRANSPORT, 3);
+                if (nextRec)
+                    this.log('REC ON — twist INSTRUMENTS knobs during playback to capture P-locks on hardware.');
             },
             onBpmInput(v) {
                 this._syncBpmDisplay(v);
@@ -9737,10 +10213,77 @@
                 this.isDbeam = !this.isDbeam;
                 this.txSysex(CMD.DB_ENABLED, this.isDbeam ? 16383 : 0);
                 this._reflectDbeamEnable();
+                this._reflectDbeamMeter();
             },
             _reflectDbeamEnable() {
                 // Enable/bypass is the HARP ENGINE header D-BEAM button (single source).
                 document.getElementById('btnDbeam') ?.classList.toggle('active-green', this.isDbeam);
+            },
+            _applyDbeamAmp(v14) {
+                this._dbeamAmp = Math.max(0, Math.min(16383, v14 | 0));
+                this._lastDbeamAmpRxMs = Date.now();
+                this._dbeamFwHinted = false;
+            },
+            _hasPlayableMidiOut() {
+                return !!(this.midiOut && this._portLive(this.midiOut));
+            },
+            openConnectModal() {
+                const m = document.getElementById('connectModal');
+                if (m) m.style.display = 'flex';
+            },
+            closeConnectModal() {
+                const m = document.getElementById('connectModal');
+                if (m) m.style.display = 'none';
+            },
+            _dbeamMeterLive() {
+                return this._appMode !== 'midi' && !!this._connOnline;
+            },
+            _dbeamAmpFresh() {
+                return !!(this._lastDbeamAmpRxMs && (Date.now() - this._lastDbeamAmpRxMs) <= 4000);
+            },
+            _reflectDbeamMeter() {
+                const bar = document.getElementById('dbeamMeterBar');
+                const fill = document.getElementById('dbeamMeterFill');
+                const lbl = document.getElementById('dbeamMeterLbl');
+                if (!bar || !fill || !lbl) return;
+                const linked = this._dbeamMeterLive();
+                bar.classList.toggle('dbeam-off', !linked);
+                lbl.classList.toggle('dbeam-off', !linked);
+                lbl.classList.remove('dbeam-wait');
+                if (!linked) {
+                    fill.style.width = '0%';
+                    lbl.innerText = '—';
+                    return;
+                }
+                const pct = Math.round(this._dbeamAmpSmooth * 100);
+                fill.style.width = (this._dbeamAmpSmooth * 100).toFixed(2) + '%';
+                if (!this.isDbeam) {
+                    lbl.innerText = 'BYP';
+                    return;
+                }
+                if (!this._dbeamAmpFresh()) {
+                    lbl.classList.add('dbeam-wait');
+                    lbl.innerText = 'WAIT';
+                    if (!this._dbeamFwHinted) {
+                        this._dbeamFwHinted = true;
+                        this.log('D-BEAM meter: waiting for telemetry — reflash firmware 6.1.01+ if WAIT persists');
+                    }
+                    return;
+                }
+                lbl.classList.remove('dbeam-wait');
+                lbl.innerText = pct + '%';
+            },
+            _tickDbeamMeter(ts) {
+                if (this._appMode === 'midi') return;
+                if (!this._dbeamMeterLastTs) this._dbeamMeterLastTs = ts;
+                const dt = Math.min(0.05, Math.max(0.001, (ts - this._dbeamMeterLastTs) * 0.001));
+                this._dbeamMeterLastTs = ts;
+                const tgt = Math.max(0, Math.min(1, (this._dbeamAmp | 0) / 16383));
+                const k = 1 - Math.exp(-14 * dt);
+                const atk = Math.min(1, 40 * dt);
+                if (tgt >= this._dbeamAmpSmooth) this._dbeamAmpSmooth += (tgt - this._dbeamAmpSmooth) * atk;
+                else this._dbeamAmpSmooth += (tgt - this._dbeamAmpSmooth) * k;
+                this._reflectDbeamMeter();
             },
             // Drum body-oscillator wave: v14 = (ch<<5)|wave_idx  (matches applyDrumWave in patches.h)
             setDrumWave(ch, widx) {
@@ -10396,7 +10939,7 @@
             },
             _octaveLabel(o) {
                 o = Math.max(-4, Math.min(4, Math.round(+o)));
-                return 'C' + (o >= 0 ? String(o) : String(o));
+                return 'C' + (o + 4);
             },
             stepOctave(which, delta) {
                 const id = which === 'harp' ? 'harpOct' : (which === 'midi' ? 'midiSeqOct' : 'seqOct');
@@ -10459,19 +11002,31 @@
                 if (this._appMode === 'midi') this._midiPersistSoon();
                 else this._dspAutosaveSoon();
             },
-            setHarpWave(v) {
-                if (this._appMode === 'midi') return;   // [SEPARATION] Octopus-only setter
+            /** WAVE dropdown ↔ OSC knob — src blocks feedback on the leg that initiated. */
+            _syncWaveUi(engine, v, src) {
+                if (this._appMode === 'midi') return;
                 const w = Math.max(0, Math.min(24, Math.round(+v)));
-                this.txSysex(CMD.H_WAVE, w);
-                this._setKnob(CMD.H_WAVE, w);
-                const el = document.getElementById('harpWave'); if (el) el.value = w;
+                const cmd = engine === 'harp' ? CMD.H_WAVE : CMD.S_WAVE;
+                const selId = engine === 'harp' ? 'harpWave' : 'seqWave';
+                const el = document.getElementById(selId);
+                if (src === 'dropdown') {
+                    if (!this._suppressTx && this._octopusSysexAllowed()) this.txSysex(cmd, w);
+                    if (el) el.value = String(w);
+                    this._setKnob(cmd, w);
+                } else if (src === 'knob') {
+                    if (el && String(el.value) !== String(w)) el.value = String(w);
+                } else {
+                    if (el && String(el.value) !== String(w)) el.value = String(w);
+                    this._setKnob(cmd, w);
+                }
+            },
+            setHarpWave(v) {
+                if (this._appMode === 'midi') return;
+                this._syncWaveUi('harp', v, 'dropdown');
             },
             setSeqWave(v) {
-                if (this._appMode === 'midi') return;   // [SEPARATION] Octopus-only setter
-                const w = Math.max(0, Math.min(24, Math.round(+v)));
-                this.txSysex(CMD.S_WAVE, w);
-                this._setKnob(CMD.S_WAVE, w);
-                const el = document.getElementById('seqWave'); if (el) el.value = w;
+                if (this._appMode === 'midi') return;
+                this._syncWaveUi('seq', v, 'dropdown');
             },
             setHarpOctave(v) {
                 if (this._appMode === 'midi') return;   // [SEPARATION] Octopus-only setter
@@ -10480,17 +11035,27 @@
                 const el = document.getElementById('harpOct'); if (el) el.value = o;
                 this._syncOctaveLabels('harp', o);
             },
+            _reflectPbEnable(on) {
+                const el = document.getElementById('pbEnable');
+                if (!el || el.tagName !== 'SELECT') return;
+                const v = on ? '1' : '0';
+                if ([...el.options].some(o => o.value === v)) el.value = v;
+                if (!el.dataset.fixedTitle) {
+                    const o = el.options[el.selectedIndex];
+                    if (o) el.title = 'USB MIDI pitch-bend enable — ' + o.text;
+                }
+            },
             setPbRange(v) {
                 if (this._appMode === 'midi') return;   // [SEPARATION] Octopus-only setter
                 const n = Math.max(0, Math.min(24, Math.round(+v)));
-                this.txSysex(CMD.PB_RANGE, n);
+                if (this._octopusSysexAllowed()) this.txSysex(CMD.PB_RANGE, n);
                 const el = document.getElementById('pbRange'); if (el) el.value = n;
             },
             setPbEnable(v) {
                 if (this._appMode === 'midi') return;   // [SEPARATION] Octopus-only setter
                 const on = (+v) > 0;
-                this.txSysex(CMD.PB_ENABLE, on ? 16383 : 0);
-                const el = document.getElementById('pbEnable'); if (el) el.value = on ? '16383' : '0';
+                if (this._octopusSysexAllowed()) this.txSysex(CMD.PB_ENABLE, on ? 16383 : 0);
+                this._reflectPbEnable(on);
             },
             setSeqLength(v) {
                 const S = this._shell();
@@ -10870,9 +11435,11 @@
                     return;
                 }
                 this._clearGridPageOctopusTx(pg);
+                this.txSysex(CMD.CLR_PLOCKS, 16383);
+                this._plockStealWarned = false;
                 this.repaintGrid(S);
                 this.log('Cleared ' + this._pageLabel(S, page) + ' steps ' + (step0 + 1) + '–' + step1 +
-                    ' (bank ' + 'ABCD'[S.bankIdx] + ') — other pages + sounds unchanged.');
+                    ' (bank ' + 'ABCD'[S.bankIdx] + ') — grid + P-locks on hardware; other pages + sounds unchanged.');
             },
             loadSynthPat(idx) {
                 if (idx === "" || !SYNTH_PATTERNS[idx]) return;
@@ -11141,8 +11708,10 @@
             /** 6 macro-groups (3-col × 2-row CSS grid), each group has 2-col × 2-row chip grid.
              *  Chip dimensions: chipW = panel_w / 3_cols / 2_chips_per_col
              *                   chipH = panel_h / 2_rows / 2_chips_per_row
-             *  Scale is applied only to the groups container (never to individual chips).
-             *  Transform-origin: top left — no pointer-event offset artefacts. */
+             *  Each chip is now a 2-ROW cell: name line + control line [cc#][knob][val].
+             *  The control line needs cc-w + knob + val-w + 2*gap of horizontal room;
+             *  the value box stays >=24px / >=7px so 3 digits ("127") never clip.
+             *  Scale is applied only to the groups container (never to individual chips). */
             _layoutMidiCcGrid(groupsEl) {
                 const root = document.getElementById('midi-seq-knobs');
                 if (!root || !groupsEl) return;
@@ -11154,25 +11723,34 @@
                 groupsEl.style.width = '';
                 groupsEl.style.height = '';
                 /* Chip size: panel / (3 group-cols × 2 chip-cols) and (2 group-rows × 2 chip-rows) */
-                const chipW = w / (3 * 2);   // was /3/4 for old 4-col-per-group layout
-                const chipH = h / (2 * 2);   // was /2   for old 1-group-row layout
-                const micro   = chipW < 38 || chipH < 14;
-                const compact = micro || chipW < 46 || chipH < 16;
+                const chipW = w / (3 * 2);
+                const chipH = h / (2 * 2);
+                /* Tier on width (control row is the binding constraint) and height (2 rows now) */
+                const micro   = chipW < 64 || chipH < 26;
+                const compact = micro || chipW < 80 || chipH < 32;
                 root.classList.toggle('midi-cc-compact', compact);
                 root.classList.toggle('midi-cc-micro',   micro);
-                const gap = micro ? 1 : compact ? 2 : 3;
-                root.style.setProperty('--midi-cc-gap',      gap + 'px');
-                root.style.setProperty('--midi-cc-label-fs', (micro ? 5 : compact ? 6 : 7) + 'px');
-                root.style.setProperty('--midi-cc-input-h',  (micro ? 11 : compact ? 12 : 13) + 'px');
-                root.style.setProperty('--midi-cc-cc-w',     (micro ? 18 : compact ? 20 : 22) + 'px');
-                root.style.setProperty('--midi-cc-val-w',    (micro ? 18 : compact ? 20 : 22) + 'px');
-                root.style.setProperty('--midi-cc-knob',     (micro ? 11 : compact ? 13 : 15) + 'px');
-                /* Minimum chip size (below this we scale the whole container down) */
-                const minW = micro ? 28 : compact ? 34 : 40;
-                const minH = micro ? 11 : compact ? 13 : 15;
+                const gap   = micro ? 2 : compact ? 3 : 3;
+                const ccW   = micro ? 20 : compact ? 22 : 24;   // CC# box (0-127)
+                const valW  = micro ? 24 : compact ? 26 : 28;   // value box (3-digit)
+                const knob  = micro ? 13 : compact ? 16 : 18;   // knob shrinks first
+                const inputH = micro ? 12 : compact ? 13 : 14;
+                const numFs  = micro ?  7 : compact ?  7 :  8;   // value/cc# never below 7px
+                const nameFs = micro ?  6 : compact ?  7 :  8;
+                root.style.setProperty('--midi-cc-gap',     gap + 'px');
+                root.style.setProperty('--midi-cc-name-fs', nameFs + 'px');
+                root.style.setProperty('--midi-cc-num-fs',  numFs + 'px');
+                root.style.setProperty('--midi-cc-input-h', inputH + 'px');
+                root.style.setProperty('--midi-cc-cc-w',    ccW + 'px');
+                root.style.setProperty('--midi-cc-val-w',   valW + 'px');
+                root.style.setProperty('--midi-cc-knob',    knob + 'px');
+                /* Minimum chip footprint: control row must fit cc + knob + val + 2 gaps,
+                 * and the chip must clear name-row + control-row vertically. */
+                const minW = ccW + knob + valW + gap * 2 + 4;   // +4 chip padding
+                const minH = (inputH + 2) + (nameFs + 4) + 3;   // control row + name row + gaps
                 const scale = Math.min(1, chipW / minW, chipH / minH);
-                if (scale < 0.98) {
-                    const s = Math.max(0.55, scale);
+                if (scale < 0.985) {
+                    const s = Math.max(0.5, scale);
                     groupsEl.style.transform = `scale(${s.toFixed(3)})`;
                     groupsEl.style.width  = `${(100 / s).toFixed(2)}%`;
                     groupsEl.style.height = `${(100 / s).toFixed(2)}%`;
@@ -11216,8 +11794,21 @@
             buildMidiUserCcKnobs() {
                 const cont = document.getElementById('midi-seq-knobs');
                 if (!cont) return;
-                if (!Array.isArray(this.midiMap.userCc) || this.midiMap.userCc.length !== 24)
+                if (!Array.isArray(this.midiMap.userCc) || this.midiMap.userCc.length !== 24) {
                     this.midiMap.userCc = MIDI_USER_CC_DEFAULTS.map(s => ({ ...s }));
+                } else {
+                    const seenCcs = new Set();
+                    for (let i = 0; i < this.midiMap.userCc.length; i++) {
+                        let cc = this.midiMap.userCc[i].cc;
+                        if (seenCcs.has(cc)) {
+                            for (let j = 1; j < 128; j++) {
+                                if (!seenCcs.has(j)) { cc = j; break; }
+                            }
+                            this.midiMap.userCc[i].cc = cc;
+                        }
+                        seenCcs.add(cc);
+                    }
+                }
                 cont.innerHTML = '';
                 this.midiKnobSlots = [];
                 const p = document.createElement('div');
@@ -11228,12 +11819,15 @@
                 const makeSlot = (slot, idx, kCont) => {
                     const w = document.createElement('div');
                     w.className = 'knob-wrapper midi-cc-slot';
+                    const full = slot.full || slot.label;
                     w.innerHTML =
-                        '<div class="midi-cc-chip" title="Label · CC · knob · value">' +
-                        `<span class="knob-label">${slot.label}</span>` +
+                        `<div class="midi-cc-chip" title="${full} · CC ${slot.cc}">` +
+                        `<span class="midi-cc-name">${full}</span>` +
+                        '<div class="midi-cc-ctl">' +
                         `<input type="number" class="display-box midi-cc-remap" min="0" max="127" value="${slot.cc}" title="MIDI CC number" onchange="app.setMidiUserCcNum(${idx},this.value)">` +
                         `<div class="knob-hitbox" style="--val:0"><div class="knob"></div></div>` +
                         `<span class="midi-knob-val">0</span>` +
+                        '</div>' +
                         '</div>';
                     const hitbox = w.querySelector('.knob-hitbox');
                     const val = w.querySelector('.midi-knob-val');
@@ -11265,7 +11859,7 @@
                         const nv = Math.max(0, Math.min(1, sv + (sy - e.clientY) / sensitivity));
                         const raw = applyKnob(Math.round(nv * 127), false);
                         const now = performance.now();
-                        if (now - lastTxMs >= 16) {
+                        if (now - lastTxMs >= 5) {
                             lastTxMs = now;
                             pendingRaw = null;
                             this._midiSendCc(this._midiMelodyChannel(), slot.cc, raw);
@@ -11327,10 +11921,34 @@
                 if (!Array.isArray(this.midiMap.userCc)) return;
                 const slot = this.midiMap.userCc[idx | 0];
                 if (!slot) return;
-                slot.cc = Math.max(0, Math.min(127, (+cc) | 0));
+                const newCc = Math.max(0, Math.min(127, (+cc) | 0));
+                
+                const existingIdx = this.midiMap.userCc.findIndex(s => s.cc === newCc);
+                if (existingIdx !== -1 && existingIdx !== idx) {
+                    const ui = this.midiKnobSlots?.[idx];
+                    if (ui?.ccIn) ui.ccIn.value = String(slot.cc);
+                    return;
+                }
+                
+                slot.cc = newCc;
                 const ui = this.midiKnobSlots?.[idx];
                 if (ui?.ccIn) ui.ccIn.value = String(slot.cc);
                 this._midiPersistSoon();
+            },
+            initMidiUserCc() {
+                this.midiMap.userCc = MIDI_USER_CC_DEFAULTS.map(s => ({ ...s }));
+                this.buildMidiUserCcKnobs();
+                this._midiPersistSoon();
+                this.log('User CC layout reset to defaults.');
+            },
+            initMidiDrumNotes() {
+                this.midiMap.drumNotes = GM_DRUM_MAP.slice();
+                for (let i = 0; i < 8; i++) {
+                    const el = document.querySelector(`.midi-drum-note-in[data-row="${i}"]`);
+                    if (el) el.value = String(this.midiMap.drumNotes[i]);
+                }
+                this._midiPersistSoon();
+                this.log('Drum notes reset to standard GM map.');
             },
             setMidiGlobalPitch(v) {
                 const p = Math.max(-12, Math.min(12, Math.round(+v)));
@@ -11390,7 +12008,7 @@
                             const nv = Math.max(0, Math.min(1, sv + (sy - e.clientY) / sensitivity));
                             const raw = applyKnob(rawFromNorm(nv), false);
                             const now = performance.now();
-                            if (now - lastTxMs >= 16) {
+                            if (now - lastTxMs >= 5) {
                                 lastTxMs = now;
                                 pendingRaw = null;
                                 this._midiSendCc(this._midiMelodyChannel(), k.cc, raw);
@@ -11563,33 +12181,6 @@
                     if (!el.value) el.value = '8';
                 }
             },
-            _mixerWireRackHtml() {
-                return `<div class="mixer-wire-rack" aria-label="USB MIDI routing">
-                    <span style="color:var(--purple);font-size:7px;letter-spacing:0.5px">USB WIRE</span>
-                    <label style="color:var(--cyan)">HARP
-                        <select id="wireHarpCh" class="display-box" style="height:18px;font-size:8px;width:44px;color:var(--cyan)" onchange="app.txSysex(135,this.value)">
-                            <option value="1">Ch 1</option><option value="2">Ch 2</option><option value="3">Ch 3</option><option value="4">Ch 4</option>
-                        </select>
-                    </label>
-                    <label style="color:var(--pink)">SEQ
-                        <select id="wireSeqCh" class="display-box" style="height:18px;font-size:8px;width:44px;color:var(--pink)" onchange="app.txSysex(136,this.value)">
-                            <option value="1">Ch 1</option><option value="2">Ch 2</option>
-                        </select>
-                    </label>
-                    <label style="color:var(--orange)">DRUM
-                        <select id="wireDrumCh" class="display-box" style="height:18px;font-size:8px;width:46px;color:var(--orange)" onchange="app.txSysex(137,this.value)">
-                            <option value="9">Ch 9</option><option value="10" selected>Ch 10</option><option value="11">Ch 11</option>
-                        </select>
-                    </label>
-                    <span style="color:#333">|</span>
-                    <label style="color:#aaa">PB ±
-                        <input type="number" id="pbRange" class="display-box dark-input-panel" min="0" max="24" value="2" title="USB MIDI pitch-bend range (±semitones)" style="height:18px;font-size:8px;width:34px" onchange="app.setPbRange(this.value)">
-                    </label>
-                    <select id="pbEnable" class="display-box" style="height:18px;font-size:8px;width:44px" onchange="app.setPbEnable(this.value)">
-                        <option value="16383" selected>PB ON</option><option value="0">PB OFF</option>
-                    </select>
-                </div>`;
-            },
             buildDrumVoices(containerId, config) {
                 const cont = document.getElementById(containerId);
                 if (!cont || !config) return;
@@ -11600,7 +12191,7 @@
                     cell.className = 'sub-panel drum-voice-cell';
                     cell.innerHTML =
                         `<div class="sub-panel-title">${name}</div>` +
-                        `<label class="drum-voice-wave">WAVE<select class="display-box" id="dwave${ch}" onchange="app.setDrumWave(${ch},this.value)"></select></label>` +
+                        `<label class="drum-voice-wave"><select class="display-box dropdown-compact" id="dwave${ch}" onchange="app.setDrumWave(${ch},this.value)"></select></label>` +
                         `<div class="sub-panel-knobs knobs-compact" id="drum-voice-knobs-${ch}"></div>`;
                     cont.appendChild(cell);
                     const kCont = cell.querySelector('.sub-panel-knobs');
@@ -11613,29 +12204,10 @@
                 cont.innerHTML = '';
                 if (!this.arpToggleStates) this.arpToggleStates = {};
                 const groups = [...new Set(config.map(k => k.group))];
-                const auxGroups = new Set(['SYNTH AUX', 'SHARED ROOM']);
                 groups.forEach(g => {
-                    if (containerId === 'master-knobs' && auxGroups.has(g)) return;
                     const p = this._buildKnobSubPanel(cont, containerId, config, g);
                     if (p) cont.appendChild(p);
                 });
-                if (containerId === 'master-knobs' && groups.some(g => auxGroups.has(g))) {
-                    const auxCanvas = document.createElement('div');
-                    auxCanvas.className = 'mixer-aux-canvas sub-panel';
-                    auxCanvas.innerHTML =
-                        '<div class="sub-panel-title">USB/MIDI → STUDIO</div>' +
-                        '<div class="mixer-aux-body"></div>';
-                    const auxBody = auxCanvas.querySelector('.mixer-aux-body');
-                    auxBody.insertAdjacentHTML('afterbegin', this._mixerWireRackHtml());
-                    const auxKnobsHost = document.createElement('div');
-                    auxKnobsHost.className = 'mixer-aux-knobs';
-                    auxBody.appendChild(auxKnobsHost);
-                    groups.filter(g => auxGroups.has(g)).forEach(g => {
-                        const p = this._buildKnobSubPanel(auxKnobsHost, containerId, config, g);
-                        if (p) auxKnobsHost.appendChild(p);
-                    });
-                    cont.appendChild(auxCanvas);
-                }
             },
             _buildKnobSubPanel(cont, containerId, config, g) {
                 const p = document.createElement('div');
@@ -11646,17 +12218,18 @@
                     if (g === 'MIX') {
                         p.classList.add('sub-panel-mix');
                         kCont.classList.add('knobs-spaced');
-                    } else if (g === 'SYNTH AUX' || g === 'SHARED ROOM') {
+                    } else if (g === 'AUX & ROUTING' || g === 'SHARED ROOM') {
                         p.classList.add('sub-panel-compact');
                         kCont.classList.add('knobs-compact');
-                    } else if (g === 'TUBE' || g === 'DJ' || g === 'EQ') {
+                    } else if (g === 'DISTORTION' || g === 'MASTER LPF' || g === 'EQ') {
                         p.classList.add('sub-panel-master-fx');
                         kCont.classList.add('knobs-balanced');
                     }
                 } else if (containerId === 'drum-bus-knobs') {
                     p.classList.add('sub-panel-compact');
                     kCont.classList.add('knobs-compact');
-                    if (g === 'ROOM · LINK') p.classList.add('sub-panel-room-link');
+                    const numKnobs = config.filter(k => k.group === g).length;
+                    p.style.flex = `${numKnobs} 1 0`;
                 }
                 config.filter(k => k.group === g).forEach(k => {
                     this._appendKnobWidget(kCont, k);
@@ -11697,6 +12270,7 @@
                             const r = isDiscrete ? Math.round(raw) : raw;
                             return (r - k.min) / (k.max - k.min);
                         };
+                        const isWaveKnob = (k.cmd === CMD.H_WAVE || k.cmd === CMD.S_WAVE);
                         const applyKnob = (raw, txNow) => {
                             const snapped = isDiscrete ? Math.round(raw) : raw;
                             const clamped = Math.max(k.min, Math.min(k.max, snapped));
@@ -11704,6 +12278,8 @@
                             hitbox.style.setProperty('--val', Math.max(0, Math.min(1, sn)));
                             val.innerText = k.fmt(clamped);
                             if (txNow) this.txSysex(k.cmd, clamped);
+                            if (isWaveKnob)
+                                this._syncWaveUi(k.cmd === CMD.H_WAVE ? 'harp' : 'seq', clamped, 'knob');
                             return clamped;
                         };
 
@@ -11748,7 +12324,7 @@
                             const nv = Math.max(0, Math.min(1, sv + (sy - e.clientY) / sensitivity));
                             const raw = applyKnob(rawFromNorm(nv), false);
                             const now = performance.now();
-                            if (now - lastTxMs >= 16) {
+                            if (now - lastTxMs >= 5) {
                                 lastTxMs = now;
                                 pendingRaw = null;
                                 this.txSysex(k.cmd, raw);
@@ -11789,7 +12365,7 @@
                                 raw = applyKnob(rawFromNorm(nv), false);
                             }
                             const now = performance.now();
-                            if (now - wheelTxMs >= 16) {
+                            if (now - wheelTxMs >= 5) {
                                 wheelTxMs = now;
                                 wheelPending = null;
                                 this.txSysex(k.cmd, raw);
@@ -11884,14 +12460,25 @@
                 const O = this._dspShell();
                 const grid = O.gridData?.[O.bankIdx];
                 if (!grid) return { synth, drum, rows };
+                const len = Math.max(1, O.seqLen | 0);
+                const s = Math.max(0, Math.min(len - 1, step | 0));
                 for (let r = 0; r < 16; r++) {
-                    if (!grid[r]?.[step]) continue;
+                    if (!grid[r]?.[s]) continue;
                     const w = r < 8 ? 0.85 : (r <= 9 ? 1.0 : (r >= 12 ? 0.55 : 0.72));
                     rows[r] = w;
                     if (r < 8) synth += w;
                     else drum += w;
                 }
                 return { synth, drum, rows };
+            },
+
+            _knobLevel(cmd, def = 0.5) {
+                const list = this.knobStates?.[cmd];
+                if (list?.[0]) {
+                    const v = parseFloat(list[0].node.style.getPropertyValue('--val'));
+                    if (!Number.isNaN(v)) return Math.max(0, Math.min(1, v));
+                }
+                return def;
             },
 
             _drumScopeNorm() {
@@ -11955,8 +12542,6 @@
                 if (w < 8 || h < 8) return;
 
                 const playing = this.isPlaying;
-                const scopeRow = document.getElementById('mixerScopeRow');
-                if (scopeRow) scopeRow.classList.toggle('scope-stopped', !playing);
 
                 /* Stopped → completely dark / empty */
                 ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -12027,36 +12612,59 @@
                 }
             },
 
-            /** Master VU — L=synth rows, R=drum rows; follows pattern at visStep (read-only). */
+            _panBias() {
+                const p = (this._knobLevel(CMD.H_PAN, 0.5) + this._knobLevel(CMD.S_PAN, 0.5) + this._knobLevel(CMD.D_PAN, 0.5)) / 3;
+                return Math.max(-0.45, Math.min(0.45, (p - 0.5) * 0.9));
+            },
+
+            _setVuBar(el, level) {
+                if (!el) return;
+                const p = Math.max(0, Math.min(100, level * 100));
+                el.style.width = p.toFixed(2) + '%';
+                el.style.transform = 'none';
+            },
+
+            /** Master stereo VU — total pattern energy + pan spread (read-only). */
             _updateVuMeters(ts) {
                 const l = document.getElementById('vu-left');
                 const r = document.getElementById('vu-right');
                 if (!l || !r) return;
+                const scopeRow = document.getElementById('mixerScopeRow');
                 const mixerOn = document.getElementById('view-mixer')?.classList.contains('active');
+                const playing = !!this.isPlaying;
+                if (scopeRow) scopeRow.classList.toggle('scope-stopped', !playing);
                 if (!this._vuLastTs) this._vuLastTs = ts;
                 const dt = Math.min(0.05, Math.max(0.001, (ts - this._vuLastTs) * 0.001));
                 this._vuLastTs = ts;
                 const k = 1 - Math.exp(-10 * dt);
                 const atk = Math.min(1, 36 * dt);
 
-                if (!mixerOn || !this.isPlaying) {
+                if (!mixerOn || !playing) {
                     this._vuSynthE += (0 - this._vuSynthE) * k;
                     this._vuDrumE += (0 - this._vuDrumE) * k;
                 } else {
                     const O = this._dspShell();
-                    const step = Math.max(0, O.visStep | 0);
+                    const len = Math.max(1, O.seqLen | 0);
+                    const step = Math.max(0, Math.min(len - 1, O.visStep | 0));
                     const e = this._readStepEnergies(step);
-                    const drumNorm = this._drumScopeNorm();
-                    const accent = this.isPlaying && (step % 4 === 0) ? 1.1 : 1.0;
-                    const synthT = Math.min(1, e.synth / 2.8) * accent;
-                    const drumT = Math.min(1, e.drum / 2.8) * accent * drumNorm;
-                    if (synthT >= this._vuSynthE) this._vuSynthE += (synthT - this._vuSynthE) * atk;
-                    else this._vuSynthE += (synthT - this._vuSynthE) * k;
-                    if (drumT >= this._vuDrumE) this._vuDrumE += (drumT - this._vuDrumE) * atk;
-                    else this._vuDrumE += (drumT - this._vuDrumE) * k;
+                    const masterG = Math.max(0.2, this._knobLevel(CMD.M_VOL, 0.8));
+                    const synthG = Math.max(0.15, (this._knobLevel(CMD.H_VOL, 0.5) + this._knobLevel(CMD.S_VOL, 0.5)) * 0.5);
+                    const drumG = Math.max(0.15, this._knobLevel(CMD.D_VOL, 0.55));
+                    const accent = playing && (step % 4 === 0) ? 1.1 : 1.0;
+                    const energy = (e.synth * synthG + e.drum * drumG) / 3.2;
+                    const totalT = Math.min(1, energy * accent * masterG);
+                    const pan = this._panBias();
+                    const lT = Math.min(1, totalT * (pan <= 0 ? 1 : 1 - pan));
+                    const rT = Math.min(1, totalT * (pan >= 0 ? 1 : 1 + pan));
+                    if (lT >= this._vuSynthE) this._vuSynthE += (lT - this._vuSynthE) * atk;
+                    else this._vuSynthE += (lT - this._vuSynthE) * k;
+                    if (rT >= this._vuDrumE) this._vuDrumE += (rT - this._vuDrumE) * atk;
+                    else this._vuDrumE += (rT - this._vuDrumE) * k;
                 }
-                l.style.transform = 'scaleX(' + Math.max(0, Math.min(1, this._vuSynthE)).toFixed(4) + ')';
-                r.style.transform = 'scaleX(' + Math.max(0, Math.min(1, this._vuDrumE)).toFixed(4) + ')';
+                if (!Number.isFinite(this._vuSynthE)) this._vuSynthE = 0;
+                if (!Number.isFinite(this._vuDrumE)) this._vuDrumE = 0;
+                this._setVuBar(l, this._vuSynthE);
+                this._setVuBar(r, this._vuDrumE);
             },
 
             // ── View switching ────────────────────────────────────────────────────────
@@ -12156,7 +12764,7 @@
             // High-rate / low-value streams suppressed when the filter is on.
             _monNoisy(cmd) {
                 return cmd === CMD.PING || cmd === CMD.BPM || cmd === CMD.STEP_SYNC ||
-                    cmd === CMD.CPU_LOAD || cmd === CMD.SONG_POS;
+                    cmd === CMD.CPU_LOAD || cmd === CMD.DBEAM_AMP || cmd === CMD.SONG_POS;
             },
             _monPush(line) {
                 const b = this._monBuf;
@@ -12206,10 +12814,31 @@
                 const now = ts || performance.now();
                 /* Scope + VU: always tick — isolated canvas/GPU; must not stall on import/mouse jank. */
                 this._updateVuMeters(now);
+                this._tickDbeamMeter(now);
                 this._tickDrumScope(now);
                 requestAnimationFrame((t) => app.animateVU(t));
             }
         };
+
+        document.addEventListener('wheel', (e) => {
+            const t = e.target;
+            if (t && t.tagName === 'INPUT' && t.type === 'number' && !t.readOnly && !t.disabled) {
+                e.preventDefault();
+                let step = parseFloat(t.step) || 1;
+                let val = parseFloat(t.value) || 0;
+                const min = t.hasAttribute('min') ? parseFloat(t.min) : -Infinity;
+                const max = t.hasAttribute('max') ? parseFloat(t.max) : Infinity;
+                if (e.deltaY < 0) val += step;
+                else if (e.deltaY > 0) val -= step;
+                val = Math.max(min, Math.min(max, val));
+                
+                if (val !== parseFloat(t.value)) {
+                    t.value = val;
+                    t.dispatchEvent(new Event('input', { bubbles: true }));
+                    t.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+            }
+        }, { passive: false });
 
         window.onload = () => app.init();
     </script>
@@ -12217,7 +12846,7 @@
     <script>
     if (window.OctopusSiteKit) OctopusSiteKit.init({
         accent: '#22c55e',
-        ga4MeasurementId: '', // e.g. 'G-XXXXXXXXXX' — GA4 (consent-gated)
+        ga4MeasurementId: 'G-VR1P5132GC', // e.g. 'G-XXXXXXXXXX' — GA4 (consent-gated)
         gtmId: '',
         jsonLd: {
             '@context': 'https://schema.org',

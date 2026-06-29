@@ -5,13 +5,48 @@ All notable changes to Octopus PRO XL firmware and OctopusApp are documented her
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning aligns with firmware `SYSTEM_FW_VERSION` in `code_info.h`.
 
-> **Current version: [6.1.01](#6101--2026-06-25)** — scoped-reset reboot policy.  
-> **OctopusApp: [6.2.07](#6207--2026-06-25)** — Octopus hard priority + no-reboot Settings/Motion reset.  
-> **Previous release: [6.0.01](#601--2026-06-22).**
+> **Current version: [6.1.01](#6101--2026-06-25)** — firmware (reflash for companion telemetry).  
+> **OctopusApp: [6.6.01](#6601--2026-06-29)** — dual-shell studio + MIDI Controller final.  
+> **Previous App release: [6.6.00](#6600--2026-06-25).**
+
+## [6.6.01] — 2026-06-29 (OctopusApp + firmware companion)
+
+Major dual-shell release. Pairs with firmware **6.1.01** (reflash recommended for D-BEAM telemetry and harp patch echo). Deploy `OctopusApp.html` to **octopus.isystem.app**.
+
+### Added (OctopusApp)
+
+- **D-BEAM live bargraph** — MIXER tab expression meter from device→App `SX_SUB_DBEAM_AMP` (0x06) telemetry.
+- **Connect-on-Play modal** — ▶ without a MIDI port shows a short connect guide (★ Octopus DSP or MIDI Controller).
+- **HELP v6.6.01** — DSP + MIDI tabs updated for CLR/P-locks, reconnect `APP_SYNC_REQ`, WAVE sync, studio VU, motion REC.
+- **WAVE 3-way sync** — harp / melody waveform dropdown ↔ knob ↔ hardware echo (`_syncWaveUi`).
+- **Studio VU** — master stereo meters with traditional green / yellow / red bands.
+- **Keyboard shortcuts** — DSP: `1`/`2`/`3` tabs, `Space` play/stop, `R` record. MIDI: `Space`/`R`.
+
+### Changed (OctopusApp)
+
+- **CLR → hardware** — sequencer **CLR** clears active P-page grid rows **and** sends `CMD_CLR_PLOCKS` so device P-lock lanes wipe with the App.
+- **REC auto-play** — arming record from stop auto-sends play first (DSP + MIDI) so motion / P-lock capture always runs against a live transport.
+- **USB auto-reconnect** — stale WebMIDI handles refresh after cable replug; same port id re-adopted.
+- **MIDI Controller** — pulpit layout shipped in UI (HELP tab); no longer deferred in v6.6 shell.
+
+### Added (firmware companion — reflash)
+
+- **`txDbeamAmpBlob()`** — D-BEAM amplitude on 33 ms link beacon + `echoDbeamExprState()`.
+- **`CMD_DBEAM_AMP` (196)** + **`SX_SUB_DBEAM_AMP` (0x06)**; `txSysex` dedup exemption.
+- **`recallHarpPatch()`** — echoes `CMD_H_PATCH` to App; dashboard encoder browse sends `H_PATCH` while turning.
+
+### Fixed
+
+- **SysEx parser** — App accepted only frames `length >= 7`, dropping 6-byte D-BEAM blobs.
+- **`recallHarpPatch` compile** — removed forward reference to `isAppConnected()` (`txSysex` gates internally).
+
+## [6.6.00] — 2026-06-25 (OctopusApp)
+
+Dual-shell studio redesign (INSTRUMENTS · MIXER · SEQUENCER). SESSION/PATIMAGE browser libraries, 24 drum kits, UV drum scope, SEQ SYNTH 24×CC macro-groups, iOS breakpoints, first-connection hard-refresh.
 
 ## [6.1.01] — 2026-06-25 (Firmware)
 
-Firmware patch — scoped-reset reboot policy plus a same-day **drum-voice refinement** pass for more classic-sounding metals, clap and snare. Pairs with OctopusApp [6.2.07](#6207--2026-06-25). Reflash required to get the no-reboot behaviour and the new drum voicing; the shipped App tolerates both old and new firmware.
+Firmware patch — scoped-reset reboot policy plus a same-day **drum-voice refinement** pass for more classic-sounding metals, clap and snare. Pairs with OctopusApp [6.6.01](#6601--2026-06-29). Reflash required to get the no-reboot behaviour, drum voicing, and v6.6.01 companion telemetry; the shipped App tolerates both old and new firmware.
 
 ### Added
 
@@ -28,6 +63,22 @@ Firmware patch — scoped-reset reboot policy plus a same-day **drum-voice refin
 
 - SAVE (`requestScopedSave` → `g_restartAfterSave` → reboot ~700 ms) and the FULL / BANKS+PATS deferred boot-reset path are unchanged.
 - **NVS layout** — the drum pass changes default *values* only, not the `AllSettings` struct layout, so `SETTINGS_VERSION` stays **`0x0616`** (no migration; existing saves keep their stored drum knobs).
+
+## [6.2.11] — 2026-06-25 (OctopusApp + firmware)
+
+### Removed
+
+- **Scoped LOAD** — App LOAD button/modal, `CMD_SESSION_LOAD` handler, hardware MAIN MENU → LOAD category. NVS restores at boot; factory patterns load from sequencer dropdowns (`LOAD_PAT_S/D`).
+- **App SLOTS vault** — header button and popup removed (hardware Save/Load Slot menus unchanged).
+- **BOOT_READY handshake (v6.2.10)** — reverted; SAVE/RESET again use `_reloadAfterReconnect` after USB returns.
+
+### Fixed
+
+- **SAVE/RESET App reload** — restored pre–v6.2.10 reconnect → full page reload path (no 2 s boot delay).
+
+## [6.2.10] — 2026-06-25 (reverted in 6.2.11)
+
+Superseded — BOOT_READY / in-page LOAD drain removed.
 
 ## [6.2.09] — 2026-06-25 (OctopusApp + firmware)
 

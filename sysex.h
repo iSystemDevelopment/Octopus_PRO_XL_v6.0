@@ -62,6 +62,8 @@ static constexpr uint8_t SX_SUB_USR_SOUND_NAME = 0x03; /* App→device / device�
 static constexpr uint8_t SX_SUB_USR_PAT_NAME   = 0x04;
 /* Grid-row bulk sub-byte (clean bank/row/page encoding — see SX_SUB_GRID_ROW frame). */
 static constexpr uint8_t SX_SUB_GRID_ROW       = 0x05;
+/* Device→App: live D-BEAM expression amplitude 0–16383 (dbeamAmplitude). */
+static constexpr uint8_t SX_SUB_DBEAM_AMP      = 0x06;
 
 /* ── Harp synth (cmd 0–15) ──────────────────────────────────────────────── */
 static constexpr uint8_t CMD_H_WAVE = 0; /* base — add SynthParam index */
@@ -210,8 +212,7 @@ static constexpr uint8_t CMD_LSR_DRUMFLASH = 168;
 /* Scoped persistence (App↔device parity for SAVE / LOAD / RESET menus).
  *   CMD_SESSION_SAVE / CMD_SESSION_LOAD / CMD_SCOPED_RESET: v14 = ResetScope + 1
  *     (FULL=1 … SETTINGS=4).  v14=0 NACK; v14=16383 ACK echo (ignored on RX).
- *   CMD_SCOPED_RESET — FULL/BANKS+PATS: arm NVS pend_rst + reboot; wipe on next boot.
- *     SETTINGS/MOTION: applyResetScope + settings_commit_reset_scoped via NvsWorker.
+ *   CMD_SCOPED_RESET — all scopes: arm NVS pend_rst + reboot; wipe on next boot.
  *   CMD_SEQ_CLEAR    — clear active pattern + reset companion sounds (mirror hardware).
  *   CMD_SOFT_RESET (171) — retired v6.1; ignored on RX. */
 static constexpr uint8_t CMD_SCOPED_RESET = 169;
@@ -252,6 +253,10 @@ static constexpr uint8_t CMD_SEQ_RESTART = 193;
 static constexpr uint8_t CMD_AUX_SCENE_IDX = 194;
 /* Link insert-A preset aux fields to masterAux* on recall: 0=off 16383=on. */
 static constexpr uint8_t CMD_LINK_AUX_PRESET = 195;
-static constexpr uint8_t CMD_COUNT = 196; /* total command count              */
+/* v6.3 link contract — persist ACK with txn_id (docs/link_contract.md). */
+static constexpr uint8_t CMD_SESSION_SLOT_ACK = 199;
+/* Device→App: live D-BEAM expression amplitude 0–16383 (post-curve, dbeamAmplitude). */
+static constexpr uint8_t CMD_DBEAM_AMP = 196;
+static constexpr uint8_t CMD_COUNT = 201; /* total command count              */
 
 #endif /* SYSEX_H */

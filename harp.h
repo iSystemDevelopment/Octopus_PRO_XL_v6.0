@@ -8,6 +8,8 @@
  * ═════════════════════════════════════════════════════════════════════════════
  * harp.h — v6.1.01  LASER-HARP INSTRUMENT — PUBLIC INTERFACE
  *
+ * SOUND FROZEN — docs/dsp_sound_frozen.md (harp.cpp implementation locked).
+ *
  * Self-contained laser-harp engine (harp.cpp, private anonymous namespace).
  * Seq/drum use shared register helpers from globals.h; harp does not share
  * synthesis code with groovebox.h.

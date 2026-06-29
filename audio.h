@@ -31,7 +31,7 @@
 /* ═══════════════════════════════════════════════════════════════════════════
  * AUDIO MODULE — I2S output + FreeRTOS task declarations (bodies in audio.cpp)
  *
- * Task spawn priorities/stacks/cores: init_audio_system() in audio.cpp only.
+ * Task spawn: init_audio_system() in audio.cpp — FROZEN schedule in docs/task_schedule.md
  * Buffer size: DMA_BUFFER_FRAMES (512) mono/stereo scratch in audio.cpp.
  * ═══════════════════════════════════════════════════════════════════════════ */
 static constexpr size_t DMA_BUFFER_MONO_BYTES   = DMA_BUFFER_FRAMES * sizeof(int16_t);

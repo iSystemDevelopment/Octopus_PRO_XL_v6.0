@@ -92,9 +92,13 @@ void parseMidiByte(uint8_t b, MidiParserState& ps);
 void wireRecordInputNote(uint8_t channel, uint8_t note, uint8_t vel);
 void sendFullStateSync();
 void txSysex(uint8_t cmd, uint16_t v14bit);
+/** Persist ACK — bypasses isAppConnected() so pre-reboot ACK always reaches App. */
+void txSysexForce(uint8_t cmd, uint16_t v14bit);
 
 void txPatchBlob(uint8_t engine);
 void txGridRowBlob(uint8_t bank, uint8_t row, uint8_t page, uint8_t lo, uint8_t hi);
+/** Device→App link beacon — sub SX_SUB_DBEAM_AMP (0x06), 14-bit dbeamAmplitude. */
+void txDbeamAmpBlob(uint16_t amp);
 
 void txUserLibraryNames();
 

@@ -8,6 +8,9 @@
  * ═════════════════════════════════════════════════════════════════════════════
  * effect.h — v6.1.01  CONSOLIDATED FX ENGINE  (3-instrument groovebox)
  *
+ * SOUND FROZEN — docs/dsp_sound_frozen.md.  No optimization refactors; recalculated
+ * coefficient touches only, with A/B on reference patch.
+ *
  * Mono insert pipeline (harp / seq / drum) → shared aux bus (delay + reverb)
  * → master bus (tube drive, glue comp, EQ3, limiter).  Per-instrument slots
  * A→B in series: slot A = modulation FX bank, slot B = dynamics bank.

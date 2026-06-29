@@ -23,7 +23,7 @@ extern Adafruit_SH1106G display;
 #include <cmath>
 #include <cstring>
 #include "globals.h"
-#include "interface.h" /* kL1Count, l2CountFor, kL2*Count */
+#include "interface.h" /* kL1MenuCount, kL1CatCount, l2CountFor, kL2*Count */
 
 /* ═══════════════════════════════════════════════════════════════════════════
  * SECTION 1 — SCREEN GEOMETRY
@@ -54,44 +54,39 @@ static constexpr int LABEL_X = 4;
 /* Play mode names (index matches PlayMode enum) */
 inline const char* const kPMNames[3] = { "POLY8", "STRINGS", "SOLO" };
 
-/* L1 menu category names */
+/* L1 menu category names (fixed cat id → title on L2/L3 screens) */
 inline const char* const kL1Names[16] = {
-  "HARP SETUP", /*  0 kL2HarpSetupCount  = 13 */
-  "D-BEAM",     /*  1 kL2DBeamCount      =  8 */
-  "MASTER",     /*  2 kL2MasterCount     = 24 */
-  "HARP SYNTH", /*  3 kL2SynthCount      = 25 */
-  "MIDI I/O",   /*  4 kL2MidiCount       =  5 */
-  "SEQ SETUP",  /*  5 kL2SeqSetupCount   = 13 */
-  "SEQ MATRIX", /*  6 kL2SeqMatrixCount  =  1 */
-  "AUX FX",     /*  7 kL2AuxFxCount      = 16 */
-  "SEQ SYNTH",  /*  8 kL2SeqSynthCount   = 21 */
-  "DRUM KIT",   /*  9 kL2DrumsCount      = 42 */
-  "LASER SHOW", /* 10 kL2LaserShowCount  =  9 */
-  "TELEMETRY",  /* 11 kL2TelemetryCount  =  7 */
-  "RESET",      /* 12 kL2ResetCount      =  4 */
-  "SONG",       /* 13 kL2SongCount       =  1 */
-  "SAVE",       /* 14 kL2SaveCount       =  4 */
-  "LOAD"        /* 15 kL2LoadCount       =  4 */
+  "HARP PLAY",  /*  0 */
+  "D-BEAM",     /*  1 */
+  "MIX LIVE",   /*  2 */
+  "HARP TONE",  /*  3 */
+  "SYSTEM",     /*  4 */
+  "SEQ PLAY",   /*  5 */
+  "SEQ MATRIX", /*  6 */
+  "AUX FX",     /*  7 hidden */
+  "SEQ SYNTH",  /*  8 hidden */
+  "DRUM",       /*  9 */
+  "LASER SHOW", /* 10 hidden */
+  "TELEMETRY",  /* 11 via SYSTEM */
+  "RESET",      /* 12 via SYSTEM */
+  "SONG",       /* 13 hidden */
+  "PERF SLOT",  /* 14 */
+  "LOAD"        /* 15 retired */
 };
 
-/* MAIN MENU in regrouped display order (slot → name). Sync with kL1Order[] in interface.h. */
-inline const char* const kL1NamesOrdered[kL1Count] = {
-  kL1Names[0],  /* HARP SETUP */
-  kL1Names[3],  /* HARP SYNTH */
-  kL1Names[5],  /* SEQ SETUP  */
-  kL1Names[6],  /* SEQ MATRIX */
-  kL1Names[8],  /* SEQ SYNTH  */
-  kL1Names[13], /* SONG       */
-  kL1Names[9],  /* DRUM KIT   */
-  kL1Names[7],  /* AUX FX     */
-  kL1Names[2],  /* MASTER     */
-  kL1Names[1],  /* D-BEAM     */
-  kL1Names[4],  /* MIDI I/O   */
-  kL1Names[10], /* LASER SHOW */
-  kL1Names[11], /* TELEMETRY  */
-  kL1Names[12], /* RESET      */
-  kL1Names[14], /* SAVE       */
-  kL1Names[15]  /* LOAD       */
+inline const char* const kL1MidiIoTitle[] = { "MIDI I/O" };
+
+/* MAIN MENU scroll labels — sync with kL1Order[] in interface.h */
+inline const char* const kL1NamesOrdered[kL1MenuCount] = {
+  "HARP PLAY",
+  "HARP TONE",
+  "SEQ PLAY",
+  "SEQ MATRIX",
+  "DRUM",
+  "MIX LIVE",
+  "D-BEAM",
+  "PERF SLOT",
+  "SYSTEM"
 };
 
 /* ── L2 label arrays — each is exactly [kL2<X>Count] entries ────────────── */
@@ -137,14 +132,16 @@ inline const char* const kL2Midi[5] = {
   "Harp Ch", "Seq Ch", "Drum Ch"
 };
 
+inline const char* const kL2System[3] = {
+  "MIDI I/O", "Telemetry", "Reset"
+};
+
 inline const char* const kL2SeqSetup[13] = {
   "Bank A-D", "View S/D", "Transpose",
   "Length", "Load Synth", "Load Drum", "Clear",
   "Save Pat", "Load Pat",
   "Arp On", "Arp Type", "Arp Rate", "Arp Gate"
 };
-
-inline const char* const kL2SeqMatrix[1] = { "Open Grid" };
 
 /* AUX FX — shared room + sends + insert slots */
 inline const char* const kL2AuxFx[16] = {
@@ -191,41 +188,53 @@ inline const char* const kL2Telemetry[7] = {
   "AC Scope", "DC Bias", "DAC Thresh", "D-BEAM Expr", "SNR", "System", "Fog Reject"
 };
 
+/* PERF SLOT — SongPack device slots (Phase G wiring). */
+inline const char* const kL2PerfSlot[3] = {
+  "Load PERF", "Save PERF", "Name"
+};
+
 /* RESET — 4 scoped actions (YES/NO confirm). Order matches ResetScope. */
 inline const char* const kL2Reset[4] = {
   "Full Reset", "Banks+Pats", "Motion Clr", "Settings"
 };
 
-/* SAVE — 4 scoped actions (YES/NO confirm → persist + reboot). */
-inline const char* const kL2Save[4] = {
-  "Full Save", "Banks+Pats", "Motion Save", "Settings"
-};
-
-/* LOAD — 4 scoped reloads from NVS (YES/NO confirm, no reboot). */
-inline const char* const kL2Load[4] = {
-  "Full Load", "Banks+Pats", "Motion Load", "Settings"
-};
-
-/* l2TableFor — maps L1 index → L2 string array (l2CountFor in interface.h). */
+/* l2TableFor — maps L1 category id → L2 string array (base counts in interface.h). */
 static inline const char* const* l2TableFor(int l1) {
   switch (l1) {
     case 0: return kL2HarpSetup;
     case 1: return kL2DBeam;
     case 2: return kL2Master;
     case 3: return kL2Synth;
-    case 4: return kL2Midi;
+    case 4: return kL2System;
     case 5: return kL2SeqSetup;
-    case 6: return kL2SeqMatrix;
+    case 6: return nullptr;
     case 7: return kL2AuxFx;
     case 8: return kL2Synth;
     case 9: return kL2Drums;
     case 10: return kL2LaserShow;
     case 11: return kL2Telemetry;
     case 12: return kL2Reset;
-    case 14: return kL2Save;
-    case 15: return kL2Load;
+    case 14: return kL2PerfSlot;
     default: return nullptr;
   }
+}
+
+/* SYSTEM hub drills into kL2Midi when menuSystemMidiSub is set. */
+static inline int l2CountForCat(int l1) {
+  if (l1 == 4 && menuSystemMidiSub.load(std::memory_order_relaxed))
+    return kL2MidiCount;
+  return l2CountFor(l1);
+}
+static inline const char* const* l2TableForCat(int l1) {
+  if (l1 == 4 && menuSystemMidiSub.load(std::memory_order_relaxed))
+    return kL2Midi;
+  return l2TableFor(l1);
+}
+static inline const char* safeL1TitleForMenu(int l1) {
+  if (l1 == 4 && menuSystemMidiSub.load(std::memory_order_relaxed))
+    return kL1MidiIoTitle[0];
+  if (l1 < 0 || l1 >= kL1CatCount) return "MENU";
+  return kL1Names[l1];
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -333,14 +342,14 @@ static inline const char* safeLfoRouteName(int idx) {
   return kLfoRouteNames[std::max(0, std::min(7, idx))];
 }
 static inline const char* safeL2Name(int l1, int l2) {
-  if (l1 < 0 || l1 >= kL1Count) return "???";
-  const char* const* tbl = l2TableFor(l1);
-  const int cnt = l2CountFor(l1);
+  if (l1 < 0 || l1 >= kL1CatCount) return "???";
+  const char* const* tbl = l2TableForCat(l1);
+  const int cnt = l2CountForCat(l1);
   if (!tbl || l2 < 0 || l2 >= cnt) return "???";
   return tbl[l2];
 }
 static inline const char* safeL1Name(int l1) {
-  if (l1 < 0 || l1 >= kL1Count) return "MENU";
+  if (l1 < 0 || l1 >= kL1CatCount) return "MENU";
   return kL1Names[l1];
 }
 
