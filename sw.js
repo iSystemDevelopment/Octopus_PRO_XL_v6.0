@@ -1,7 +1,7 @@
 /* OctopusApp service worker — offline shell + install eligibility. Bump CACHE on each release. */
 const CACHE = 'octopus-app-v6.6.01';
 
-const PRECACHE = ['/', '/index.html', '/manifest.webmanifest'];
+const PRECACHE = ['/', '/index.html', '/manifest.webmanifest', '/logo.jpg'];
 
 const CDN_HOSTS = [
   'cdn.tailwindcss.com',

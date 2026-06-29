@@ -44,6 +44,7 @@ sudo apt update && sudo apt install -y nginx certbot python3-certbot-nginx
 sudo mkdir -p /var/www/octopus.isystem.app
 sudo cp OctopusApp.html /var/www/octopus.isystem.app/index.html
 sudo cp manifest.webmanifest sw.js /var/www/octopus.isystem.app/
+sudo cp /var/www/octopus-info.isystem.app/logo.jpg /var/www/octopus.isystem.app/logo.jpg
 
 # Product site
 sudo mkdir -p /var/www/octopus-info.isystem.app
@@ -58,6 +59,22 @@ server {
     server_name octopus.isystem.app;
     root /var/www/octopus.isystem.app;
     index index.html;
+    # PWA files must be real files — do NOT fall through to index.html
+    location = /manifest.webmanifest {
+        try_files /manifest.webmanifest =404;
+        add_header Cache-Control "no-cache, must-revalidate";
+        types { application/manifest+json webmanifest; }
+        default_type application/manifest+json;
+    }
+    location = /sw.js {
+        try_files /sw.js =404;
+        add_header Cache-Control "no-cache, must-revalidate";
+        default_type application/javascript;
+    }
+    location = /logo.jpg {
+        try_files /logo.jpg =404;
+        add_header Cache-Control "public, max-age=86400";
+    }
     location / {
         try_files $uri $uri/ /index.html;
         add_header Cache-Control "no-cache, must-revalidate";
@@ -94,8 +111,11 @@ OctopusApp is a **Progressive Web App**. Users install from the browser — no s
 |------|---------|
 | `manifest.webmanifest` | App name, icons, `standalone` window |
 | `sw.js` | Offline shell cache (bump `CACHE` in `sw.js` each release) |
+| `logo.jpg` | PWA icon (same file as product site — copy to app root) |
 
-Deploy all three to the app site root (`index.html`, `manifest.webmanifest`, `sw.js`). Users click **INSTALL** in the header (Chrome / Edge) or use the browser’s “Install app” menu. After one online visit, the UI loads offline; **Web MIDI still needs Chrome/Edge on desktop**.
+Deploy all four to the app site root (`index.html`, `manifest.webmanifest`, `sw.js`, `logo.jpg`). Users click **INSTALL** in the header (Chrome / Edge) or use the browser’s “Install app” menu. After one online visit, the UI loads offline; **Web MIDI still needs Chrome/Edge on desktop**.
+
+**Verify before telling users to install:** open `https://octopus.isystem.app/manifest.webmanifest` — you must see JSON (`{ "name": "OctopusApp…`), not the app HTML. Same for `https://octopus.isystem.app/sw.js` (JavaScript). If you see HTML, the files are missing and nginx is falling back to `index.html`.
 
 On release: update the `CACHE` string in `sw.js` so installed clients pick up the new App.
 

@@ -28,7 +28,7 @@
     <link rel="manifest" href="/manifest.webmanifest">
     <link rel="canonical" href="https://octopus.isystem.app/">
     <link rel="icon" href="https://octopus-info.isystem.app/logo.jpg" type="image/jpeg">
-    <link rel="apple-touch-icon" href="https://octopus-info.isystem.app/logo.jpg">
+    <link rel="apple-touch-icon" href="/logo.jpg">
     <!-- Social share preview (Facebook, LinkedIn, Discord, iMessage, etc.) — images hosted on product site -->
     <meta property="og:type" content="website">
     <meta property="og:site_name" content="OctopusApp">
@@ -8099,6 +8099,8 @@
 
             /** Progressive Web App — service worker + desktop install (Chrome / Edge). */
             _pwaDeferredPrompt: null,
+            _pwaSetupOk: null,
+            _pwaInstallQueued: false,
             _pwaIsStandalone() {
                 return window.matchMedia('(display-mode: standalone)').matches
                     || window.matchMedia('(display-mode: window-controls-overlay)').matches
@@ -8123,19 +8125,68 @@
                     e.preventDefault();
                     this._pwaDeferredPrompt = e;
                     this._pwaRefreshInstallTab();
+                    if (this._pwaInstallQueued) this.installPwa();
                 });
                 window.addEventListener('appinstalled', () => {
                     this._pwaDeferredPrompt = null;
+                    this._pwaInstallQueued = false;
                     this._pwaRefreshInstallTab();
                     this.log('OctopusApp installed on this device.');
                 });
-                navigator.serviceWorker.register('/sw.js', { scope: '/' })
-                    .then(() => this._pwaRefreshInstallTab())
-                    .catch(() => this._pwaRefreshInstallTab());
+                this._pwaValidateSetup().then((ok) => {
+                    if (!ok) return;
+                    navigator.serviceWorker.register('/sw.js', { scope: '/' })
+                        .then(() => this._pwaRefreshInstallTab())
+                        .catch((err) => {
+                            this._pwaSetupOk = false;
+                            this.log('PWA: service worker failed — deploy sw.js to site root. ' + (err?.message || err));
+                            this._pwaRefreshInstallTab();
+                        });
+                });
                 this._pwaRefreshInstallTab();
-                if (new URLSearchParams(location.search).get('install') === '1') {
-                    setTimeout(() => this.installPwa(), 800);
+                if (new URLSearchParams(location.search).get('install') === '1')
+                    this._pwaQueueInstall();
+            },
+            async _pwaValidateSetup() {
+                if (this._pwaSetupOk != null) return this._pwaSetupOk;
+                try {
+                    const r = await fetch('/manifest.webmanifest', { cache: 'no-store' });
+                    const ct = (r.headers.get('content-type') || '').toLowerCase();
+                    const text = await r.text();
+                    const looksJson = text.trimStart().startsWith('{');
+                    const ok = r.ok && looksJson && !ct.includes('text/html');
+                    this._pwaSetupOk = ok;
+                    if (!ok) {
+                        this.log('PWA blocked: /manifest.webmanifest is missing on the server (nginx is serving HTML). Upload manifest.webmanifest + sw.js + logo.jpg next to index.html.');
+                    }
+                    return ok;
+                } catch (e) {
+                    this._pwaSetupOk = false;
+                    this.log('PWA: could not load manifest — ' + (e?.message || e));
+                    return false;
                 }
+            },
+            _pwaQueueInstall() {
+                this._pwaInstallQueued = true;
+                const tryNow = () => {
+                    if (this._pwaDeferredPrompt) {
+                        this._pwaInstallQueued = false;
+                        this.installPwa();
+                        return true;
+                    }
+                    return false;
+                };
+                if (tryNow()) return;
+                let n = 0;
+                const t = setInterval(() => {
+                    if (tryNow() || ++n >= 25) {
+                        clearInterval(t);
+                        if (!this._pwaDeferredPrompt && this._pwaInstallQueued) {
+                            this._pwaInstallQueued = false;
+                            this.installPwa();
+                        }
+                    }
+                }, 200);
             },
             openInstallModal() {
                 const body = document.getElementById('installModalBody');
@@ -8147,6 +8198,12 @@
                 } else if (this._pwaDeferredPrompt) {
                     body.innerHTML = '<p>Install OctopusApp as a desktop app. It opens in its own window, stays in your taskbar, and caches the UI for offline use after one online visit.</p><p style="color:#666;margin-top:8px">Web MIDI (USB) still requires Chrome or Edge on desktop.</p>';
                     if (go) go.style.display = '';
+                } else if (this._pwaSetupOk === false) {
+                    body.innerHTML = '<p><b>Server setup incomplete.</b> The install files are not on <code>octopus.isystem.app</code> yet — the server is returning the HTML page instead of the manifest.</p>'
+                        + '<p style="margin-top:8px">On the VPS, copy these next to <code>index.html</code>:</p>'
+                        + '<ul style="margin:8px 0 0 18px;line-height:1.7"><li><code>manifest.webmanifest</code></li><li><code>sw.js</code></li><li><code>logo.jpg</code> (from product site)</li></ul>'
+                        + '<p style="color:#666;margin-top:8px">Then hard-refresh (Ctrl+F5) and try INSTALL again.</p>';
+                    if (go) go.style.display = 'none';
                 } else if (this._pwaIsIos()) {
                     body.innerHTML = '<p>On iPhone / iPad: tap <b>Share</b> in Safari, then <b>Add to Home Screen</b>.</p><p style="color:#666;margin-top:8px">iOS does not expose USB Web MIDI in the browser — use a desktop for MIDI Controller mode.</p>';
                     if (go) go.style.display = 'none';
@@ -8165,6 +8222,7 @@
                     this.log('OctopusApp is already installed.');
                     return;
                 }
+                await this._pwaValidateSetup();
                 if (!this._pwaDeferredPrompt) {
                     this.openInstallModal();
                     return;
