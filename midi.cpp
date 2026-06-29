@@ -554,7 +554,8 @@ void handleSysexCommand(uint8_t cmd, uint16_t v14) {
       const int step = v14 & 0x7Fu;
       if (trk < 16 && step < 64) {
         portENTER_CRITICAL(&patchMux);
-        hwSeqData[seqActiveBank.load() & 15u][seqActiveChain.load() & 3u][trk]
+        /* [GRID-64] Chain pinned 0 — matches sub-0x05 blob + App grid mirror. */
+        hwSeqData[seqActiveBank.load() & 15u][0u][trk]
             ^= (1ull << step);
         portEXIT_CRITICAL(&patchMux);
       }
@@ -571,11 +572,10 @@ void handleSysexCommand(uint8_t cmd, uint16_t v14) {
 
     case CMD_CLR_PLOCKS: {
       const uint8_t bank  = seqActiveBank .load(std::memory_order_relaxed);
-      const uint8_t chain = seqActiveChain.load(std::memory_order_relaxed);
       portENTER_CRITICAL(&motionMux);
       for (int l = 0; l < 4; ++l) {
-        hwMotionData[bank][chain][l].targetCmd = 255u;
-        for (int s = 0; s < 16; ++s) hwMotionData[bank][chain][l].steps[s] = 0xFFFFu;
+        hwMotionData[bank][0u][l].targetCmd = 255u;
+        for (int s = 0; s < 16; ++s) hwMotionData[bank][0u][l].steps[s] = 0xFFFFu;
       }
       portEXIT_CRITICAL(&motionMux);
       g_motionLanesFull.store(false, std::memory_order_relaxed); /* lanes freed — clear telemetry flag */
@@ -983,9 +983,8 @@ void wireRecordInputNote(uint8_t channel, uint8_t note, uint8_t /*vel*/) {
   if (channel != seqCh) return;
   const uint8_t step  = seqCurrentStep.load(std::memory_order_relaxed) & 63u;
   const uint8_t bank  = seqActiveBank  .load(std::memory_order_relaxed) & 15u;
-  const uint8_t chain = seqActiveChain .load(std::memory_order_relaxed) & 3u;
   portENTER_CRITICAL(&patchMux);
-  hwSeqData[bank][chain][note % 8u] |= (1ull << step);
+  hwSeqData[bank][0u][note % 8u] |= (1ull << step);
   portEXIT_CRITICAL(&patchMux);
 }
 

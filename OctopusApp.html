@@ -11367,11 +11367,9 @@
                 const { step0, step1, page } = this._pageStepRange(S);
                 for (let r = r0; r < r1; r++)
                     for (let c = step0; c < step1; c++) {
+                        const col = c - step0;
                         const on = Math.random() < p;
-                        if (S.gridData[S.bankIdx][r][c] === on) continue;
-                        S.gridData[S.bankIdx][r][c] = on;
-                        if (S === this._dspShell())
-                            this.txSysex(CMD.GRID_TOG, (r << 7) | c);
+                        this.setCell(r, col, on, S);
                     }
                 this.repaintGrid(S);
                 if (this.isPlaying) {
@@ -11482,15 +11480,21 @@
                     this.setCell(bestRow, step, true);
                 }
                 this._suppressTx = false;
-                // Reflect preset on the seq-synth knobs + waveform dropdown (display only)
+                const pg = S.gridPageIdx | 0;
+                for (let r = 0; r < 16; r++) this._pushGridRowPageToDevice(S.bankIdx, r, pg);
+                // Reflect preset on seq-synth + push sound only (LOAD_PAT_S wipes rows 0–15 on hardware).
                 if (pat.preset) {
                     document.getElementById('seqWave').value = pat.preset[0];
                     const map = [CMD.S_WAVE, CMD.S_ATTK, CMD.S_DECY, CMD.S_SUST, CMD.S_RELS, CMD.S_CUT, CMD.S_RES, CMD.S_NSE, CMD.S_DET, CMD.S_LRATE, CMD.S_LDPTH, CMD.SLFO_RT, CMD.S_OSC2, CMD.S_ENVC];
                     pat.preset.forEach((v, i) => {
-                        if (i < map.length) this._setKnob(map[i], v);
+                        if (i < map.length) {
+                            this._setKnob(map[i], v);
+                            this.txSysexSoon(map[i], v);
+                        }
                     });
                 }
-                this.txSysex(CMD.LOAD_PAT_S, +idx);
+                const sel = document.getElementById('synthPat');
+                if (sel) sel.value = String(idx);
             },
             loadDrumPat(idx) {
                 if (idx === "" || !DRUM_PATTERNS[idx]) return;
@@ -11521,8 +11525,14 @@
                     for (let c = 0; c < 16; c++) this.setCell(gr, c, !!((mask >> c) & 1));
                 });
                 this._suppressTx = false;
-                if (pat.preset) pat.preset.forEach((v, i) => this._setKnob(32 + i, v));
-                this.txSysex(CMD.LOAD_PAT_D, +idx);
+                const pg = S.gridPageIdx | 0;
+                for (let r = 0; r < 16; r++) this._pushGridRowPageToDevice(S.bankIdx, r, pg);
+                if (pat.preset) pat.preset.forEach((v, i) => {
+                    this._setKnob(32 + i, v);
+                    this.txSysexSoon(32 + i, v);
+                });
+                const sel = document.getElementById('drumPat');
+                if (sel) sel.value = String(idx);
             },
 
             // ── Playhead beat LEDs (per shell) ─────────────────────────────────────────
@@ -11611,23 +11621,47 @@
             },
 
             // ── Grid model helpers (per-shell source of truth) ─────────────────────────
+            /** Absolute step 0–63 for visible column on the active P page. */
+            _gridAbsStep(S, col) {
+                S = S || this._shell();
+                return ((S.gridPageIdx | 0) * 16) + ((col | 0) & 15);
+            },
+            /** Push one P-page row to Octopus (lossless sub-0x05 — bank + page explicit). */
+            _pushGridRowPageToDevice(bank, row, page) {
+                if (this._appMode !== 'dsp' || this._suppressTx) return;
+                const O = this._dspShell();
+                bank = bank | 0;
+                row = row | 0;
+                page = page & 3;
+                const step0 = page * 16;
+                let lo = 0, hi = 0;
+                const g = O.gridData[bank]?.[row];
+                if (!g) return;
+                for (let i = 0; i < 8; i++) {
+                    if (g[step0 + i]) lo |= (1 << i);
+                    if (g[step0 + 8 + i]) hi |= (1 << i);
+                }
+                this._txGridRow(bank, row, page, lo, hi);
+            },
             toggleCell(r, c, S) {
                 S = S || this._shell();
-                const abs = (S.gridPageIdx * 16) + ((c | 0) & 15);
+                const abs = this._gridAbsStep(S, c);
                 this.setCell(r, c, !S.gridData[S.bankIdx][r][abs], S);
             },
             setCell(r, c, on, S) {
                 S = S || this._shell();
                 on = !!on;
-                const abs = (S.gridPageIdx * 16) + ((c | 0) & 15);
-                if (S.gridData[S.bankIdx][r][abs] === on) return;
-                S.gridData[S.bankIdx][r][abs] = on;
+                const abs = this._gridAbsStep(S, c);
+                const bank = S.bankIdx | 0;
+                if (S.gridData[bank][r][abs] === on) return;
+                S.gridData[bank][r][abs] = on;
                 const cell = S._domGridCache[r][c];
                 if (cell) {
                     cell._gridOn = on;
                     cell.classList.toggle('active', on);
                 }
-                if (S === this._dspShell()) this.txParam(CMD.GRID_TOG, (r << 7) | abs);
+                if (S === this._dspShell())
+                    this._pushGridRowPageToDevice(bank, r, (abs >> 4) & 3);
                 else this._midiPersistSoon();
                 if (S === this._dspShell()) this._dspAutosaveSoon();
             },

@@ -681,6 +681,16 @@ void IRAM_ATTR routeDbeamExpression(float norm01) {
 
   const bool toSeq = (currentDbeamTarget.load(std::memory_order_relaxed) == DbeamTarget::SEQ);
 
+  /* [DBEAM-TGT] Every frame: zero the non-target synth addends before routing so
+   * hand-height never leaks across Harp ↔ Melody (stale values / route edges). */
+  if (toSeq) {
+    dbeam_svf_cutoff.store(0, std::memory_order_release);
+    dbeam_mod_depth.store(0, std::memory_order_release);
+  } else {
+    dbeam_seq_svf_cutoff.store(0, std::memory_order_release);
+    dbeam_seq_mod_depth.store(0, std::memory_order_release);
+  }
+
   switch (mode) {
   case DbeamRoute::CUTOFF: {
     /* [DBEAM-CUT] Map the 0..1 expression into a 20..90 % window of the cutoff

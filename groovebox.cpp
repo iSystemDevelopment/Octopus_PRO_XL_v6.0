@@ -317,10 +317,9 @@ void seqUI_setBank(int bank) {
 /* Step grid toggle — flips one cell of the active [bank][0] slot. */
 void IRAM_ATTR toggleHardwareGridStep(uint8_t trackRow, uint8_t stepColumn) {
   if (trackRow >= 16u || stepColumn >= 64u) return;
-  const uint8_t bank  = seqActiveBank.load(std::memory_order_relaxed) & 15u;
-  const uint8_t chain = seqActiveChain.load(std::memory_order_relaxed) & 3u;
+  const uint8_t bank = seqActiveBank.load(std::memory_order_relaxed) & 15u;
   portENTER_CRITICAL(&patchMux);
-  hwSeqData[bank][chain][trackRow] ^= (1ull << stepColumn);
+  hwSeqData[bank][SEQ_UI_CHAIN][trackRow] ^= (1ull << stepColumn);
   portEXIT_CRITICAL(&patchMux);
   displayDirty.store(true, std::memory_order_release);
   /* [G2] Live echo edited row to App — runs on UI task, MIDI lock is safe here. */
@@ -924,14 +923,13 @@ void IRAM_ATTR sequencer_render_block(uint32_t frames) {
     seq_ext_push(CMD_STEP_SYNC, step);  /* FROZEN AXIS 3 — App playhead authority (mirror_architecture.md) */
 
     const uint8_t bank     = seqActiveBank.load(std::memory_order_relaxed) & 15u;
-    const uint8_t chain    = seqActiveChain.load(std::memory_order_relaxed) & 3u;
     const uint8_t gridStep = (uint8_t)(step & 63u);   /* [GRID-64] full 0..63 mask  */
     const uint8_t motStep  = (uint8_t)(step & 15u);   /* P-lock lanes still 16 deep */
     const uint8_t vel      = (gridStep % 4u == 0u) ? SEQ_VEL_ACCENT : SEQ_VEL_NORMAL;
 
     uint64_t rowSnap[16];
     portENTER_CRITICAL(&patchMux);
-    for (int r = 0; r < 16; ++r) rowSnap[r] = hwSeqData[bank][chain][r];
+    for (int r = 0; r < 16; ++r) rowSnap[r] = hwSeqData[bank][SEQ_UI_CHAIN][r];
     portEXIT_CRITICAL(&patchMux);
 
     {
@@ -941,9 +939,9 @@ void IRAM_ATTR sequencer_render_block(uint32_t frames) {
 
       portENTER_CRITICAL(&motionMux);
       for (int l = 0; l < 4; ++l) {
-        const uint8_t mc = hwMotionData[bank][chain][l].targetCmd;
+        const uint8_t mc = hwMotionData[bank][SEQ_UI_CHAIN][l].targetCmd;
         if (mc == 255u) continue;
-        const uint16_t mv = hwMotionData[bank][chain][l].steps[motStep];
+        const uint16_t mv = hwMotionData[bank][SEQ_UI_CHAIN][l].steps[motStep];
         if (mv == 0xFFFFu) continue;
         /* Legacy P-locks may hold full-scale values on discrete layout cmds — skip. */
         if (mc == CMD_TRANSPOSE && mv > 24u) continue;
@@ -1110,8 +1108,11 @@ void loadFactorySynthPattern(int bankIdx, int chainIdx, int presetIdx) {
   memcpy_P(&pat, &SYNTH_PATTERNS[presetIdx], sizeof(SynthPatternROM));
 
   const bool isActive =
-    (seqActiveBank.load(std::memory_order_relaxed)  == (uint8_t)bankIdx &&
-     seqActiveChain.load(std::memory_order_relaxed) == (uint8_t)chainIdx);
+    (seqActiveBank.load(std::memory_order_relaxed)  == (uint8_t)bankIdx);
+
+  const int stepPage = seqUI_curStepPage();
+  const int base     = stepPage * 16;
+  const uint64_t pageMask = ~(0xFFFFull << base);
 
   /* [gbox OPT-6] [U1] nearest-row pitch placement — computed with NO lock held;
    * the critical section below shrinks to 8 stores (+ optional memcpy).        */
@@ -1124,11 +1125,14 @@ void loadFactorySynthPattern(int bankIdx, int chainIdx, int presetIdx) {
       const int d = std::abs(p - kRowSemitone[r]);
       if (d < bestDst) { bestDst = d; bestRow = r; }
     }
-    rowBits[bestRow] |= (1ull << step);
+    rowBits[bestRow] |= (1ull << (base + step));
   }
 
   portENTER_CRITICAL(&patchMux);
-  for (int r = 0; r < 8; ++r) hwSeqData[bankIdx][chainIdx][r] = rowBits[r];
+  for (int r = 0; r < 8; ++r) {
+    uint64_t m = hwSeqData[bankIdx][SEQ_UI_CHAIN][r];
+    hwSeqData[bankIdx][SEQ_UI_CHAIN][r] = (m & pageMask) | rowBits[r];
+  }
 
   if (isActive) {
     memcpy(seqLivePatch, pat.preset, sizeof(pat.preset));
@@ -1166,12 +1170,18 @@ void loadFactoryDrumPattern(int bankIdx, int chainIdx, int presetIdx) {
   memcpy_P(&drum, &DRUM_PATTERNS[presetIdx], sizeof(DrumPatternROM));
 
   const bool isActive =
-    (seqActiveBank.load(std::memory_order_relaxed)  == (uint8_t)bankIdx &&
-     seqActiveChain.load(std::memory_order_relaxed) == (uint8_t)chainIdx);
+    (seqActiveBank.load(std::memory_order_relaxed)  == (uint8_t)bankIdx);
+
+  const int stepPage = seqUI_curStepPage();
+  const int base     = stepPage * 16;
+  const uint64_t pageMask = ~(0xFFFFull << base);
 
   portENTER_CRITICAL(&patchMux);
-  for (int trk = 0; trk < 8; ++trk)
-    hwSeqData[bankIdx][chainIdx][trk + 8] = (uint64_t)drum.tracks[trk];
+  for (int trk = 0; trk < 8; ++trk) {
+    uint64_t m = hwSeqData[bankIdx][SEQ_UI_CHAIN][trk + 8];
+    hwSeqData[bankIdx][SEQ_UI_CHAIN][trk + 8] =
+        (m & pageMask) | ((uint64_t)drum.tracks[trk] << base);
+  }
   if (isActive) {
     memcpy(drumLivePatch, drum.preset, sizeof(drum.preset));
     drumLivePatchVersion.store(

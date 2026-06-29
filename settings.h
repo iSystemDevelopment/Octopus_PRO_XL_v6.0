@@ -465,7 +465,7 @@ static inline void settings_sync_to_ssot() {
   seqBpm.store((int32_t)std::min<uint16_t>(240u, std::max<uint16_t>(40u, g_settings.seqr.bpm)),
                std::memory_order_relaxed);
   seqActiveBank.store(g_settings.seqr.active_bank & 15u, std::memory_order_relaxed);
-  seqActiveChain.store(g_settings.seqr.active_chain & 3u, std::memory_order_relaxed);
+  seqActiveChain.store(0u, std::memory_order_relaxed); /* [V5.3-CONS] migrate legacy chain-as-page */
   seqLength.store(std::min<uint8_t>(64u, std::max<uint8_t>(1u, g_settings.seqr.length)),
                   std::memory_order_relaxed);
   seqTranspose.store(std::min<int32_t>(12, std::max<int32_t>(-12, (int32_t)g_settings.seqr.transpose)),

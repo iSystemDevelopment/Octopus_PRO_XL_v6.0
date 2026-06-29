@@ -793,8 +793,10 @@ static inline void seqSyncTransposeToActivePattern() {
 static inline void applySeqBank(uint8_t bank) {
   bank = bank & 0x0Fu;
   seqActiveBank.store(bank, std::memory_order_release);
+  seqActiveChain.store(0u, std::memory_order_release); /* [V5.3-CONS] pattern SSOT = chain 0 */
   displayDirty.store(true, std::memory_order_relaxed);
   txSysex(CMD_BANK, (uint16_t)bank);
+  txSysex(CMD_SEQ_CHAIN, 0u);
   seqSyncTransposeToActivePattern(); /* new pattern → its own transpose */
 }
 
