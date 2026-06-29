@@ -1166,6 +1166,7 @@ void loadFactorySynthPattern(int bankIdx, int chainIdx, int presetIdx) {
   if (isAppConnected()) {
     for (uint8_t r = 0; r < 8u; ++r)
       echoGridRow((uint8_t)(bankIdx & 15), r);
+    if (isActive) txPatchBlob(1u);
     txSysex(CMD_LOAD_PAT_S, (uint16_t)(presetIdx % NUM_SYNTH_PATS));
   }
 }
@@ -1389,6 +1390,23 @@ static void seqResetSoundsToPreset0() {
     txPatchBlob(1u);                                   /* seq-synth knobs        */
     for (uint8_t i = 0; i < 32u; ++i)
       txSysex((uint8_t)(32u + i), drumLivePatch[i]);   /* drum knobs             */
+  }
+}
+
+void seqClearPatternPage(uint8_t page) {
+  page &= 3u;
+  const uint8_t bank = seqActiveBank.load(std::memory_order_relaxed) & 15u;
+  const int base = (int)(page * 16u);
+  const uint64_t keepMask = ~(((1ull << 16) - 1ull) << base);
+
+  portENTER_CRITICAL(&patchMux);
+  for (int r = 0; r < 16; ++r)
+    hwSeqData[bank][SEQ_UI_CHAIN][r] &= keepMask;
+  portEXIT_CRITICAL(&patchMux);
+
+  displayDirty.store(true, std::memory_order_release);
+  if (isAppConnected()) {
+    for (uint8_t r = 0; r < 16u; ++r) echoGridRow(bank, r);
   }
 }
 

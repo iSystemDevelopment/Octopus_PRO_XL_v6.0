@@ -403,13 +403,19 @@
  *                    Pushed on 33 ms beacon (txDbeamAmpBlob) + D-BEAM state echo.
  *                    Preferred wire: SX_SUB_DBEAM_AMP (0x06) 6-byte blob; CMD 196
  *                    is numeric fallback.  txSysex dedup exempt.  Never RX.
+ *   197 SEQ_STEP_PAGE App→device / echo: OLED step window P1–P4 (seqUI_stepPage 0–3).
+ *   198 SEQ_CLEAR_PAGE App→device: clear 16 steps of active bank on one P-page
+ *                    (v14 = page 0–3) → seqClearPatternPage; grid only (sounds kept).
  *   199 SESSION_SLOT_ACK persist txn ACK (docs/link_contract.md)
  *
  *   ── SysEx sub-byte blobs (manufacturer 0x7C device→App, 0x7D App→device) ─
  *   0x02 PATCH_BLOB     full preset transfer (harp/seq)
  *   0x03 USR_SOUND_NAME user slot label (15 chars)
  *   0x04 USR_PAT_NAME   user pattern label (15 chars)
- *   0x05 GRID_ROW       lossless bank/row/page grid half-row (replaces 162/163)
+ *   0x05 GRID_ROW       { F0 7D 05 bank_row page lo_lo lo_hi hi_lo hi_hi F7 }
+ *                       App→device grid half-row (replaces 162/163). 10 bytes on the
+ *                       wire = 9 in sxBuf (F7 fires the parser before it is stored),
+ *                       so the RX length guard is sxPtr >= 9 (NOT 10).
  *   0x06 DBEAM_AMP      { F0, 7C, 06, ampHi, ampLo, F7 } — live expression meter
  *
  * ═══════════════════════════════════════════════════════════════════════════

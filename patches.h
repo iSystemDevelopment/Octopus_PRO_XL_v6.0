@@ -39,6 +39,9 @@
 
 float decodeMasterPitch(uint16_t v14);
 
+/* OLED / App P-page window — defined in groovebox.cpp */
+extern std::atomic<int> seqUI_stepPage;
+
 /* Implemented in dbeam.cpp — restore only mix buses the VOLUME pedal dipped. */
 void dbeamVolumeRestoreEngagedBuses();
 

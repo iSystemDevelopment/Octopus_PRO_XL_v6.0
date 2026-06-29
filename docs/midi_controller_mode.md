@@ -343,6 +343,20 @@ Authoritative checklist: [docs/app_god_rules.md](./app_god_rules.md).
 
 ---
 
+## Playhead & note-gate hardening (v6.6.01+)
+
+Closes gaps shared with / specific to the MIDI shell, found alongside the DSP grid audit. **No change to the frozen 4 ms `setInterval` clock or the `_midiClockTick`-only paint authority.**
+
+**Playhead (shared `_phApplyStep` / `_followPlayheadPage` — same code as DSP):**
+
+- **Reveal mid-play (B8):** if Play started while the SEQUENCER grid was hidden (INSTRUMENTS tab or song editor), `_midiClockTick`'s per-step `_paintPlayhead` now measures the layout **once** on first reveal (documented bootstrap edge case) instead of deferring forever. The cyan bar no longer stays blank until Stop. See [playhead_policy_audit.md](playhead_policy_audit.md) §4 step 4.
+- **Auto P-page follow, LEN > 16 (B9 / DSP A7):** `_followPlayheadPage` repaints the grid cells when the bar crosses a page boundary **during play**, so cells and bar stay on the same page (was suppressed while playing).
+- These live in shell-parameterised functions, so the fix lands on **both** shells from one change — the DSP shell is not specially touched.
+
+**Note gate — stuck-note fix (MIDI-only):** `_midiClearGateTimers()` (run at each step start, on Stop, and on mode exit) now **sends the held note-off** for every still-pending gate before cancelling its timer; a gate that fires normally self-removes from the timer list (no double note-off). Previously an **arp gate of 100 %** (`ARP_GATE_PCT[0]`, so `gateMs == stepMs`) could have its note-off cancelled by the next step's clear before it fired, stranding the note **ON** until the next retrigger or Stop. Normal (non-arp) play uses a 50 % gate, so its note-off had already fired — that path is unchanged. `allNotesOff()` (CC 120/123) on Stop still backstops. These helpers are all `_appMode === 'midi'`-guarded, so the **DSP shell is unaffected**.
+
+---
+
 ## Scoped-reset reboot policy (firmware ≥ 6.1.01)
 
 Reset/save reboot behaviour by scope:
@@ -356,6 +370,26 @@ Reset/save reboot behaviour by scope:
 **Firmware (`audio.cpp`, `settings_save_task`):** the `if (isReset)` branch sends the `CMD_SCOPED_RESET` ACK, then reboots only for FULL / BANKS+PATS (`scope` check); for SETTINGS / MOTION it `continue`s the task loop — no `esp_restart()`. The scope was already applied live by `applyResetScope()`.
 
 **App (`OctopusApp.html`):** `resetScoped()` stores `_persistResetScope`; `_resetReboots()` returns true only for FULL(0)/BANKS(1). The `CMD.SCOPED_RESET` ACK path then either takes the reboot-wait path (`_persistFinished(true, true)` → `_prepareForDeviceReboot`) or the reload path (`_persistFinished(true, false)` → `_scheduleAppReload` → reconnect → `APP_SYNC_REQ` re-pull). After a SETTINGS/MOTION reset the device stays up, so the reload reconnects to the same port immediately and re-pulls the fresh settings/motion image from the blobs — "what other preloads do".
+
+---
+
+## Future direction (v7+) — MIDI sequencer uplift
+
+Foggy-but-committed vision: a major expansion of the MIDI Controller shell's sequencer. Capture now, design step-by-step later. This pairs with the planned **EspAudio** library's per-track/graph model + Parameter-SSOT (define each lane param once → atomics/wire/App/docs generated), so DSP and MIDI shells can share one sequencer engine and patterns stay portable.
+
+**1. Per-track lanes (the foundation).** Replace the single shared 16-row grid with *N* independent tracks, each bound to its own MIDI channel (melody / drum / CC) with its own pattern, length, and transport state. Today's 8 melody + 8 drum rows become the first lanes of a generalized model.
+
+**2. Per-track play modes — "skips + bidirectional playhead".** Each lane gets a direction/order: **forward · reverse · bidirectional (ping-pong) · random · skip** (every-Nth / conditional / probability). The playhead becomes per-lane: reuse the frozen single-playhead paint chain (`_phApplyStep`) per lane, but move position + direction state into the *track* object (not the shell). The [playhead policy](playhead_policy_audit.md) gains a multi-lane addendum (each lane = one logical playhead; the compositor stays transform-only).
+
+**3. Per-track length → polymeter.** Independent lane lengths (e.g. 7 vs 16) yield phasing/polymeter for free once each lane owns its step counter.
+
+**4. Multi-BPM / BPM-per-track (polytempo).** Each lane runs its own step period — either a **clock divisor** of a master clock (musical, stays phase-locked: ×/÷ 2,3,4…) or a **free per-lane BPM** (true polytempo). Implementation: a per-lane step accumulator replacing the single `_midiClockAccumMs` in `_midiClockTick`; the existing 4 ms `setInterval` master tick advances every lane accumulator. Browser-side this is trivial JS — the real constraint is MIDI-out jitter, not CPU.
+
+**5. Hardware feasibility.** The MIDI shell sequencer runs in the **browser**, so the ESP variant doesn't gate it. The same model in the *firmware* DSP sequencer (one `STEP_SYNC` clock today) would need per-lane step counters off the audio-core tick — **S3 dual-core can do it** (the step engine is cheap next to the synth voices), and **P4 gives comfortable headroom** for more lanes + finer divisor resolution. Keep both engines on one shared library model so a pattern moves between shells unchanged.
+
+**6. Compatibility (non-negotiable).** Lanes are **opt-in**: default stays today's 8+8 shared-grid behaviour (one direction, one BPM) so existing sessions, the firmware mirror, and the frozen transport/playhead axes are unaffected. Persist per-lane state additively — extend the MIDI session blob (and the firmware pattern blob for DSP), never replace the existing schema.
+
+> Likely **v7** centrepiece. Before implementation: lock the lane data model + the Parameter-SSOT entries, then stage it (lanes → play modes → polymeter → polytempo) so each step is shippable and reversible.
 
 ---
 

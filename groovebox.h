@@ -388,6 +388,8 @@ void clearAllPatterns();
 void copyPatternSlot(uint8_t srcBank, uint8_t srcChain, uint8_t dstBank, uint8_t dstChain);
 /* Clear active pattern + reset companion synth/drum sounds to factory defaults. */
 void seqClearActiveAndResetSounds();
+/* Clear one 16-step P-page on the active bank (chain 0); echoes grid to App. */
+void seqClearPatternPage(uint8_t page);
 /* Save/load the active bank/chain pattern into the 64-slot user pattern library. */
 bool saveActivePatternToUserSlot(uint8_t uidx);
 void loadUserPatternToActive(uint8_t uidx);

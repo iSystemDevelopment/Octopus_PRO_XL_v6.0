@@ -697,6 +697,10 @@ void handleSysexCommand(uint8_t cmd, uint16_t v14) {
     case CMD_SEQ_CLEAR:
       if (v14 == 16383u) break;
       seqClearActiveAndResetSounds(); break;
+    case CMD_SEQ_CLEAR_PAGE:
+      if (v14 == 16383u) break;
+      seqClearPatternPage((uint8_t)(v14 & 3u));
+      break;
     case CMD_USR_SOUND_SAVE:
       if (v14 == 16383u) break;
       if (saveLiveToUserSlot((uint8_t)((v14 >> 13) & 1u), (uint8_t)(v14 & 63u)))
@@ -788,12 +792,23 @@ void parseMidiByte(uint8_t b, MidiParserState& ps) {
           }
         }
       } else if (ps.sxBuf[2] == SX_SUB_GRID_ROW) {
-        if (ps.sxPtr >= 10u) {
+        /* Frame = F0 7D 05 bank_row page lo_lo lo_hi hi_lo hi_hi F7 (10 bytes).
+         * F7 fires this handler BEFORE it is stored, so sxPtr counts the 9 bytes
+         * F0..hi_hi (indices 0-8). The guard MUST be >=9, not >=10 — the old
+         * >=10 silently dropped every App grid write (manual edits + RND), so only
+         * factory LOAD_PAT (which writes hwSeqData directly) ever sounded. */
+        if (ps.sxPtr >= 9u) {
           const uint8_t bank = (ps.sxBuf[3] >> 4) & 3u;
           const uint8_t row  = ps.sxBuf[3] & 15u;
           const uint8_t page = ps.sxBuf[4] & 3u;
           const uint8_t lo = (uint8_t)((ps.sxBuf[5] & 0xFu) | ((ps.sxBuf[6] & 0xFu) << 4));
           const uint8_t hi = (uint8_t)((ps.sxBuf[7] & 0xFu) | ((ps.sxBuf[8] & 0xFu) << 4));
+          /* App grid writes carry explicit bank — pin playback + OLED to that bank
+           * so seqActiveBank matches hwSeqData before the next step fires. */
+          if (bank != (seqActiveBank.load(std::memory_order_relaxed) & 3u))
+            applySeqBank(bank);
+          if (page != (uint8_t)(seqUI_stepPage.load(std::memory_order_relaxed) & 3u))
+            applySeqStepPage(page);
           const int shiftLo = (int)(page * 16u);
           const int shiftHi = shiftLo + 8;
           portENTER_CRITICAL(&patchMux);
@@ -803,9 +818,13 @@ void parseMidiByte(uint8_t b, MidiParserState& ps) {
           hwSeqData[bank][0][row] = m;
           portEXIT_CRITICAL(&patchMux);
           displayDirty.store(true, std::memory_order_release);
+          if (isAppConnected()) echoGridRow(bank, row);
         }
       } else if (ps.sxBuf[2] == SX_SUB_USR_SOUND_NAME) {
-        if (ps.sxPtr >= 21u) {
+        /* { F0 7D 03 eng slot name[15] F7 } = 21 wire bytes → 20 in sxBuf (F7 not
+         * stored); reads up to sxBuf[19]. Guard is >=20, not >=21 (same off-by-one
+         * class as the grid frame). Dormant today — App vault send path removed. */
+        if (ps.sxPtr >= 20u) {
           const uint8_t eng  = ps.sxBuf[3] & 1u;
           const uint8_t slot = ps.sxBuf[4] & 63u;
           char nm[16] = {};
@@ -815,7 +834,9 @@ void parseMidiByte(uint8_t b, MidiParserState& ps) {
           txUserSoundNameBlob(eng, slot);
         }
       } else if (ps.sxBuf[2] == SX_SUB_USR_PAT_NAME) {
-        if (ps.sxPtr >= 20u) {
+        /* { F0 7D 04 slot name[15] F7 } = 20 wire bytes → 19 in sxBuf (F7 not
+         * stored); reads up to sxBuf[18]. Guard is >=19, not >=20. Dormant today. */
+        if (ps.sxPtr >= 19u) {
           const uint8_t slot = ps.sxBuf[3] & 63u;
           char nm[16] = {};
           for (uint8_t i = 0; i < 15u; ++i) nm[i] = (char)(ps.sxBuf[4u + i] & 0x7Fu);

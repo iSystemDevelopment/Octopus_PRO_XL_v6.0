@@ -512,6 +512,27 @@
             font-size: 8px
         }
 
+        .header-connector {
+            display: flex;
+            align-items: center;
+            gap: 4px
+        }
+
+        .conn-reload-btn {
+            min-width: 22px;
+            height: 22px;
+            padding: 0 5px;
+            font-size: 11px;
+            line-height: 1;
+            color: var(--cyan);
+            border-color: #1e3a4a
+        }
+
+        .conn-reload-btn:hover {
+            color: #fff;
+            border-color: var(--cyan)
+        }
+
         .brand-mark {
             display: flex;
             align-items: center;
@@ -3577,6 +3598,9 @@
         <div class="master-bar-right">
             <div class="header-connector" title="USB MIDI — ★ hardware = Octopus DSP Engine; generic port = Octopus MIDI Controller">
                 <select class="display-box" id="midiOut" title="★ Octopus PRO XL = DSP Engine sync; other port = MIDI Controller"></select>
+                <button type="button" id="connReloadBtn" class="btn conn-reload-btn" style="display:none"
+                    title="Hard reload (Ctrl+Shift+R) — clean Octopus USB connection"
+                    onclick="app.reloadOctopusConnection()">↻</button>
                 <div id="connBadge" class="conn-badge" style="color:#444;border-color:#1a1a26"><i class="fa-solid fa-circle" style="font-size:6px"></i>DSP Off</div>
             </div>
         </div>
@@ -4718,6 +4742,7 @@
             // Sent after RND-S / RND-D so the new random pattern plays from beat 1.
             SEQ_RESTART: 193,
             SEQ_STEP_PAGE: 197,
+            SEQ_CLEAR_PAGE: 198,
             AUX_SCENE_IDX: 194,    // v14 0–15 shared room scene (loadAuxScene)
             LINK_AUX_PRESET: 195,  // v14 0=OFF 16383=ON — FX-A recall copies aux when ON
             DBEAM_AMP: 196         // Device→App: live expression 0–16383 (dbeamAmplitude)
@@ -7142,7 +7167,8 @@
             _octopusRescanPending: false,
             _dspKnobsBuilt: false,        // [LAZY-DOM] Octopus knob panels built once
             _midiClockTimer: null,
-            _midiCcGridOb: null,
+            _knownOctopusPortIds: null,
+            _dspHwSeqUiKey: '',
             _midiMotionFullWarned: false,
             /* Per-bank CC automation lanes (MIDI mode): up to 4 CCs × 64 steps. */
             midiMotion: Array.from({ length: 4 }, () => []),
@@ -7443,19 +7469,58 @@
                     el.textContent = 'Web MIDI not available — use Chrome or Edge';
                 }
             },
-            /** First-interaction hard refresh (Ctrl+Shift+R equivalent).
-             *  On the very first Octopus connection in a browser session the hardware
-             *  boots into a known clean state; the App must reload to clear any stale
-             *  WebMIDI handles or partial session buffers.
-             *  Guard: sessionStorage flag prevents infinite reload loop.
-             *  See docs/playhead_policy_audit.md §10 — Connection method. */
-            _maybeFirstConnectionRefresh(port) {
-                const FLAG = 'oct_first_connect_v1';
-                if (sessionStorage.getItem(FLAG)) return false;   // already refreshed this session
-                sessionStorage.setItem(FLAG, '1');
-                this.log('First Octopus connection — hard-refresh (Ctrl+Shift+R equivalent)…');
-                this._requestPortBootReload(port.id, 'dsp', 'first-connect hard refresh');
+            /** USB Octopus attach → hard refresh (Ctrl+Shift+R). Skipped after our own boot reconnect. */
+            _maybeOctopusUsbAttachReload(access, octIds) {
+                const SKIP = 'oct_boot_reconnect_skip';
+                try {
+                    if (sessionStorage.getItem(SKIP)) {
+                        sessionStorage.removeItem(SKIP);
+                        return false;
+                    }
+                } catch (e) {}
+                if (!octIds.length) return false;
+                if (!this._knownOctopusPortIds) {
+                    this._knownOctopusPortIds = new Set(octIds);
+                    return false;
+                }
+                const newlyAttached = octIds.find(id => !this._knownOctopusPortIds.has(id));
+                this._knownOctopusPortIds = new Set(octIds);
+                if (!newlyAttached) return false;
+                const port = access.outputs.get(newlyAttached);
+                if (!port || !this._portLive(port)) return false;
+                this.log('Octopus USB detected — hard refresh for clean connection…');
+                this._requestPortBootReload(newlyAttached, 'dsp', 'octopus USB attach');
                 return true;
+            },
+            reloadOctopusConnection() {
+                if (!this.midiOut || !this._portIsOctopus())
+                    return this.log('Reload — connect ★ Octopus USB first.');
+                this.log('Manual reload — hard refresh (Ctrl+Shift+R equivalent)…');
+                this._requestPortBootReload(this.midiOut.id, 'dsp', 'user reload');
+            },
+            _invalidateDspHwSeqUi() { this._dspHwSeqUiKey = ''; },
+            /** Align hardware playback bank + OLED P-page with App before grid/pattern writes. */
+            _ensureDspHwSeqUi() {
+                if (this._appMode !== 'dsp' || !this.midiOut) return;
+                const S = this._dspShell();
+                const key = (S.bankIdx & 3) + '|' + (S.gridPageIdx & 3);
+                if (this._dspHwSeqUiKey === key) return;
+                this._dspHwSeqUiKey = key;
+                this.txSysex(CMD.BANK, S.bankIdx & 3);
+                this.txSysex(CMD.SEQ_CHAIN, 0);
+                this.txSysex(CMD.SEQ_STEP_PAGE, S.gridPageIdx & 3);
+            },
+            /** Uncached align — use before pattern load / bulk grid push. */
+            _forceDspHwSeqUi() {
+                this._invalidateDspHwSeqUi();
+                this._ensureDspHwSeqUi();
+            },
+            /** Push synth rows 0–7 for one P-page (melody gates). */
+            _pushSynthRowsPageToDevice(bank, page) {
+                if (this._appMode !== 'dsp') return;
+                bank = bank | 0;
+                page = page & 3;
+                for (let r = 0; r < 8; r++) this._pushGridRowPageToDevice(bank, r, page);
             },
             /** BPM display — writes to the active shell's BPM field only. */
             _applyTransportChrome() {
@@ -7610,6 +7675,7 @@
                 if (this._reloadTimer) return;
                 if (this._appMode === 'midi') this._persistMidiSession();
                 this.allNotesOff();
+                try { sessionStorage.setItem('oct_boot_reconnect_skip', '1'); } catch (e) {}
                 this._stashPortBoot(portId, mode);
                 this._scheduleAppReload(reason || 'port connect');
             },
@@ -7806,7 +7872,10 @@
                     this._scheduleRxDrain();
                     return;
                 }
-                if (this._dspShell()._gridModelDirty) {
+                // Defer the repaint until playback stops (echo repaint is suppressed during
+                // play by design). Keep the dirty flag set while playing so the accumulated
+                // echoed edits reconcile on stop (see _setTransport) instead of being lost.
+                if (this._dspShell()._gridModelDirty && !this.isPlaying) {
                     const O = this._dspShell();
                     O._gridModelDirty = false;
                     this.repaintGrid(O);
@@ -7939,11 +8008,12 @@
                 const layoutOk = this._phLayoutReady(S);
 
                 if (this.isPlaying) {
-                    if (!layoutOk) {
-                        if (!this._phMeasureLayout(S)) {
-                            S._phPendingStep = s;
-                            return;
-                        }
+                    // Bootstrap edge case (playhead_policy_audit.md): if play started
+                    // while the grid was hidden, layout was never measured. Measure once
+                    // here (clientWidth-only, hover-safe); never invalidates a live layout.
+                    if (!layoutOk && !this._phMeasureLayout(S)) {
+                        S._phPendingStep = s;
+                        return;
                     }
                     if (stepChanged) {
                         const L = S._phLayout;
@@ -8002,6 +8072,9 @@
                 if (S._phPageSwitchRaf) return true;
                 S._phPageSwitchRaf = requestAnimationFrame(() => {
                     S._phPageSwitchRaf = 0;
+                    // Auto page-follow changed the visible page → repaint the grid cells to
+                    // match (even while playing). This is a per-page-crossing event, not the
+                    // per-step hot path; the playhead repaints right after.
                     this.repaintGrid(S);
                     const step = S._phPendingStep >= 0 ? S._phPendingStep : (S.visStep | 0);
                     S._phPendingStep = -1;
@@ -8514,6 +8587,14 @@
                         }
                         const inN = await this._bindMidiInputs(access);
                         const outList = [...access.outputs.values()];
+                        const octIds = outList
+                            .filter(o => this._isOctopusPortName(o.name) && this._portLive(o))
+                            .map(o => o.id);
+                        if (this._maybeOctopusUsbAttachReload(access, octIds)) {
+                            if (inN === 0 && outList.length)
+                                this.log('Warning: no MIDI inputs — close other tabs using this device');
+                            return;
+                        }
                         for (const out of outList) {
                             if (sel) {
                                 const tag = this._isOctopusPortName(out.name) ? '\u2605 ' : '';
@@ -8561,6 +8642,7 @@
                                 (bootPort && this._portLive(bootPort) ? bootPort : preferred);
                             if (pick && await this._connectMidiPort(pick, sel, 'boot reconnect')) {
                                 this._clearPortBoot();
+                                this._knownOctopusPortIds = new Set(octIds);
                                 if (inN === 0 && outList.length)
                                     this.log('Warning: no MIDI inputs — close other tabs using this device');
                                 return;
@@ -8695,13 +8777,17 @@
                 if (oct) this._onConnectOctopus();
                 else this._onConnectMidi();
             },
-            /** Octopus-linked connect: APP_SYNC once; link = hardware BPM + PING beacon.
-             *  First connection in a browser session triggers a hard refresh (Ctrl+Shift+R
-             *  equivalent) so the App starts from a clean WebMIDI handle state.
-             *  See docs/playhead_policy_audit.md §10. */
+            /** Octopus-linked connect: APP_SYNC once; link = hardware BPM + PING beacon. */
             _onConnectOctopus() {
-                /* First-interaction hard-refresh — hardware expects clean App state on boot */
-                if (this._maybeFirstConnectionRefresh(this.midiOut)) return;
+                try {
+                    if (!sessionStorage.getItem(PORT_BOOT_KEY) &&
+                        !sessionStorage.getItem('oct_first_connect_v1')) {
+                        sessionStorage.setItem('oct_first_connect_v1', '1');
+                        this.log('First Octopus connection — hard refresh for clean WebMIDI state…');
+                        this._requestPortBootReload(this.midiOut.id, 'dsp', 'first connect');
+                        return;
+                    }
+                } catch (e) {}
                 if (!this._persistBusy) {
                     if (this._persistTimeoutId) {
                         clearTimeout(this._persistTimeoutId);
@@ -8711,6 +8797,7 @@
                 }
                 this._octopusLocked = true;
                 this._connOnline = false;
+                this._invalidateDspHwSeqUi();
                 this._lastBpmRxMs = 0;
                 this._lastDbeamAmpRxMs = 0;
                 this._dbeamFwHinted = false;
@@ -8876,6 +8963,12 @@
             },
             updateConnBadge(online) {
                 const b = document.getElementById('connBadge');
+                const rb = document.getElementById('connReloadBtn');
+                if (rb) {
+                    const showReload = this._appMode === 'dsp' ||
+                        (this.midiOut && this._portIsOctopus());
+                    rb.style.display = showReload ? '' : 'none';
+                }
                 if (!b) return;
                 if (this._midiUiShell()) {
                     const live = online && this.midiOut && this._portLive(this.midiOut);
@@ -9713,15 +9806,25 @@
             },
             _midiClearGateTimers() {
                 if (!this._midiGateTimers) return;
-                for (const id of this._midiGateTimers) clearTimeout(id);
+                // Cancel each pending gate AND send its held note-off, so a long/100% gate
+                // (e.g. ARP_GATE_PCT[0]=100% where gateMs==stepMs) can never be stranded ON
+                // when the next step clears the timers before the note-off fires.
+                for (const g of this._midiGateTimers) {
+                    clearTimeout(g.id);
+                    if (this._appMode === 'midi') this._midiNoteOff(g.ch, g.note);
+                }
                 this._midiGateTimers.length = 0;
             },
             _midiScheduleNoteOff(ch, note, delayMs) {
                 if (!this._midiGateTimers) this._midiGateTimers = [];
-                const id = setTimeout(() => {
+                const g = { ch, note, id: 0 };
+                g.id = setTimeout(() => {
+                    const arr = this._midiGateTimers;
+                    const i = arr ? arr.indexOf(g) : -1;
+                    if (i >= 0) arr.splice(i, 1);   // fired → self-remove (don't double-off on later clear)
                     if (this._appMode === 'midi') this._midiNoteOff(ch, note);
                 }, Math.max(1, delayMs | 0));
-                this._midiGateTimers.push(id);
+                this._midiGateTimers.push(g);
             },
             _midiMelodyBaseNoteForRow(row, midiCtx) {
                 row = (row | 0) & 7;
@@ -9978,7 +10081,9 @@
                         this._onHardwareBpmLink(v14 | 0);
                     },
                     [CMD.BANK]: v14 => { this.setBank(v14 & 3, false); },
-                    [CMD.SEQ_STEP_PAGE]: v14 => { this.setGridPage(v14 & 3, true, false); },
+                    [CMD.SEQ_STEP_PAGE]: v14 => {
+                        this.setGridPage(v14 & 3, !this.isPlaying, false);
+                    },
                     [CMD.SEQ_CHAIN]: () => { this.chainIdx = 0; },
                     [CMD.M_FX_IDX]: v14 => { document.getElementById('masterFxPreset').value = v14; },
                     [CMD.AUX_SCENE_IDX]: v14 => { this._setKnob(CMD.AUX_SCENE_IDX, v14 & 15); },
@@ -10248,6 +10353,12 @@
                         document.getElementById(M.ids.led(i))?.classList.remove('active');
                     }
                     this._playBeat = -1;
+                    // Reconcile any DSP grid edits echoed from hardware while we were playing
+                    // (their repaint was deferred above to protect the playhead hot path).
+                    if (O._gridModelDirty) {
+                        O._gridModelDirty = false;
+                        this.repaintGrid(O);
+                    }
                     const S = this._appMode === 'midi' ? M : O;
                     this._paintPlayhead(S.visStep | 0, S);
                 }
@@ -11273,32 +11384,36 @@
             },
             /** Align hardware playback bank + OLED P-page with App before grid/pattern writes. */
             _dspAlignHwSeqUi() {
-                if (this._appMode !== 'dsp' || !this.midiOut) return;
-                const S = this._dspShell();
-                this.txSysex(CMD.BANK, S.bankIdx & 3);
-                this.txSysex(CMD.SEQ_CHAIN, 0);
-                this.txSysex(CMD.SEQ_STEP_PAGE, S.gridPageIdx & 3);
+                this._invalidateDspHwSeqUi();
+                this._ensureDspHwSeqUi();
             },
             setGridPage(p, repaint = true, fromUser = false, S) {
                 S = S || this._shell();
                 S.gridPageIdx = (+p) & 3;
                 this._syncPageButtons(S);
-                if (fromUser && S === this._dspShell() && this.midiOut)
+                if (fromUser && S === this._dspShell() && this.midiOut) {
+                    this._dspHwSeqUiKey = (S.bankIdx & 3) + '|' + (S.gridPageIdx & 3);
                     this.txSysex(CMD.SEQ_STEP_PAGE, S.gridPageIdx);
-                if (repaint) {
+                } else if (!fromUser && S === this._dspShell()) {
+                    this._invalidateDspHwSeqUi();
+                }
+                const doRepaint = repaint && (!this.isPlaying || fromUser);
+                if (doRepaint) {
                     if (fromUser) {
                         if (S.showSongEditor) this._setSongView(false, false, S);
                         this.switchView(3);
                     }
                     this.repaintGrid(S);
-                    requestAnimationFrame(() => {
+                    if (!this.isPlaying) {
                         requestAnimationFrame(() => {
-                            const step = S._phPendingStep >= 0 ? S._phPendingStep : (S.visStep | 0);
-                            S._phPendingStep = -1;
-                            if (!this.isPlaying) this._phInvalidateLayout(S);
-                            this._paintPlayhead(step, S);
+                            requestAnimationFrame(() => {
+                                const step = S._phPendingStep >= 0 ? S._phPendingStep : (S.visStep | 0);
+                                S._phPendingStep = -1;
+                                this._phInvalidateLayout(S);
+                                this._paintPlayhead(step, S);
+                            });
                         });
-                    });
+                    }
                 }
                 if (S === this._midiShell()) this._midiPersistSoon();
                 else if (fromUser) this._dspAutosaveSoon();
@@ -11327,6 +11442,9 @@
                 if (tx && S === this._dspShell()) {
                     this.txSysex(CMD.BANK, S.bankIdx);
                     this.txSysex(CMD.SEQ_CHAIN, 0);
+                    this._dspHwSeqUiKey = (S.bankIdx & 3) + '|' + (S.gridPageIdx & 3);
+                } else if (!tx && S === this._dspShell()) {
+                    this._invalidateDspHwSeqUi();
                 }
                 this.repaintGrid(S);
                 if (S === this._midiShell()) this._midiPersistSoon();
@@ -11472,8 +11590,8 @@
                     row.innerHTML = `
                 <span class="song-step-idx">${String(i+1).padStart(2,'0')}</span>
                 <span style="font-size:8px;color:#555;width:28px">BANK</span>
-                <select class="display-box" style="width:60px;height:18px;font-size:8px" onchange="app._songStepChange(${i},'bank',this.value)">
-                    ${['A','B','C','D'].map((l,j)=>`<option value="${j}"${j===step.bank?' selected':''}>Bank ${l}</option>`).join('')}
+                <select class="display-box" style="width:60px;height:18px;font-size:8px" title="Pattern bank for this chain step" onchange="app._songStepChange(${i},'bank',this.value)">
+                    ${['A','B','C','D'].map((l,j)=>`<option value="${j}"${j===step.bank?' selected':''}>${l}</option>`).join('')}
                 </select>
                 <span style="font-size:8px;color:#555;width:48px;margin-left:6px">REPEATS ×</span>
                 <input type="number" class="display-box dark-input-panel" value="${step.repeats}" min="1" max="15" style="width:36px;height:18px;font-size:8px" onchange="app._songStepChange(${i},'repeats',this.value)">
@@ -11536,7 +11654,7 @@
                         dst[step0 + i] = !!row[i];
                 }
                 if (S === this._dspShell()) {
-                    this._dspAlignHwSeqUi();
+                    this._forceDspHwSeqUi();
                     for (let r = 0; r < 16; r++) {
                         let lo = 0, hi = 0;
                         for (let i = 0; i < 8; i++) {
@@ -11555,7 +11673,7 @@
             },
             randNotes(kind = 'synth') {
                 const S = this._shell();
-                if (S === this._dspShell()) this._dspAlignHwSeqUi();
+                if (S === this._dspShell()) this._forceDspHwSeqUi();
                 const densId = S.ids.randDensity;
                 const dEl = document.getElementById(densId);
                 let dens = dEl ? parseInt(dEl.value, 10) : 35;
@@ -11633,8 +11751,9 @@
                     this._midiPersistSoon();
                     return;
                 }
-                this._dspAlignHwSeqUi();
-                this._clearGridPageOctopusTx(pg);
+                this._forceDspHwSeqUi();
+                this._clearGridPageLocal(pg);
+                this.txSysex(CMD.SEQ_CLEAR_PAGE, pg);
                 this.txSysex(CMD.CLR_PLOCKS, 16383);
                 this._plockStealWarned = false;
                 this.repaintGrid(S);
@@ -11662,8 +11781,12 @@
                     return;
                 }
                 const pr = this._pageStepRange(S);
+                const pg = S.gridPageIdx | 0;
+                const bankIdx = S.bankIdx | 0;
                 this.log('Loading synth pattern: ' + pat.name + ' → bank ' + bank + ' ' +
                     this._pageLabel(S) + ' (steps ' + (pr.step0 + 1) + '–' + pr.step1 + ')');
+                this._forceDspHwSeqUi();
+                this.txSysex(CMD.LOAD_PAT_S, (+idx) | 0);
                 this._suppressTx = true;
                 for (let r = 0; r < 8; r++)
                     for (let c = 0; c < 16; c++) this.setCell(r, c, false);
@@ -11682,8 +11805,7 @@
                     this.setCell(bestRow, step, true);
                 }
                 this._suppressTx = false;
-                this._dspAlignHwSeqUi();
-                this.txSysex(CMD.LOAD_PAT_S, (+idx) | 0);
+                this._pushSynthRowsPageToDevice(bankIdx, pg);
                 if (this.isPlaying) this.txSysex(CMD.SEQ_RESTART, 0);
                 const sel = document.getElementById('synthPat');
                 if (sel) sel.value = String(idx);
@@ -11710,6 +11832,10 @@
                 }
                 this.log('Loading drum pattern: ' + pat.name + ' → bank ' + bank + ' ' +
                     this._pageLabel() + ' (steps ' + (this._pageStepRange().step0 + 1) + '–' + this._pageStepRange().step1 + ')');
+                const pg = S.gridPageIdx | 0;
+                const bankIdx = S.bankIdx | 0;
+                this._forceDspHwSeqUi();
+                this.txSysex(CMD.LOAD_PAT_D, (+idx) | 0);
                 this._suppressTx = true;
                 // ROM track mask: bit c = step c (LSB = step 0), matching the firmware sequencer.
                 if (pat.tracks) pat.tracks.forEach((mask, ti) => {
@@ -11717,8 +11843,7 @@
                     for (let c = 0; c < 16; c++) this.setCell(gr, c, !!((mask >> c) & 1));
                 });
                 this._suppressTx = false;
-                this._dspAlignHwSeqUi();
-                this.txSysex(CMD.LOAD_PAT_D, (+idx) | 0);
+                for (let r = 8; r < 16; r++) this._pushGridRowPageToDevice(bankIdx, r, pg);
                 if (this.isPlaying) this.txSysex(CMD.SEQ_RESTART, 0);
                 const sel = document.getElementById('drumPat');
                 if (sel) sel.value = String(idx);
@@ -11849,9 +11974,10 @@
                     cell._gridOn = on;
                     cell.classList.toggle('active', on);
                 }
-                if (S === this._dspShell())
+                if (S === this._dspShell()) {
+                    this._ensureDspHwSeqUi();
                     this._pushGridRowPageToDevice(bank, r, (abs >> 4) & 3);
-                else this._midiPersistSoon();
+                } else this._midiPersistSoon();
                 if (S === this._dspShell()) this._dspAutosaveSoon();
             },
             _applyGridRowHalf(bank, row, byteVal, high, page, modelOnly) {
@@ -11861,12 +11987,13 @@
                 const base = page * 16 + (high ? 8 : 0);
                 const g = S.gridData[bank][row];
                 const bulk = modelOnly || this._syncBurstExpected || this._syncBurstActive;
-                const visible = !bulk && (bank === S.bankIdx && page === S.gridPageIdx);
+                const playingDom = this.isPlaying && S === this._dspShell();
+                const visible = !bulk && !playingDom && (bank === S.bankIdx && page === S.gridPageIdx);
                 for (let i = 0; i < 8; i++) {
                     const c = base + i,
                         on = !!((byteVal >> i) & 1);
                     g[c] = on;
-                    if (bulk) {
+                    if (bulk || playingDom) {
                         if (bank === S.bankIdx) S._gridModelDirty = true;
                         continue;
                     }
@@ -13023,7 +13150,7 @@
             // ── VU meter + playhead rAF loop ──────────────────────────────────────────
             animateVU(ts) {
                 [this._dspShell(), this._midiShell()].forEach(S => {
-                    if (S._phPendingStep >= 0 && this._seqGridVisible(S)) {
+                    if (!this.isPlaying && S._phPendingStep >= 0 && this._seqGridVisible(S)) {
                         const step = S._phPendingStep;
                         S._phPendingStep = -1;
                         this._paintPlayhead(step, S);

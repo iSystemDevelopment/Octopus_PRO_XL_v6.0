@@ -85,18 +85,38 @@ Entry points:
 _phApplyStep(S, s):
   1. Clamp s to [0, seqLen-1]
   2. If ! _seqGridVisible(S) → S._phPendingStep = s (defer)
-  3. If page ≠ gridPageIdx → follow or lock → defer/hide
-  4. If playing → transform only when stepChanged (no remeasure hot path)
+  3. If page ≠ gridPageIdx → follow (repaint grid, even while playing) or lock → defer/hide
+  4. If playing:
+       — if layout cache absent (first grid reveal mid-play) → measure ONCE
+         (bootstrap edge case); only defer if still unmeasurable (grid 0-size)
+       — transform only when stepChanged (no remeasure hot path)
   5. If stopped → measure once, show bar without ph-playing
 
 _phMeasureLayout(S):
   — clientWidth/clientHeight only (no getBoundingClientRect)
   — skipped while playing if layout cache valid (±12 px tolerance)
+  — bootstrap-only while playing: measures only when NO valid cache exists; it
+    never invalidates a live layout (that is still _phInvalidateLayout, stop-gated)
 
 animateVU (every rAF):
-  — For EACH shell: flush S._phPendingStep if grid visible
+  — For EACH shell, ONLY when stopped: flush S._phPendingStep if grid visible
+  — While playing the per-step source (STEP_SYNC / _midiClockTick) paints and the
+    §4 step-4 bootstrap measure self-heals layout on first reveal — no rAF drain needed
   — Does NOT advance MIDI clock (clock is setInterval)
 ```
+
+### 4.1 Grid repaint during playback (v6.6.01+ — both shells)
+
+The grid **cells** (not the playhead) follow these rules while `isPlaying`:
+
+| Trigger | Behavior while playing | Why |
+|---------|------------------------|-----|
+| User clicks a cell | DOM toggled directly in `setCell` (independent of `repaintGrid`) | clicked cell lights instantly |
+| Auto P-page follow (`_followPlayheadPage`) | **repaints** the new page's cells (per-page-crossing, not per-step) | bar + cells must agree (A7) |
+| Remote/echoed grid edit (DSP only, sub-0x05) | repaint **deferred**: sets `O._gridModelDirty`, no DOM write | protect the playhead hot path |
+| Stop (`_setTransport`) | reconciles `O._gridModelDirty` → one `repaintGrid` | echoed edits made during play appear |
+
+**Invariant:** `_gridModelDirty` is **kept set** while playing (never cleared without a repaint), so deferred echoed edits are not lost — they reconcile exactly once on stop. The MIDI shell has no echo path, so only the user-click and page-follow rows apply to it.
 
 ---
 
@@ -162,6 +182,9 @@ animateVU (every rAF):
 | MIDI bar invisible | missing playhead CSS on `midi-seq-playhead` |
 | Wrong grid lights with bar | shared `gridData` or wrong `S` in `repaintGrid` |
 | D4–D5 only row labels | `_midiMelodyNoteForRow` reading `dspSeqTrn` |
+| Bar blank after revealing grid mid-play (A9/B8) | bootstrap measure removed from `_phApplyStep` **playing** branch (must measure once when layout cache absent) |
+| Grid cells stuck on old page while bar moves (A7) | `_followPlayheadPage` rAF repaint gated on `!isPlaying` (must repaint on page-follow even while playing) |
+| Echoed hardware grid edits vanish during play (DSP) | `_gridModelDirty` cleared without repaint while playing; must stay set and reconcile on stop |
 
 ---
 
@@ -172,12 +195,12 @@ animateVU (every rAF):
 | `createSeqShell` | Per-shell playhead + grid state factory |
 | `_phApplyStep` / `_paintPlayhead` | Single paint implementation |
 | `_seqGridVisible(S)` | View + song-editor gate |
-| `_followPlayheadPage` | Auto P-page with rAF grid repaint |
+| `_followPlayheadPage` | Auto P-page + rAF grid repaint (repaints even while playing) |
 | `_rxIsPriority` | STEP_SYNC bypass queue |
 | `[CMD.STEP_SYNC]` dispatch | DSP `visStep` + paint |
 | `_midiClockTick` | MIDI `visStep` + paint + notes |
 | `_setTransport` | Start/stop clocks; invalidate both layouts on stop |
-| `animateVU` | Pending step drain for **both** shells |
+| `animateVU` | Pending step drain for **both** shells — **stopped only** (per-step source paints while playing) |
 
 ---
 
