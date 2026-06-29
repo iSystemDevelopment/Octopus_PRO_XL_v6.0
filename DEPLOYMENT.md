@@ -40,11 +40,10 @@ Web MIDI works with Cloudflare proxy on — no special WebSocket rules needed (t
 # Ubuntu/Debian — install once
 sudo apt update && sudo apt install -y nginx certbot python3-certbot-nginx
 
-# App site
-sudo mkdir -p /var/www/octopus.isystem.app
-sudo cp OctopusApp.html /var/www/octopus.isystem.app/index.html
-sudo cp manifest.webmanifest sw.js /var/www/octopus.isystem.app/
-sudo cp /var/www/octopus-info.isystem.app/logo.jpg /var/www/octopus.isystem.app/logo.jpg
+# App site (this VPS uses /var/www/octopus — not octopus.isystem.app folder name)
+sudo mkdir -p /var/www/octopus
+sudo cp OctopusApp.html /var/www/octopus/index.html
+sudo cp manifest.webmanifest sw.js logo.jpg /var/www/octopus/
 
 # Product site
 sudo mkdir -p /var/www/octopus-info.isystem.app
@@ -52,33 +51,73 @@ sudo cp octopus_web.html /var/www/octopus-info.isystem.app/index.html
 # + copy logo.jpg, octopus-app-hero.jpg, etc.
 ```
 
+Use the ready-made config in the repo (recommended):
+
+```bash
+sudo cp deploy/nginx-octopus.isystem.app.conf /etc/nginx/sites-available/octopus.isystem.app
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+Or paste manually — web root **`/var/www/octopus`**:
+
 ```nginx
 # /etc/nginx/sites-available/octopus.isystem.app
+
 server {
     listen 80;
+    listen [::]:80;
     server_name octopus.isystem.app;
-    root /var/www/octopus.isystem.app;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name octopus.isystem.app;
+
+    root /var/www/octopus;
     index index.html;
-    # PWA files must be real files — do NOT fall through to index.html
-    location = /manifest.webmanifest {
-        try_files /manifest.webmanifest =404;
-        add_header Cache-Control "no-cache, must-revalidate";
-        types { application/manifest+json webmanifest; }
-        default_type application/manifest+json;
-    }
+
+    access_log /var/log/nginx/octopus.access.log;
+    error_log  /var/log/nginx/octopus.error.log;
+
+    ssl_certificate     /etc/letsencrypt/live/octopus.isystem.app/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/octopus.isystem.app/privkey.pem;
+    include /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+
+    add_header X-Content-Type-Options "nosniff" always;
+
     location = /sw.js {
         try_files /sw.js =404;
-        add_header Cache-Control "no-cache, must-revalidate";
         default_type application/javascript;
+        add_header Cache-Control "no-cache, must-revalidate";
     }
+
+    location = /manifest.webmanifest {
+        try_files /manifest.webmanifest =404;
+        default_type application/manifest+json;
+        add_header Cache-Control "no-cache, must-revalidate";
+    }
+
     location = /logo.jpg {
         try_files /logo.jpg =404;
         add_header Cache-Control "public, max-age=86400";
     }
+
+    location = /sitemap.xml {
+        try_files /sitemap.xml =404;
+        default_type application/xml;
+    }
+
+    location = /robots.txt {
+        try_files /robots.txt =404;
+        default_type text/plain;
+    }
+
     location / {
         try_files $uri $uri/ /index.html;
         add_header Cache-Control "no-cache, must-revalidate";
-        add_header X-Content-Type-Options "nosniff";
     }
 }
 ```
