@@ -8177,16 +8177,23 @@
                     return false;
                 };
                 if (tryNow()) return;
-                let n = 0;
-                const t = setInterval(() => {
-                    if (tryNow() || ++n >= 25) {
-                        clearInterval(t);
-                        if (!this._pwaDeferredPrompt && this._pwaInstallQueued) {
-                            this._pwaInstallQueued = false;
-                            this.installPwa();
+                const poll = () => {
+                    let n = 0;
+                    const t = setInterval(() => {
+                        if (tryNow() || ++n >= 60) {
+                            clearInterval(t);
+                            if (!this._pwaDeferredPrompt && this._pwaInstallQueued) {
+                                this._pwaInstallQueued = false;
+                                this.installPwa();
+                            }
                         }
-                    }
-                }, 200);
+                    }, 200);
+                };
+                if ('serviceWorker' in navigator) {
+                    navigator.serviceWorker.ready.then(poll).catch(poll);
+                } else {
+                    poll();
+                }
             },
             openInstallModal() {
                 const body = document.getElementById('installModalBody');
@@ -8208,7 +8215,11 @@
                     body.innerHTML = '<p>On iPhone / iPad: tap <b>Share</b> in Safari, then <b>Add to Home Screen</b>.</p><p style="color:#666;margin-top:8px">iOS does not expose USB Web MIDI in the browser — use a desktop for MIDI Controller mode.</p>';
                     if (go) go.style.display = 'none';
                 } else {
-                    body.innerHTML = '<p>Use <b>Chrome</b> or <b>Edge</b> on desktop, then either click <b>INSTALL</b> in the header or use the browser menu: <b>Install OctopusApp</b> / <b>Apps → Install this site as an app</b>.</p><p style="color:#666;margin-top:8px">Install appears after the site is served over HTTPS with a valid app manifest.</p>';
+                    const swOk = ('serviceWorker' in navigator) && !!navigator.serviceWorker.controller;
+                    body.innerHTML = '<p><b>Manifest OK</b> — the browser has not offered the one-click install prompt yet.</p>'
+                        + '<p style="margin-top:8px">Try <b>Chrome / Edge menu → Install OctopusApp</b> (or <b>Apps → Install this site as an app</b>). You may also see a <b>install icon</b> in the address bar.</p>'
+                        + '<p style="margin-top:8px">If the menu item is missing: hard-refresh (<b>Ctrl+F5</b>), wait a few seconds for the service worker' + (swOk ? ' (active)' : ' (activating…)') + ', then click <b>INSTALL</b> again.</p>'
+                        + '<p style="color:#666;margin-top:8px">DevTools → Application → Manifest shows installability errors. Clear site data if you dismissed install earlier.</p>';
                     if (go) go.style.display = 'none';
                 }
                 document.getElementById('installModal').style.display = 'flex';
