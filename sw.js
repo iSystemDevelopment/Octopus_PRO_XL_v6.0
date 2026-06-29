@@ -1,7 +1,7 @@
 /* OctopusApp service worker - offline shell + PWA install. Bump CACHE each release. */
-const CACHE = 'octopus-app-v6.6.01';
+const CACHE = 'octopus-app-v6.6.02';
 
-const PRECACHE = ['/', '/index.html', '/manifest.webmanifest', '/logo.jpg'];
+const PRECACHE = ['/', '/index.html', '/manifest.webmanifest', '/icon-192.png', '/icon-512.png', '/logo.jpg'];
 
 const CDN_HOSTS = [
   'cdn.tailwindcss.com',

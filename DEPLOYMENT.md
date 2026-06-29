@@ -43,7 +43,7 @@ sudo apt update && sudo apt install -y nginx certbot python3-certbot-nginx
 # App site (this VPS uses /var/www/octopus — not octopus.isystem.app folder name)
 sudo mkdir -p /var/www/octopus
 sudo cp OctopusApp.html /var/www/octopus/index.html
-sudo cp manifest.webmanifest sw.js logo.jpg /var/www/octopus/
+sudo cp manifest.webmanifest sw.js icon-192.png icon-512.png logo.jpg /var/www/octopus/
 
 # Product site
 sudo mkdir -p /var/www/octopus-info.isystem.app
@@ -105,6 +105,18 @@ server {
         add_header Cache-Control "public, max-age=86400";
     }
 
+    location = /icon-192.png {
+        try_files /icon-192.png =404;
+        default_type image/png;
+        add_header Cache-Control "public, max-age=86400";
+    }
+
+    location = /icon-512.png {
+        try_files /icon-512.png =404;
+        default_type image/png;
+        add_header Cache-Control "public, max-age=86400";
+    }
+
     location = /sitemap.xml {
         try_files /sitemap.xml =404;
         default_type application/xml;
@@ -150,9 +162,10 @@ OctopusApp is a **Progressive Web App**. Users install from the browser — no s
 |------|---------|
 | `manifest.webmanifest` | App name, icons, `standalone` window |
 | `sw.js` | Offline shell cache (bump `CACHE` in `sw.js` each release) |
-| `logo.jpg` | PWA icon (same file as product site — copy to app root) |
+| `icon-192.png` / `icon-512.png` | Square PWA icons (`node scripts/gen-pwa-icons.mjs` from `logo.jpg`) |
+| `logo.jpg` | Legacy / social fallback (optional on app root) |
 
-Deploy all four to the app site root (`index.html`, `manifest.webmanifest`, `sw.js`, `logo.jpg`). Users click **INSTALL** in the header (Chrome / Edge) or use the browser’s “Install app” menu. After one online visit, the UI loads offline; **Web MIDI still needs Chrome/Edge on desktop**.
+Deploy to the app site root: `index.html`, `manifest.webmanifest`, `sw.js`, `icon-192.png`, `icon-512.png`.
 
 **Verify before telling users to install:** open `https://octopus.isystem.app/manifest.webmanifest` — you must see JSON (`{ "name": "OctopusApp…`), not the app HTML. Same for `https://octopus.isystem.app/sw.js` (JavaScript). If you see HTML, the files are missing and nginx is falling back to `index.html`.
 
