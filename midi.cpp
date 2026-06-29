@@ -744,6 +744,9 @@ void handleSysexCommand(uint8_t cmd, uint16_t v14) {
      * (sent after RND-H / RND-D so the new random pattern plays from beat 1). */
     case CMD_SEQ_RESTART:
       seq_restart_rt(); break;
+    case CMD_SEQ_STEP_PAGE:
+      applySeqStepPage((uint8_t)(v14 & 3u));
+      break;
 
     default: break;
   }

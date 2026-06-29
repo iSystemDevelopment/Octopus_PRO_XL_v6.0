@@ -27,6 +27,7 @@
     <meta name="apple-mobile-web-app-title" content="OctopusApp">
     <link rel="manifest" href="/manifest.webmanifest">
     <link rel="canonical" href="https://octopus.isystem.app/">
+    <link rel="sitemap" type="application/xml" title="Sitemap" href="/sitemap.xml">
     <link rel="icon" href="https://octopus-info.isystem.app/logo.jpg" type="image/jpeg">
     <link rel="apple-touch-icon" href="/icon-512.png">
     <!-- Social share preview (Facebook, LinkedIn, Discord, iMessage, etc.) — images hosted on product site -->
@@ -4716,6 +4717,7 @@
             // [RND-RESTART] App→firmware: restart step counter from 0 while playing.
             // Sent after RND-S / RND-D so the new random pattern plays from beat 1.
             SEQ_RESTART: 193,
+            SEQ_STEP_PAGE: 197,
             AUX_SCENE_IDX: 194,    // v14 0–15 shared room scene (loadAuxScene)
             LINK_AUX_PRESET: 195,  // v14 0=OFF 16383=ON — FX-A recall copies aux when ON
             DBEAM_AMP: 196         // Device→App: live expression 0–16383 (dbeamAmplitude)
@@ -6466,6 +6468,7 @@
                     });
                 const t = b.transport || {};
                 if (t.bankIdx != null) app.txSysexSoon(CMD.BANK, t.bankIdx & 3);
+                if (t.gridPageIdx != null) app.txSysexSoon(CMD.SEQ_STEP_PAGE, t.gridPageIdx & 3);
                 if (t.seqLen != null) app.txSysexSoon(CMD.HW_S_LEN, Math.max(1, Math.min(64, t.seqLen | 0)));
                 if (t.transpose != null) app.txSysexSoon(CMD.TRANSPOSE, Math.max(0, Math.min(24, (t.transpose | 0) + 12)));
                 if (t.seqOct != null) app.txSysexSoon(CMD.HW_S_OCT, Math.max(0, Math.min(8, (t.seqOct | 0) + 4)));
@@ -8195,11 +8198,16 @@
                     poll();
                 }
             },
-            openInstallModal() {
+            openInstallModal(mode) {
                 const body = document.getElementById('installModalBody');
                 const go = document.getElementById('installModalGo');
                 if (!body) return;
-                if (this._pwaIsStandalone()) {
+                if (mode === 'declined') {
+                    body.innerHTML = '<p>Install cancelled — no changes made.</p>'
+                        + '<p style="margin-top:8px">OctopusApp keeps running in your browser. Come back anytime via the <b>INSTALL</b> tab or <b>Chrome / Edge → Install OctopusApp</b>.</p>'
+                        + '<p style="color:#666;margin-top:10px">Goodbye for now.</p>';
+                    if (go) go.style.display = 'none';
+                } else if (this._pwaIsStandalone()) {
                     body.innerHTML = '<p>You are already running the installed OctopusApp.</p>';
                     if (go) go.style.display = 'none';
                 } else if (this._pwaDeferredPrompt) {
@@ -8208,7 +8216,7 @@
                 } else if (this._pwaSetupOk === false) {
                     body.innerHTML = '<p><b>Server setup incomplete.</b> The install files are not on <code>octopus.isystem.app</code> yet — the server is returning the HTML page instead of the manifest.</p>'
                         + '<p style="margin-top:8px">On the VPS, copy these next to <code>index.html</code>:</p>'
-                        + '<ul style="margin:8px 0 0 18px;line-height:1.7"><li><code>manifest.webmanifest</code></li><li><code>sw.js</code></li><li><code>logo.jpg</code> (from product site)</li></ul>'
+                        + '<ul style="margin:8px 0 0 18px;line-height:1.7"><li><code>manifest.webmanifest</code></li><li><code>sw.js</code></li><li><code>icon-192.png</code> + <code>icon-512.png</code></li></ul>'
                         + '<p style="color:#666;margin-top:8px">Then hard-refresh (Ctrl+F5) and try INSTALL again.</p>';
                     if (go) go.style.display = 'none';
                 } else if (this._pwaIsIos()) {
@@ -8216,10 +8224,9 @@
                     if (go) go.style.display = 'none';
                 } else {
                     const swOk = ('serviceWorker' in navigator) && !!navigator.serviceWorker.controller;
-                    body.innerHTML = '<p><b>Manifest OK</b> — the browser has not offered the one-click install prompt yet.</p>'
-                        + '<p style="margin-top:8px">Try <b>Chrome / Edge menu → Install OctopusApp</b> (or <b>Apps → Install this site as an app</b>). You may also see a <b>install icon</b> in the address bar.</p>'
-                        + '<p style="margin-top:8px">If the menu item is missing: hard-refresh (<b>Ctrl+F5</b>), wait a few seconds for the service worker' + (swOk ? ' (active)' : ' (activating…)') + ', then click <b>INSTALL</b> again.</p>'
-                        + '<p style="color:#666;margin-top:8px">DevTools → Application → Manifest shows installability errors. Clear site data if you dismissed install earlier.</p>';
+                    body.innerHTML = '<p>Install from your browser menu: <b>Chrome / Edge → Install OctopusApp</b> (or <b>Apps → Install this site as an app</b>).</p>'
+                        + '<p style="margin-top:8px">You may also see an <b>install icon</b> in the address bar. Hard-refresh (<b>Ctrl+F5</b>) if the option is missing' + (swOk ? '' : ' — service worker still activating') + '.</p>'
+                        + '<p style="color:#666;margin-top:8px">Then click <b>INSTALL</b> in the header to use the one-click prompt when the browser offers it.</p>';
                     if (go) go.style.display = 'none';
                 }
                 document.getElementById('installModal').style.display = 'flex';
@@ -8243,9 +8250,12 @@
                     const { outcome } = await this._pwaDeferredPrompt.userChoice;
                     this._pwaDeferredPrompt = null;
                     this._pwaRefreshInstallTab();
-                    this.closeInstallModal();
-                    if (outcome === 'accepted') this.log('Installing OctopusApp…');
-                    else if (!fromModal) this.openInstallModal();
+                    if (outcome === 'accepted') {
+                        this.closeInstallModal();
+                        this.log('Installing OctopusApp…');
+                    } else {
+                        this.openInstallModal('declined');
+                    }
                 } catch (e) {
                     this.openInstallModal();
                 }
@@ -9968,6 +9978,7 @@
                         this._onHardwareBpmLink(v14 | 0);
                     },
                     [CMD.BANK]: v14 => { this.setBank(v14 & 3, false); },
+                    [CMD.SEQ_STEP_PAGE]: v14 => { this.setGridPage(v14 & 3, true, false); },
                     [CMD.SEQ_CHAIN]: () => { this.chainIdx = 0; },
                     [CMD.M_FX_IDX]: v14 => { document.getElementById('masterFxPreset').value = v14; },
                     [CMD.AUX_SCENE_IDX]: v14 => { this._setKnob(CMD.AUX_SCENE_IDX, v14 & 15); },
@@ -11260,10 +11271,20 @@
                     el.classList.toggle('active-green', (i - 1) === (S.gridPageIdx | 0));
                 });
             },
+            /** Align hardware playback bank + OLED P-page with App before grid/pattern writes. */
+            _dspAlignHwSeqUi() {
+                if (this._appMode !== 'dsp' || !this.midiOut) return;
+                const S = this._dspShell();
+                this.txSysex(CMD.BANK, S.bankIdx & 3);
+                this.txSysex(CMD.SEQ_CHAIN, 0);
+                this.txSysex(CMD.SEQ_STEP_PAGE, S.gridPageIdx & 3);
+            },
             setGridPage(p, repaint = true, fromUser = false, S) {
                 S = S || this._shell();
                 S.gridPageIdx = (+p) & 3;
                 this._syncPageButtons(S);
+                if (fromUser && S === this._dspShell() && this.midiOut)
+                    this.txSysex(CMD.SEQ_STEP_PAGE, S.gridPageIdx);
                 if (repaint) {
                     if (fromUser) {
                         if (S.showSongEditor) this._setSongView(false, false, S);
@@ -11515,6 +11536,7 @@
                         dst[step0 + i] = !!row[i];
                 }
                 if (S === this._dspShell()) {
+                    this._dspAlignHwSeqUi();
                     for (let r = 0; r < 16; r++) {
                         let lo = 0, hi = 0;
                         for (let i = 0; i < 8; i++) {
@@ -11533,6 +11555,7 @@
             },
             randNotes(kind = 'synth') {
                 const S = this._shell();
+                if (S === this._dspShell()) this._dspAlignHwSeqUi();
                 const densId = S.ids.randDensity;
                 const dEl = document.getElementById(densId);
                 let dens = dEl ? parseInt(dEl.value, 10) : 35;
@@ -11610,6 +11633,7 @@
                     this._midiPersistSoon();
                     return;
                 }
+                this._dspAlignHwSeqUi();
                 this._clearGridPageOctopusTx(pg);
                 this.txSysex(CMD.CLR_PLOCKS, 16383);
                 this._plockStealWarned = false;
@@ -11658,19 +11682,9 @@
                     this.setCell(bestRow, step, true);
                 }
                 this._suppressTx = false;
-                const pg = S.gridPageIdx | 0;
-                for (let r = 0; r < 16; r++) this._pushGridRowPageToDevice(S.bankIdx, r, pg);
-                // Reflect preset on seq-synth + push sound only (LOAD_PAT_S wipes rows 0–15 on hardware).
-                if (pat.preset) {
-                    document.getElementById('seqWave').value = pat.preset[0];
-                    const map = [CMD.S_WAVE, CMD.S_ATTK, CMD.S_DECY, CMD.S_SUST, CMD.S_RELS, CMD.S_CUT, CMD.S_RES, CMD.S_NSE, CMD.S_DET, CMD.S_LRATE, CMD.S_LDPTH, CMD.SLFO_RT, CMD.S_OSC2, CMD.S_ENVC];
-                    pat.preset.forEach((v, i) => {
-                        if (i < map.length) {
-                            this._setKnob(map[i], v);
-                            this.txSysexSoon(map[i], v);
-                        }
-                    });
-                }
+                this._dspAlignHwSeqUi();
+                this.txSysex(CMD.LOAD_PAT_S, (+idx) | 0);
+                if (this.isPlaying) this.txSysex(CMD.SEQ_RESTART, 0);
                 const sel = document.getElementById('synthPat');
                 if (sel) sel.value = String(idx);
             },
@@ -11703,12 +11717,9 @@
                     for (let c = 0; c < 16; c++) this.setCell(gr, c, !!((mask >> c) & 1));
                 });
                 this._suppressTx = false;
-                const pg = S.gridPageIdx | 0;
-                for (let r = 0; r < 16; r++) this._pushGridRowPageToDevice(S.bankIdx, r, pg);
-                if (pat.preset) pat.preset.forEach((v, i) => {
-                    this._setKnob(32 + i, v);
-                    this.txSysexSoon(32 + i, v);
-                });
+                this._dspAlignHwSeqUi();
+                this.txSysex(CMD.LOAD_PAT_D, (+idx) | 0);
+                if (this.isPlaying) this.txSysex(CMD.SEQ_RESTART, 0);
                 const sel = document.getElementById('drumPat');
                 if (sel) sel.value = String(idx);
             },

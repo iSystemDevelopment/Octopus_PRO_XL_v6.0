@@ -21,6 +21,7 @@
     <meta name="copyright" content="© 2026 DIODAC ELECTRONICS / iSystem. All Rights Reserved. Proprietary and confidential.">
     <meta name="author" content="DIODAC ELECTRONICS / iSystem">
     <link rel="canonical" href="https://octopus-info.isystem.app/">
+    <link rel="sitemap" type="application/xml" title="Sitemap" href="/sitemap.xml">
     <meta name="robots" content="index, follow, max-image-preview:large">
     <meta name="keywords" content="Octopus PRO XL, laser harp, groovebox, sequencer, ESP32, DIODAC, OctopusApp, Web MIDI, TR-909, laser show">
     <link rel="preconnect" href="https://www.googletagmanager.com" crossorigin>
@@ -87,25 +88,36 @@
         .nav-link:hover { color: var(--cyan); }
 
         /* Top bar — compact single-row menu (lg+) */
+        .top-nav-brand-text { display: none; }
+        @media (min-width: 1280px) {
+            .top-nav-brand-text { display: inline; }
+        }
         .top-nav-menu {
             display: none;
             flex: 1 1 auto;
             flex-wrap: nowrap;
             align-items: center;
             justify-content: flex-end;
-            gap: 0.55rem;
+            gap: 0.45rem;
             min-width: 0;
+            overflow-x: auto;
+            overflow-y: hidden;
+            scrollbar-width: none;
             font-family: 'Orbitron', sans-serif;
             font-size: 9px;
             font-weight: 600;
-            letter-spacing: 0.11em;
+            letter-spacing: 0.1em;
             text-transform: uppercase;
         }
+        .top-nav-menu::-webkit-scrollbar { display: none; }
         @media (min-width: 1024px) {
             .top-nav-menu { display: flex; }
         }
         @media (min-width: 1280px) {
-            .top-nav-menu { gap: 0.7rem; font-size: 10px; letter-spacing: 0.13em; }
+            .top-nav-menu { gap: 0.55rem; font-size: 9px; letter-spacing: 0.11em; }
+        }
+        @media (min-width: 1536px) {
+            .top-nav-menu { gap: 0.65rem; font-size: 10px; letter-spacing: 0.12em; }
         }
         .top-nav-social {
             display: inline-flex;
@@ -125,15 +137,20 @@
         }
         .top-nav-cta {
             font-family: 'Orbitron', sans-serif;
-            font-size: 9px;
+            font-size: 8px;
             font-weight: 700;
-            letter-spacing: 0.12em;
-            padding: 6px 11px;
-            border-radius: 6px;
+            letter-spacing: 0.08em;
+            padding: 5px 8px;
+            border-radius: 5px;
             white-space: nowrap;
         }
+        .top-nav-cta .cta-long { display: none; }
         @media (min-width: 1280px) {
-            .top-nav-cta { font-size: 10px; padding: 7px 13px; }
+            .top-nav-cta { font-size: 8px; padding: 5px 10px; letter-spacing: 0.09em; }
+            .top-nav-cta .cta-long { display: inline; }
+        }
+        @media (min-width: 1536px) {
+            .top-nav-cta { font-size: 9px; padding: 6px 11px; letter-spacing: 0.1em; }
         }
 
         /* Table Styles */
@@ -673,10 +690,10 @@
 <body>
 
     <nav class="fixed w-full z-50 bg-[#050508]/92 backdrop-blur-md border-b border-[#222]">
-        <div class="max-w-[96rem] mx-auto px-3 lg:px-5 py-2 flex items-center gap-2 lg:gap-4 min-h-[44px]">
-            <a href="#" class="brand text-sm lg:text-base font-bold flex items-center gap-2 text-white shrink-0 no-underline">
-                <img src="logo.jpg" alt="" class="w-7 h-7 img-circle border border-[#06b6d4]/30 shadow-[0_0_12px_rgba(6,182,212,0.25)]" width="28" height="28">
-                <span>Octopus <span class="text-[#06b6d4]">PRO XL</span></span>
+        <div class="max-w-[96rem] mx-auto px-2 lg:px-4 py-1.5 flex items-center gap-1.5 lg:gap-2 min-h-[40px]">
+            <a href="#" class="brand text-xs lg:text-sm font-bold flex items-center gap-1.5 text-white shrink-0 no-underline max-w-[2.25rem] xl:max-w-none">
+                <img src="logo.jpg" alt="" class="w-6 h-6 img-circle border border-[#06b6d4]/30 shadow-[0_0_10px_rgba(6,182,212,0.2)]" width="24" height="24">
+                <span class="top-nav-brand-text">Octopus <span class="text-[#06b6d4]">PRO XL</span></span>
             </a>
             <div class="top-nav-menu">
                 <a href="#harp" class="nav-link text-gray-400">Harp</a>
@@ -686,7 +703,7 @@
                 <a href="#fx" class="nav-link text-gray-400">FX</a>
                 <a href="#app" class="nav-link text-gray-400">App</a>
                 <a href="#midi-mode" class="nav-link text-gray-400">MIDI Mode</a>
-                <a href="CHANGELOG.md" class="nav-link text-gray-400">Changelog</a>
+                <a href="https://github.com/iSystemDevelopment/Octopus_PRO_XL_v6.0/blob/main/CHANGELOG.md" class="nav-link text-gray-400" target="_blank" rel="noopener noreferrer">Changelog</a>
                 <a href="#resources" class="nav-link text-gray-400">Docs</a>
                 <a href="#specs" class="nav-link text-gray-400">Specs</a>
                 <a href="#contact" class="nav-link text-gray-400">Contact</a>
@@ -706,7 +723,7 @@
                 </a>
                 <a href="https://octopus.isystem.app" target="_blank" rel="noopener noreferrer"
                    class="top-nav-cta bg-[#22c55e] text-black hover:bg-white transition-colors shrink-0">
-                    Launch App
+                    <i class="fa-solid fa-plug"></i> Launch<span class="cta-long"> App</span>
                 </a>
             </div>
         </div>
@@ -719,7 +736,7 @@
         <div class="flex items-center gap-4 mb-6">
             <img src="logo.jpg" alt="Octopus PRO XL" class="w-20 h-20 img-circle border-2 border-[#06b6d4]/40 shadow-[0_0_40px_rgba(6,182,212,0.45)] hero-img" width="80" height="80">
             <span class="brand tracking-[0.3em] text-sm text-gray-400">DIODAC ELECTRONICS</span>
-            <span class="pill border-[#06b6d4]/40 text-[#06b6d4]">FIRMWARE v6.1.01</span>
+            <span class="pill border-[#06b6d4]/40 text-[#06b6d4]"><i class="fa-solid fa-microchip"></i> FW 6.1.01 · App 6.6.01</span>
         </div>
 
         <h1 class="text-5xl md:text-7xl font-black mb-6 tracking-tight text-white glow-cyan">
@@ -746,7 +763,6 @@
             <span class="pill"><i class="fa-solid fa-bolt text-[#22c55e]"></i> 8 RGB Laser Beams</span>
             <span class="pill"><i class="fa-solid fa-drum text-[#f97316]"></i> 4 Drum Kits</span>
             <span class="pill"><i class="fa-solid fa-repeat text-[#ec4899]"></i> Seq + Harp ARP</span>
-            <span class="pill"><i class="fa-solid fa-laptop-code text-[#ec4899]"></i> OctopusApp v6.6.01</span>
         </div>
         <div class="flex flex-wrap gap-4 justify-center mb-6">
             <a href="https://octopus.isystem.app" target="_blank" rel="noopener noreferrer"
@@ -1551,7 +1567,7 @@
             &nbsp;&middot;&nbsp;
             <a href="user_manual.md" class="text-[#06b6d4] hover:underline">User Manual</a>
             &nbsp;&middot;&nbsp;
-            <a href="CHANGELOG.md" class="text-[#f97316] hover:underline">Changelog</a>
+            <a href="https://github.com/iSystemDevelopment/Octopus_PRO_XL_v6.0/blob/main/CHANGELOG.md" class="text-[#f97316] hover:underline" target="_blank" rel="noopener noreferrer">Changelog</a>
             &nbsp;&middot;&nbsp;
             <a href="#contact" class="text-[#06b6d4] hover:underline">Contact</a>
             &nbsp;&middot;&nbsp;

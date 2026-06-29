@@ -416,6 +416,7 @@ void seqUI_moveDown();
 void seqUI_moveLeft();
 void seqUI_moveRight();
 void seqUI_selectBank(int bank);
+void applySeqStepPage(uint8_t page);
 void seqUI_toggleStep();
 void seqUI_renderMatrix();
 

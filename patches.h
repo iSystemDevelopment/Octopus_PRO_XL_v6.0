@@ -996,6 +996,8 @@ static inline void echoFullSeqState() {
   txSysex(CMD_BANK, (uint16_t)(seqActiveBank.load(std::memory_order_relaxed) & 15u));
   txSysex(CMD_SEQ_CHAIN, (uint16_t)(seqActiveChain.load(std::memory_order_relaxed) & 3u));
   txSysex(CMD_HW_S_LEN, (uint16_t)seqLength.load(std::memory_order_relaxed));
+  txSysex(CMD_SEQ_STEP_PAGE,
+          (uint16_t)(seqUI_stepPage.load(std::memory_order_relaxed) & 3u));
   txSysex(CMD_TRANSPOSE, (uint16_t)(seqTranspose.load(std::memory_order_relaxed) + 12));
   /* Harp continuous pitch-bend: v14 = (12·log2(mult))/12·8192 + 8192. */
   {

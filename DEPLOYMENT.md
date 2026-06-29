@@ -122,6 +122,11 @@ server {
         default_type application/xml;
     }
 
+    location = /sitemap.xsl {
+        try_files /sitemap.xsl =404;
+        default_type application/xml;
+    }
+
     location = /robots.txt {
         try_files /robots.txt =404;
         default_type text/plain;
@@ -244,8 +249,9 @@ scp octopus-consent-seo.js USER@VPS_IP:/tmp/octopus-consent-seo.js
 # On the VPS (SSH in)
 sudo cp /tmp/OctopusApp.html /var/www/octopus.isystem.app/index.html
 sudo cp /tmp/octopus-consent-seo.js /var/www/octopus.isystem.app/octopus-consent-seo.js
-sudo cp seo/sitemap-octopus-app.xml /var/www/octopus.isystem.app/sitemap.xml
-sudo cp seo/robots-octopus-app.txt /var/www/octopus.isystem.app/robots.txt
+sudo cp seo/sitemap-octopus-app.xml /var/www/octopus/sitemap.xml
+sudo cp seo/sitemap.xsl /var/www/octopus/sitemap.xsl
+sudo cp seo/robots-octopus-app.txt /var/www/octopus/robots.txt
 sudo chown www-data:www-data /var/www/octopus.isystem.app/index.html /var/www/octopus.isystem.app/octopus-consent-seo.js /var/www/octopus.isystem.app/sitemap.xml /var/www/octopus.isystem.app/robots.txt
 sudo nginx -t && sudo systemctl reload nginx
 ```
@@ -323,7 +329,7 @@ Run in **Google Chrome** (or Edge) on **HTTPS**:
 
 1. `octopus_web.html` → `index.html` (or equivalent entry).
 2. `octopus-consent-seo.js` → same web root (cookie banner + JSON-LD; shared with OctopusApp).
-3. `seo/sitemap-octopus-info.xml` → `sitemap.xml` · `seo/robots-octopus-info.txt` → `robots.txt`.
+3. `seo/sitemap-octopus-info.xml` → `sitemap.xml` · `seo/sitemap.xsl` → `sitemap.xsl` · `seo/robots-octopus-info.txt` → `robots.txt`.
 4. Include static assets referenced by the page (`logo.jpg`, `octopus-app-hero.jpg`, `octopus-midi-mode.png`, etc.) — **required** for product page MIDI section and OctopusApp social share previews.
 5. HTTPS required. Set `ga4MeasurementId` in `OctopusSiteKit.init()` inside `octopus_web.html` when GA4 property is ready.
 

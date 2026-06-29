@@ -253,6 +253,8 @@ static constexpr uint8_t CMD_SEQ_RESTART = 193;
 static constexpr uint8_t CMD_AUX_SCENE_IDX = 194;
 /* Link insert-A preset aux fields to masterAux* on recall: 0=off 16383=on. */
 static constexpr uint8_t CMD_LINK_AUX_PRESET = 195;
+/* App→device / echo: OLED step window P1–P4 (seqUI_stepPage 0–3). */
+static constexpr uint8_t CMD_SEQ_STEP_PAGE = 197;
 /* v6.3 link contract — persist ACK with txn_id (docs/link_contract.md). */
 static constexpr uint8_t CMD_SESSION_SLOT_ACK = 199;
 /* Device→App: live D-BEAM expression amplitude 0–16383 (post-curve, dbeamAmplitude). */

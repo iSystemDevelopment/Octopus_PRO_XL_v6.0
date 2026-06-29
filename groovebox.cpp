@@ -682,6 +682,16 @@ void seqUI_selectBank(int bank) {
   if (bank >= 0 && bank <= 3) seqUI_setBank(bank);
 }
 
+void applySeqStepPage(uint8_t rawPage) {
+  const int pages = seqUI_numStepPages();
+  int sp = (int)(rawPage & 3u);
+  if (sp < 0) sp = 0;
+  if (sp >= pages) sp = pages - 1;
+  seqUI_stepPage.store(sp, std::memory_order_relaxed);
+  displayDirty.store(true, std::memory_order_release);
+  txSysex(CMD_SEQ_STEP_PAGE, (uint16_t)sp);
+}
+
 void seqUI_toggleStep() {
   const int page = seqUI_page.load(std::memory_order_relaxed) & 1;
   const int row  = seqUI_row.load(std::memory_order_relaxed);
