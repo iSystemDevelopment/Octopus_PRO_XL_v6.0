@@ -1,8 +1,8 @@
 {
   "id": "/",
-  "name": "OctopusApp — OCTOPUS PRO XL",
+  "name": "OctopusApp - OCTOPUS PRO XL",
   "short_name": "OctopusApp",
-  "description": "Web MIDI console for Octopus PRO XL — 64-step sequencer, mixer, and MIDI Controller mode. Works installed offline after first load.",
+  "description": "Web MIDI console for Octopus PRO XL - 64-step sequencer, mixer, and MIDI Controller mode. Works installed offline after first load.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

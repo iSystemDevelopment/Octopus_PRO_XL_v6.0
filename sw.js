@@ -1,4 +1,4 @@
-/* OctopusApp service worker — offline shell + install eligibility. Bump CACHE on each release. */
+/* OctopusApp service worker - offline shell + PWA install. Bump CACHE each release. */
 const CACHE = 'octopus-app-v6.6.01';
 
 const PRECACHE = ['/', '/index.html', '/manifest.webmanifest', '/logo.jpg'];
@@ -12,9 +12,15 @@ const CDN_HOSTS = [
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE)
-      .then((cache) => cache.addAll(PRECACHE))
-      .then(() => self.skipWaiting())
+    caches.open(CACHE).then(async (cache) => {
+      for (const url of PRECACHE) {
+        try {
+          await cache.add(url);
+        } catch (e) {
+          /* logo.jpg optional until copied to app root */
+        }
+      }
+    }).then(() => self.skipWaiting())
   );
 });
 
